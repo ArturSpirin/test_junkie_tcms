@@ -16,6 +16,7 @@ CASE_OPS = {
     "tags_list": "read",
 }
 NO_IDEMPOTENCY = {"tokens_create", "auth_login", "auth_logout"}  # a token's secret is never stored for replay
+NO_IDEMPOTENCY |= {"pairings_create", "pairings_token", "consumers_heartbeat"}  # no org yet, or consumer-only
 
 
 @pytest.fixture

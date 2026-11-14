@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     String,
     Text,
@@ -360,3 +361,93 @@ class IdempotencyRecord(TenantMixin, Base):
     response_body: Mapped[Any | None] = mapped_column(JSON(none_as_null=True))
     response_headers: Mapped[dict[str, str] | None] = mapped_column(JSON(none_as_null=True))
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+
+
+# Consumers (T7, PLAN-58): a machine running the test_junkie daemon, paired by device code.
+
+PAIRING_STATUSES = ("pending", "approved", "claimed")
+
+
+class Consumer(TenantMixin, Base):
+    """Acts through its own agent actor; its token is minted when the paired consumer claims it."""
+
+    __tablename__ = "consumer"
+    __table_args__ = tenant_args(
+        ForeignKeyConstraint(["org_id", "actor_id"], ["actor.org_id", "actor.id"]),
+        ForeignKeyConstraint(["org_id", "token_id"], ["api_token.org_id", "api_token.id"]),
+        ForeignKeyConstraint(["org_id", "approved_by_actor_id"], ["actor.org_id", "actor.id"]),
+    )
+
+    # User-given; never the machine's hostname. Unique among the org's consumers that aren't revoked.
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    actor_id: Mapped[str] = mapped_column(String(26), nullable=False, unique=True)
+    token_id: Mapped[str | None] = mapped_column(String(26))
+    approved_by_actor_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The job the consumer last said it holds; a plain id until T8 adds the job table.
+    busy_job_id: Mapped[str | None] = mapped_column(String(26))
+    tj_version: Mapped[str | None] = mapped_column(String(64))
+    python: Mapped[str | None] = mapped_column(String(64))
+    os: Mapped[str | None] = mapped_column(String(200))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ConsumerProduct(TenantMixin, Base):
+    __tablename__ = "consumer_product"
+    __table_args__ = tenant_args(
+        UniqueConstraint("org_id", "consumer_id", "product_id"),
+        ForeignKeyConstraint(["org_id", "consumer_id"], ["consumer.org_id", "consumer.id"]),
+        ForeignKeyConstraint(["org_id", "product_id"], ["product.org_id", "product.id"]),
+    )
+
+    consumer_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    product_id: Mapped[str] = mapped_column(String(26), nullable=False)
+
+
+class PairingRequest(IdMixin, Base):
+    """RFC 8628 device code. Pre-tenant: org_id and consumer_id stay NULL until an admin approves it."""
+
+    __tablename__ = "pairing_request"
+    __table_args__ = (
+        UniqueConstraint("org_id", "id"),
+        ForeignKeyConstraint(["org_id", "consumer_id"], ["consumer.org_id", "consumer.id"]),
+        CheckConstraint(f"status IN {PAIRING_STATUSES}", name="status"),
+    )
+
+    org_id: Mapped[str | None] = mapped_column(String(26), ForeignKey("org.id"), index=True)
+    device_code_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    user_code: Mapped[str] = mapped_column(String(9), unique=True, nullable=False)
+    status: Mapped[str] = mapped_column(String(8), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    consumer_id: Mapped[str | None] = mapped_column(String(26))
+    client_ip: Mapped[str | None] = mapped_column(String(64))
+
+
+class ConsumerHeartbeat(TenantMixin, Base):
+    """One row per heartbeat; rows older than 24 h are dropped on the next heartbeat."""
+
+    __tablename__ = "consumer_heartbeat"
+    __table_args__ = tenant_args(
+        ForeignKeyConstraint(["org_id", "consumer_id"], ["consumer.org_id", "consumer.id"]),
+        Index("ix_consumer_heartbeat_consumer_id_at", "consumer_id", "at"),
+    )
+
+    consumer_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    busy_job_id: Mapped[str | None] = mapped_column(String(26))
+
+
+class ConsumerInventory(TenantMixin, UpdatedMixin, Base):
+    """The tests one consumer project can run, stored by hash: an unchanged hash writes nothing."""
+
+    __tablename__ = "consumer_inventory"
+    __table_args__ = tenant_args(
+        UniqueConstraint("org_id", "consumer_id", "project"),
+        ForeignKeyConstraint(["org_id", "consumer_id"], ["consumer.org_id", "consumer.id"]),
+    )
+
+    consumer_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    project: Mapped[str] = mapped_column(String(200), nullable=False)
+    hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    roster: Mapped[Any] = mapped_column(JSON, nullable=False)
+    test_count: Mapped[int] = mapped_column(Integer, nullable=False)

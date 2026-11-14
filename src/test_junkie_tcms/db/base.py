@@ -20,6 +20,11 @@ GLOBAL_TABLES = {
     "alembic_version": "migration bookkeeping",
 }
 
+# Tenant tables whose rows start with no org: org_id may be NULL until the row is bound to one.
+PRE_TENANT_TABLES = {
+    "pairing_request": "a consumer asks to pair before anyone picks the org; approval sets org_id",
+}
+
 
 def new_id() -> str:
     return str(ULID())

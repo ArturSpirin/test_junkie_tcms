@@ -139,7 +139,7 @@ def reports_release(
     ctx: OrgContext = Depends(require_scope(READ)),
     db: Session = Depends(get_db),
 ):
-    """Release readiness: the counts, `ready`, and the counts per feature (each case under its current feature)."""
+    """Release readiness: the counts, `ready`, and the counts per feature (by the case's current feature)."""
     r = get_release(db, ctx, release_id)
     statuses = list(release_status(db, ctx.org.id, r).values())
     by_feature: dict[str, list[CaseStatus]] = {}

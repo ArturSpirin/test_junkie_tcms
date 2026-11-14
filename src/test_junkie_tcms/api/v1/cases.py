@@ -281,9 +281,8 @@ def add_version(
     )
     db.add(v)
     db.flush()
+    # ensure_tags finds or creates tags only in the case's product, so tag product = case product.
     for tag in ensure_tags(db, case.org_id, case.product_id, content["tags"]):
-        if tag.product_id != case.product_id:  # ensure_tags only looks in the case's product
-            raise HTTPException(422, f"Tag {tag.name} belongs to another product")
         db.add(CaseVersionTag(org_id=case.org_id, case_version_id=v.id, tag_id=tag.id))
     db.flush()
     return v

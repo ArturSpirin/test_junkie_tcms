@@ -59,6 +59,17 @@ def served_type(mime: str) -> str:
     return "application/octet-stream"
 
 
+def find_existing(db: Session, org_id: str, product_id: str, sha256: str, filename: str) -> Attachment | None:
+    return db.scalar(
+        select(Attachment).where(
+            Attachment.org_id == org_id,
+            Attachment.product_id == product_id,
+            Attachment.sha256 == sha256,
+            Attachment.filename == filename,
+        )
+    )
+
+
 def save(
     db: Session,
     ctx: OrgContext,
@@ -71,14 +82,7 @@ def save(
     """The row for this content and name: 201 when new, 200 when it is already there."""
 
     def existing() -> Attachment | None:
-        return db.scalar(
-            select(Attachment).where(
-                Attachment.org_id == ctx.org.id,
-                Attachment.product_id == product_id,
-                Attachment.sha256 == stored.sha256,
-                Attachment.filename == filename,
-            )
-        )
+        return find_existing(db, ctx.org.id, product_id, stored.sha256, filename)
 
     found = existing()
     if found is not None:

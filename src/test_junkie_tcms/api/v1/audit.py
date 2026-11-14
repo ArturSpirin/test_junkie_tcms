@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select
@@ -19,7 +20,10 @@ def audit_list(
     entity_type: str | None = Query(None),
     entity_id: str | None = Query(None),
     actor_id: str | None = Query(None),
-    since: datetime | None = Query(None),
+    since: datetime | None = Query(None, description="From this time, inclusive"),
+    until: datetime | None = Query(None, description="Up to this time, exclusive"),
+    via: Literal["ui", "api", "mcp"] | None = Query(None),
+    action: str | None = Query(None, description="Exact action, e.g. invite.create"),
     ctx: OrgContext = Depends(require_scope(AUDIT_READ)),
     params: PageParams = Depends(page_params),
     db: Session = Depends(get_db),
@@ -33,5 +37,11 @@ def audit_list(
         query = query.where(AuditEvent.actor_id == actor_id)
     if since:
         query = query.where(AuditEvent.created_at >= since)
+    if until:
+        query = query.where(AuditEvent.created_at < until)
+    if via:
+        query = query.where(AuditEvent.via == via)
+    if action:
+        query = query.where(AuditEvent.action == action)
     rows, cursor = paginate(db, query, AuditEvent.id, params)
     return Page[AuditOut](items=rows, next_cursor=cursor)

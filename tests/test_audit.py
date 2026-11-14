@@ -99,6 +99,31 @@ def test_audit_filters(owner):
     assert _events(owner, actor_id="01NOTANACTOR0000000000000") == []
 
 
+def test_audit_filters_via_action_until(owner, client_factory, app):
+    add_member(owner, "vic@example.com", "viewer")
+    token = owner.post("/api/v1/orgs/acme/tokens", json={"name": "t", "scopes": ["read", "admin"]}).json()
+    bearer(client_factory, token["token"]).patch("/api/v1/orgs/acme", json={"name": "Acme Inc"})
+    with app.state.sessionmaker() as db:
+        times = {e.action: e.created_at for e in db.scalars(select(AuditEvent))}
+    assert [e["action"] for e in _events(owner, via="api")] == ["org.update"]
+    assert sorted(e["action"] for e in _events(owner, via="ui")) == ["member.add", "token.create"]
+    assert _events(owner, via="mcp") == []
+    assert [e["action"] for e in _events(owner, action="token.create")] == ["token.create"]
+    assert _events(owner, action="token") == []
+    # until is exclusive and since inclusive, so [t, t] is empty and [t, later) holds t's event.
+    t = times["token.create"].isoformat()
+    assert _events(owner, since=t, until=t) == []
+    assert [e["action"] for e in _events(owner, until=t)] == ["member.add"]
+    assert [e["action"] for e in _events(owner, since=t, via="ui")] == ["token.create"]
+    assert _events(owner, via="api", action="member.add") == []
+    combined = _events(owner, via="ui", action="member.add", until="2999-01-01T00:00:00Z")
+    assert [e["action"] for e in combined] == ["member.add"]
+
+
+def test_audit_rejects_an_unknown_via(owner):
+    assert owner.get("/api/v1/orgs/acme/audit", params={"via": "email"}).status_code == 422
+
+
 def test_audit_is_per_org(owner, client_factory):
     owner.patch("/api/v1/orgs/acme", json={"name": "Acme Inc"})
     other = client_factory()

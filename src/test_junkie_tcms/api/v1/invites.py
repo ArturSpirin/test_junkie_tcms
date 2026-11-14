@@ -151,16 +151,19 @@ def invites_accept(
         raise HTTPException(410, "Invite already used")
     if status == "expired":
         raise HTTPException(410, "Invite expired")
-    m = join_org(db, row.org_id, user, row.role)
-    # Conditional, so two concurrent accepts can't both join.
+    # Claim the invite before joining, with a conditional update: a concurrent accept waits on the
+    # row lock, then matches no row and gets 410 instead of a membership unique-key error.
+    # accepted_user_id references the membership, so it is set once the join has made one.
     used = db.execute(
         update(Invite)
         .where(Invite.id == row.id, Invite.accepted_at.is_(None), Invite.revoked_at.is_(None))
-        .values(accepted_at=utcnow(), accepted_user_id=user.id)
+        .values(accepted_at=utcnow())
     )
     if used.rowcount != 1:
         db.rollback()
         raise HTTPException(410, "Invite already used")
+    m = join_org(db, row.org_id, user, row.role)
+    db.execute(update(Invite).where(Invite.id == row.id).values(accepted_user_id=user.id))
     actor = db.scalar(select(Actor).where(Actor.org_id == row.org_id, Actor.user_id == user.id))
     ctx = OrgContext(
         org=db.get(Org, row.org_id),

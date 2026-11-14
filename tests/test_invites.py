@@ -103,6 +103,15 @@ def test_accept_reinstates_a_removed_member(owner, client_factory):
     assert (response.json()["role"], response.json()["removed_at"]) == ("admin", None)
 
 
+def test_a_refused_join_leaves_the_invite_unclaimed(owner, invitee):
+    created = _invite(owner)
+    add_member(owner, INVITEE, "viewer")  # joined another way after the invite went out
+    response = invitee.post(ACCEPT, json={"token": created["token"]})
+    assert (response.status_code, response.json()["detail"]) == (409, "Already a member")
+    [row] = owner.get(INVITES, params={"status": "pending"}).json()["items"]
+    assert (row["id"], row["accepted_at"]) == (created["id"], None)
+
+
 def test_expired_invite_is_refused(owner, invitee, app):
     created = _invite(owner)
     with app.state.sessionmaker() as db:

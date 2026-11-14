@@ -5,6 +5,7 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
+from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
 from test_junkie_tcms.api.v1.catalog import (
@@ -94,6 +95,7 @@ def releases_create(
     body: ReleaseCreate,
     mode: RichMode = Depends(rich_mode),
     ctx: OrgContext = Depends(require_scope(WRITE_CATALOG)),
+    idem: Idem = Depends(idempotency),
     db: Session = Depends(get_db),
 ):
     p = get_product(db, ctx, product)

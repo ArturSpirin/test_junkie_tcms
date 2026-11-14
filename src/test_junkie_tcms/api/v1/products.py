@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
+from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
 from test_junkie_tcms.api.v1.catalog import get_product, rich_mode, rich_out, set_rich, to_doc
@@ -56,6 +57,7 @@ def products_create(
     body: ProductCreate,
     mode: RichMode = Depends(rich_mode),
     ctx: OrgContext = Depends(require_scope(WRITE_CATALOG)),
+    idem: Idem = Depends(idempotency),
     db: Session = Depends(get_db),
 ):
     if ctx.product_ids is not None:
@@ -112,11 +114,12 @@ def products_archive(
     product: str,
     mode: RichMode = Depends(rich_mode),
     ctx: OrgContext = Depends(require_scope(WRITE_CATALOG)),
+    idem: Idem = Depends(idempotency),
     db: Session = Depends(get_db),
 ):
     p = get_product(db, ctx, product)
     if p.archived_at is None:
         p.archived_at = utcnow()
         audit.record(db, ctx, "product.archive", "product", p.id)
-        db.commit()
+    db.commit()  # a no-op commits too, so an Idempotency-Key replays it
     return product_out(p, mode)

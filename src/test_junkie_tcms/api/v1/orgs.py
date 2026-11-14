@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
+from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
 from test_junkie_tcms.api.v1.schemas import (
@@ -111,7 +112,10 @@ def members_list(
 
 @router.post(ORG + "/members", status_code=201, response_model=MemberOut, **op("members_add", ADMIN, "admin"))
 def members_add(
-    body: MemberAdd, ctx: OrgContext = Depends(require_scope(ADMIN)), db: Session = Depends(get_db)
+    body: MemberAdd,
+    ctx: OrgContext = Depends(require_scope(ADMIN)),
+    idem: Idem = Depends(idempotency),
+    db: Session = Depends(get_db),
 ):
     _check_owner_rights(ctx, body.role)
     email = body.email.strip().lower()
@@ -207,7 +211,10 @@ def agents_list(
 
 @router.post(ORG + "/agents", status_code=201, response_model=AgentOut, **op("agents_create", ADMIN, "admin"))
 def agents_create(
-    body: AgentCreate, ctx: OrgContext = Depends(require_scope(ADMIN)), db: Session = Depends(get_db)
+    body: AgentCreate,
+    ctx: OrgContext = Depends(require_scope(ADMIN)),
+    idem: Idem = Depends(idempotency),
+    db: Session = Depends(get_db),
 ):
     owner = body.owner_user_id or ctx.actor.user_id or ctx.actor.owner_user_id
     _check_agent_role(db, ctx, owner, body.role)
@@ -245,11 +252,14 @@ def agents_update(
     ORG + "/agents/{agent_id}/disable", response_model=AgentOut, **op("agents_disable", ADMIN, "admin")
 )
 def agents_disable(
-    agent_id: str, ctx: OrgContext = Depends(require_scope(ADMIN)), db: Session = Depends(get_db)
+    agent_id: str,
+    ctx: OrgContext = Depends(require_scope(ADMIN)),
+    idem: Idem = Depends(idempotency),
+    db: Session = Depends(get_db),
 ):
     agent = _get_agent(db, ctx, agent_id)
     if agent.disabled_at is None:
         agent.disabled_at = utcnow()
         audit.record(db, ctx, "agent.disable", "actor", agent.id)
-        db.commit()
+    db.commit()  # a no-op commits too, so an Idempotency-Key replays it
     return agent

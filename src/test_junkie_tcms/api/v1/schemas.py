@@ -262,7 +262,10 @@ class PlanQuery(BaseModel):
 
 
 class PlanEntryIn(BaseModel):
+    """Exactly one of `case_id`, `feature_id` or `query`."""
+
     model_config = ConfigDict(extra="forbid")
+    case_id: str | None = None
     feature_id: str | None = None
     query: PlanQuery | None = None
 
@@ -273,6 +276,7 @@ class PlanEntriesIn(BaseModel):
 
 class PlanEntryOut(Out):
     id: str
+    case_id: str | None = None
     feature_id: str | None = None
     query: dict[str, Any] | None = None
     position: int
@@ -301,6 +305,170 @@ class PlanUpdate(Patch):
     description: RichIn | None = None
     release_id: str | None = None
     status: Literal["active", "archived"] | None = None
+
+
+class ResolvedCase(BaseModel):
+    id: str
+    key: str
+    version: int
+    title: str
+
+
+class PlanResolved(BaseModel):
+    plan_id: str
+    items: list[ResolvedCase]
+
+
+## Cases (T3)
+
+CaseStatus = Literal["draft", "ready", "deprecated"]
+Automation = Literal["manual", "automated", "to_automate"]
+Priority = Literal["low", "medium", "high", "critical"]
+CaseType = Literal["functional", "regression", "smoke", "acceptance", "performance", "security", "other"]
+Title = Field(min_length=1, max_length=500)
+ChangeNote = Field(None, max_length=500)
+
+
+class StepIn(BaseModel):
+    """A step without `id` is new; one with an `id` keeps it from the current version, so reordering is
+    sending the same ids in a new order."""
+
+    model_config = ConfigDict(extra="forbid")
+    id: str | None = None
+    action: RichIn
+    expected: RichIn | None = None
+
+
+class StepOut(BaseModel):
+    id: str
+    action: RichOut
+    expected: RichOut
+
+
+class Link(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    url: str = Field(pattern=r"^https?://", max_length=2000)
+    key: str | None = Field(None, max_length=100)
+
+
+class CaseFields(BaseModel):
+    """The versioned content; on an update, a field left out keeps its current value."""
+
+    model_config = ConfigDict(extra="forbid")
+    preconditions: RichIn | None = None
+    steps: list[StepIn] | None = Field(None, max_length=200)
+    priority: Priority | None = None
+    type: CaseType | None = None
+    status: CaseStatus | None = None
+    automation: Automation | None = None
+    automation_ref: str | None = Field(None, max_length=500)
+    links: list[Link] | None = Field(None, max_length=50)
+    custom: dict[str, Any] | None = Field(None, description="Free-form, for plugins; at most 16 KB as JSON")
+    tags: list[str] | None = Field(
+        None, max_length=50, description="Names; made lowercase, created on first use"
+    )
+    change_note: str | None = ChangeNote
+
+
+class CaseCreate(CaseFields):
+    feature_id: str
+    title: str = Title
+
+
+class CaseUpdate(CaseFields):
+    title: str | None = Field(None, min_length=1, max_length=500)
+
+
+class CaseOut(BaseModel):
+    id: str
+    key: str
+    number: int
+    product_id: str
+    feature_id: str
+    current_version: int
+    title: str
+    preconditions: RichOut
+    steps: list[StepOut]
+    priority: str
+    type: str
+    status: str
+    automation: str
+    automation_ref: str | None = None
+    links: list[Link]
+    custom: dict[str, Any]
+    tags: list[str]
+    change_note: str | None = None
+    archived_at: UtcDateTime | None = None
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
+
+
+class CaseVersionOut(BaseModel):
+    case_id: str
+    key: str
+    version: int
+    title: str
+    preconditions: RichOut
+    steps: list[StepOut]
+    priority: str
+    type: str
+    status: str
+    automation: str
+    automation_ref: str | None = None
+    links: list[Link]
+    custom: dict[str, Any]
+    tags: list[str]
+    change_note: str | None = None
+    created_by_actor_id: str
+    created_at: UtcDateTime
+
+
+class CaseVersionSummary(BaseModel):
+    version: int
+    title: str
+    change_note: str | None = None
+    created_by_actor_id: str
+    created_at: UtcDateTime
+
+
+class CaseRestore(BaseModel):
+    version: int = Field(ge=1)
+    change_note: str | None = ChangeNote
+
+
+class CaseMove(BaseModel):
+    feature_id: str
+
+
+class CaseBulkItem(CaseFields):
+    """With `key` (and `expected_version`) it updates that case; without, it creates one (`feature_id` and
+    `title` required)."""
+
+    key: str | None = None
+    expected_version: int | None = Field(None, ge=1)
+    feature_id: str | None = None
+    title: str | None = Field(None, min_length=1, max_length=500)
+
+
+class CaseBulkIn(BaseModel):
+    items: list[CaseBulkItem] = Field(min_length=1, max_length=200)
+
+
+class CaseBulkResult(BaseModel):
+    key: str
+    id: str
+    version: int
+    result: Literal["created", "updated", "unchanged"]
+
+
+class CaseBulkOut(BaseModel):
+    items: list[CaseBulkResult]
+
+
+class TagOut(BaseModel):
+    id: str
+    name: str
+    case_count: int = Field(description="Cases whose current version has the tag, archived ones left out")
 
 
 class AuditOut(Out):

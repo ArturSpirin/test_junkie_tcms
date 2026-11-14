@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
+from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.v1.catalog import (
     get_feature,
@@ -127,6 +128,7 @@ def features_create(
     body: FeatureCreate,
     mode: RichMode = Depends(rich_mode),
     ctx: OrgContext = Depends(require_scope(WRITE_CATALOG)),
+    idem: Idem = Depends(idempotency),
     db: Session = Depends(get_db),
 ):
     p = get_product(db, ctx, product)
@@ -198,6 +200,7 @@ def features_move(
     body: FeatureMove,
     mode: RichMode = Depends(rich_mode),
     ctx: OrgContext = Depends(require_scope(WRITE_CATALOG)),
+    idem: Idem = Depends(idempotency),
     db: Session = Depends(get_db),
 ):
     f = get_feature(db, ctx, id)
@@ -228,6 +231,7 @@ def features_archive(
     id: str,
     mode: RichMode = Depends(rich_mode),
     ctx: OrgContext = Depends(require_scope(WRITE_CATALOG)),
+    idem: Idem = Depends(idempotency),
     db: Session = Depends(get_db),
 ):
     """Archives the feature and every feature under it."""
@@ -247,5 +251,5 @@ def features_archive(
             archived.append(row.id)
     if archived:
         audit.record(db, ctx, "feature.archive", "feature", f.id, {"archived": [None, sorted(archived)]})
-        db.commit()
+    db.commit()  # a no-op commits too, so an Idempotency-Key replays it
     return feature_out(f, mode)

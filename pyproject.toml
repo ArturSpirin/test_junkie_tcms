@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "test-junkie-tcms"
+version = "0.1.0.dev0"
+description = "AI-native, open-source test case management for Test Junkie"
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+# Exact pins (Sergei, PLAN-27 condition 1). Change one only with a reason in the changelog.
+dependencies = [
+    "fastapi==0.162.7",
+    "starlette==1.10.0",
+    "pydantic==2.14.3",
+    "pydantic-settings==2.16.3",
+    "sqlalchemy==2.1.8",
+    "alembic==1.20.1",
+    "psycopg[binary]==3.3.9",
+    "uvicorn[standard]==0.54.0",
+    "argon2-cffi==25.1.0",
+    "python-ulid==4.1.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "httpx==0.28.1",
+    "pytest==9.2.0",
+    "ruff==0.15.12",
+]
+
+[project.scripts]
+test-junkie-tcms = "test_junkie_tcms.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+test_junkie_tcms = ["migrations/*.py", "migrations/*.mako", "migrations/versions/*.py"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+ignore = ["B008"]

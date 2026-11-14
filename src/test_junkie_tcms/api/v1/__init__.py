@@ -6,6 +6,7 @@ from test_junkie_tcms.api.v1 import (
     auth,
     cases,
     consumers,
+    csv_io,
     cycles,
     features,
     invites,
@@ -14,7 +15,9 @@ from test_junkie_tcms.api.v1 import (
     plans,
     products,
     releases,
+    reports,
     results,
+    search,
     tokens,
 )
 
@@ -32,5 +35,8 @@ router.include_router(cases.router)
 router.include_router(cycles.router)
 router.include_router(results.router)
 router.include_router(attachments.router)
+router.include_router(reports.router)
+router.include_router(search.router)
+router.include_router(csv_io.router)
 router.include_router(pairing.router)
 router.include_router(consumers.router)

@@ -201,6 +201,7 @@ def plans_create(
     changes = {
         "name": [None, plan.name],
         "release_id": [None, plan.release_id],
+        "status": [None, plan.status],
         "description": [None, doc_to_md(doc)],
     }
     audit.record(db, ctx, "plan.create", "plan", plan.id, changes)

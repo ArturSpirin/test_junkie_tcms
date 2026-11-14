@@ -104,7 +104,9 @@ def test_status_moves(owner):
     assert patch({"status": "draft"}).status_code == 409
     assert ok(patch({"status": "active", "name": "Back"}))["name"] == "Back"
     moves = [e["changes"]["status"] for e in events(owner, "plan") if "status" in (e["changes"] or {})]
-    assert sorted(moves) == sorted([["draft", "active"], ["active", "archived"], ["archived", "active"]])
+    assert sorted(map(str, moves)) == sorted(
+        map(str, [[None, "draft"], ["draft", "active"], ["active", "archived"], ["archived", "active"]])
+    )
 
 
 def test_archived_plan_is_read_only(owner):

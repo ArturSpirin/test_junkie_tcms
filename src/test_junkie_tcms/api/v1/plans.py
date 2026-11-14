@@ -162,7 +162,7 @@ def plans_add_entries(
     ctx: OrgContext = Depends(require_scope(WRITE_PLANNING)),
     db: Session = Depends(get_db),
 ):
-    """Appends entries in order. Each is either `{feature_id}` (an active feature of the plan's product) or `{query}`."""
+    """Appends entries in order: `{feature_id}` (an active feature of the plan's product) or `{query}`."""
     plan = get_plan(db, ctx, id)
     for i, entry in enumerate(body.entries):
         if (entry.feature_id is None) == (entry.query is None):

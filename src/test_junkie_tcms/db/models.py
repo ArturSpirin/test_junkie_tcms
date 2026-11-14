@@ -242,5 +242,6 @@ class PlanEntry(TenantMixin, Base):
 
     plan_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
     feature_id: Mapped[str | None] = mapped_column(String(26))
-    query: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    # none_as_null: a feature entry stores SQL NULL here, not JSON null, so `one_target` holds.
+    query: Mapped[dict[str, Any] | None] = mapped_column(JSON(none_as_null=True))
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

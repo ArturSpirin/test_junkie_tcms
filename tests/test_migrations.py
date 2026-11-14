@@ -21,8 +21,8 @@ def test_migrations_match_models(settings):
         engine.dispose()
 
 
-def test_0004_keeps_existing_plans_active(database_url):
-    migrate.upgrade(database_url, "0003")
+def test_0005_keeps_existing_plans_active(database_url):
+    migrate.upgrade(database_url, "0004")
     engine = create_engine(database_url)
     try:
         with engine.begin() as conn:

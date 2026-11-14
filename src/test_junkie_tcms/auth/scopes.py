@@ -11,6 +11,9 @@ AUDIT_READ = "audit:read"
 ADMIN = "admin"
 TOKENS_SELF = "tokens:self"
 
+# Only pairing issues it, so it stays out of ALL_SCOPES and tokens_create refuses it (PLAN-27 §4).
+CONSUMER = "consumer"
+
 ALL_SCOPES = frozenset(
     {READ, WRITE_CATALOG, WRITE_PLANNING, WRITE_CASES, WRITE_EXECUTION, AUDIT_READ, ADMIN, TOKENS_SELF}
 )

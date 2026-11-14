@@ -41,6 +41,7 @@ test_junkie_tcms = ["migrations/*.py", "migrations/*.mako", "migrations/versions
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src", "tests"]
 addopts = "-q"
 
 [tool.ruff]

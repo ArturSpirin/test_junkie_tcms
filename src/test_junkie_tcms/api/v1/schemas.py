@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Annotated, Any, Generic, Literal, TypeVar
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
 
 from test_junkie_tcms.db.base import aware
 
@@ -151,6 +151,19 @@ class InviteCreated(InviteOut):
 
 class InviteAccept(BaseModel):
     token: str = Field(min_length=1, max_length=200)
+    # Both or neither: with them, an invitee with no account signs up and is signed in.
+    name: str | None = Field(
+        None, min_length=1, max_length=200, description="Signup only: the new user's name"
+    )
+    password: str | None = Field(
+        None, min_length=8, max_length=1000, description="Signup only: the new user's password"
+    )
+
+    @model_validator(mode="after")
+    def _signup_fields_together(self) -> "InviteAccept":
+        if (self.name is None) != (self.password is None):
+            raise ValueError("Send name and password together to sign up, or neither when signed in")
+        return self
 
 
 ## Catalog (T2)

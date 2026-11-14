@@ -1,10 +1,12 @@
-"""Invites: an admin invites an email to an org; the invitee accepts with the token, signed in."""
+"""Invites: an admin invites an email to an org; the invitee accepts with the token, signed in, or
+signs up on accept when the email has no account yet."""
 
 import secrets
 from datetime import datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
@@ -20,18 +22,22 @@ from test_junkie_tcms.api.v1.schemas import (
     MemberOut,
     Page,
 )
+from test_junkie_tcms.auth import sessions
 from test_junkie_tcms.auth.deps import (
     OrgContext,
     Principal,
     get_db,
     get_principal,
+    get_settings,
     member_role,
     require_scope,
 )
+from test_junkie_tcms.auth.passwords import hash_password
 from test_junkie_tcms.auth.scopes import ADMIN, ROLE_SCOPES
 from test_junkie_tcms.auth.tokens import token_hash
 from test_junkie_tcms.db.base import aware, utcnow
 from test_junkie_tcms.db.models import Actor, Invite, Membership, Org, User
+from test_junkie_tcms.settings import Settings
 
 router = APIRouter(tags=["invites"])
 INVITES = "/orgs/{org}/invites"
@@ -131,19 +137,11 @@ def invites_revoke(
     return Response(status_code=204)
 
 
-@router.post("/invites:accept", response_model=MemberOut, **op("invites_accept", None, "admin", mcp=False))
-def invites_accept(
-    body: InviteAccept, principal: Principal = Depends(get_principal), db: Session = Depends(get_db)
-):
-    if principal.user is None:
-        raise HTTPException(403, "Sign in to accept an invite; API tokens can't")
-    row = db.scalar(select(Invite).where(Invite.token_hash == token_hash(body.token)))
-    if row is None:
-        raise HTTPException(404, "Invite not found")
-    user = principal.user
-    # The email check comes first, so a leaked token tells the wrong user nothing about the invite.
-    if user.email != row.email:
-        raise HTTPException(403, "This invite is for another email")
+def _user_by_email(db: Session, email: str) -> User | None:
+    return db.scalar(select(User).where(User.email == email))
+
+
+def _check_open(row: Invite) -> None:
     status = _status(row, utcnow())
     if status == "revoked":
         raise HTTPException(410, "Invite revoked")
@@ -151,9 +149,11 @@ def invites_accept(
         raise HTTPException(410, "Invite already used")
     if status == "expired":
         raise HTTPException(410, "Invite expired")
+
+
+def _claim(db: Session, row: Invite) -> None:
     # Claim the invite before joining, with a conditional update: a concurrent accept waits on the
     # row lock, then matches no row and gets 410 instead of a membership unique-key error.
-    # accepted_user_id references the membership, so it is set once the join has made one.
     used = db.execute(
         update(Invite)
         .where(Invite.id == row.id, Invite.accepted_at.is_(None), Invite.revoked_at.is_(None))
@@ -162,7 +162,12 @@ def invites_accept(
     if used.rowcount != 1:
         db.rollback()
         raise HTTPException(410, "Invite already used")
+
+
+def _join(db: Session, row: Invite, principal: Principal, signed_up: bool) -> Membership:
+    user = principal.user
     m = join_org(db, row.org_id, user, row.role)
+    # accepted_user_id references the membership, so it is set once the join has made one.
     db.execute(update(Invite).where(Invite.id == row.id).values(accepted_user_id=user.id))
     actor = db.scalar(select(Actor).where(Actor.org_id == row.org_id, Actor.user_id == user.id))
     ctx = OrgContext(
@@ -172,6 +177,62 @@ def invites_accept(
         scopes=ROLE_SCOPES[row.role],
         principal=principal,
     )
-    audit.record(db, ctx, "invite.accept", "invite", row.id, {"user_id": user.id, "role": row.role})
+    detail = {"user_id": user.id, "role": row.role, "signed_up": signed_up}
+    audit.record(db, ctx, "invite.accept", "invite", row.id, detail)
+    return m
+
+
+@router.post("/invites:accept", response_model=MemberOut, **op("invites_accept", None, "admin", mcp=False))
+def invites_accept(
+    body: InviteAccept,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+):
+    """Accept an invite. Signed in: send only `token`. No account yet: send `token`, `name` and
+    `password`, with no sign-in; this creates the user, joins the org and starts a session (its cookies
+    replace any session the caller had). An email that already has an account gets 409: sign in, then
+    accept."""
+    if body.password is None:
+        return _accept_signed_in(body, get_principal(request, db, settings), db)
+    # Hash before the claim, so the invite row isn't locked while argon2 runs.
+    password_hash = hash_password(body.password)
+    row = db.scalar(select(Invite).where(Invite.token_hash == token_hash(body.token)))
+    if row is None:
+        raise HTTPException(404, "Invite not found")
+    _check_open(row)
+    if _user_by_email(db, row.email) is not None:
+        raise HTTPException(409, "An account exists for this email; sign in, then accept")
+    _claim(db, row)
+    user = User(email=row.email, name=body.name, password_hash=password_hash)
+    db.add(user)
+    try:
+        db.flush()
+    except IntegrityError:
+        # The email signed up another way since the check; the rollback unclaims the invite too.
+        db.rollback()
+        raise HTTPException(409, "An account exists for this email; sign in, then accept") from None
+    session, cookie, csrf = sessions.start_session(
+        db, settings, user, request.client.host if request.client else None, request.headers.get("user-agent")
+    )
+    m = _join(db, row, Principal(via="ui", user=user, session=session), signed_up=True)
+    db.commit()
+    sessions.set_cookies(response, settings, cookie, csrf)
+    return _member_out(db, db.get(Membership, m.id))
+
+
+def _accept_signed_in(body: InviteAccept, principal: Principal, db: Session) -> MemberOut:
+    if principal.user is None:
+        raise HTTPException(403, "Sign in to accept an invite; API tokens can't")
+    row = db.scalar(select(Invite).where(Invite.token_hash == token_hash(body.token)))
+    if row is None:
+        raise HTTPException(404, "Invite not found")
+    # The email check comes first, so a leaked token tells the wrong user nothing about the invite.
+    if principal.user.email != row.email:
+        raise HTTPException(403, "This invite is for another email")
+    _check_open(row)
+    _claim(db, row)
+    m = _join(db, row, principal, signed_up=False)
     db.commit()
     return _member_out(db, db.get(Membership, m.id))

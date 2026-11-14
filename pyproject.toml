@@ -21,6 +21,8 @@ dependencies = [
     "uvicorn[standard]==0.54.0",
     "argon2-cffi==25.1.0",
     "python-ulid==4.1.0",
+    "markdown-it-py==4.3.0",
+    "mdit-py-plugins==0.7.0",
 ]
 
 [project.optional-dependencies]

@@ -1,7 +1,12 @@
 from datetime import date, datetime
-from typing import Any, Generic, Literal, TypeVar
+from typing import Annotated, Any, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+
+from test_junkie_tcms.db.base import aware
+
+# A stored time read back from SQLite is naive; mark it UTC so the API always says so.
+UtcDateTime = Annotated[datetime, AfterValidator(aware)]
 
 Role = Literal["viewer", "tester", "editor", "admin", "owner"]
 
@@ -152,9 +157,9 @@ class ProductOut(BaseModel):
     key: str
     name: str
     description: RichOut
-    archived_at: datetime | None = None
-    created_at: datetime
-    updated_at: datetime
+    archived_at: UtcDateTime | None = None
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
 
 
 class ProductCreate(BaseModel):
@@ -176,9 +181,9 @@ class FeatureOut(BaseModel):
     description: RichOut
     owner_actor_id: str | None = None
     position: int
-    archived_at: datetime | None = None
-    created_at: datetime
-    updated_at: datetime
+    archived_at: UtcDateTime | None = None
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
 
 
 class FeatureNode(FeatureOut):
@@ -217,11 +222,11 @@ class ReleaseOut(BaseModel):
     name: str
     status: str
     target_date: date | None = None
-    released_at: datetime | None = None
+    released_at: UtcDateTime | None = None
     notes: RichOut
     feature_ids: list[str]
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
 
 
 class ReleaseCreate(BaseModel):
@@ -281,8 +286,8 @@ class PlanOut(BaseModel):
     description: RichOut
     status: str
     entries: list[PlanEntryOut]
-    created_at: datetime
-    updated_at: datetime
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
 
 
 class PlanCreate(BaseModel):

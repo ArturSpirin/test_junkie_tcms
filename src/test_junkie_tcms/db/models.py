@@ -111,6 +111,27 @@ class ApiToken(TenantMixin, Base):
     last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class Invite(TenantMixin, Base):
+    """An emailed invite to join an org. Status is computed: revoked > accepted > expired > pending."""
+
+    __tablename__ = "invite"
+    __table_args__ = tenant_args(
+        ForeignKeyConstraint(["org_id", "invited_by_actor_id"], ["actor.org_id", "actor.id"]),
+        ForeignKeyConstraint(["org_id", "accepted_user_id"], ["membership.org_id", "membership.user_id"]),
+        CheckConstraint(_ROLE_CHECK, name="role"),
+    )
+
+    email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
+    role: Mapped[str] = mapped_column(String(16), nullable=False)
+    # Only the SHA-256 of the token; the token itself is shown once, at create.
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    invited_by_actor_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    accepted_user_id: Mapped[str | None] = mapped_column(String(26))
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 class AuditEvent(TenantMixin, Base):
     """Append-only: an ORM guard and a database trigger refuse UPDATE and DELETE."""
 

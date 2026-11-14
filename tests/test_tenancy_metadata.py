@@ -23,6 +23,7 @@ def test_tenant_tables_are_the_expected_ones():
         "membership",
         "actor",
         "api_token",
+        "invite",
         "audit_event",
         "outbox",
         "product",

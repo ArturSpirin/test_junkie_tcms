@@ -124,6 +124,35 @@ class TokenCreated(TokenOut):
     token: str = Field(description="Shown once; store it now")
 
 
+InviteStatus = Literal["pending", "expired", "accepted", "revoked"]
+
+
+class InviteOut(Out):
+    id: str
+    email: str
+    role: str
+    status: InviteStatus
+    invited_by_actor_id: str
+    expires_at: UtcDateTime
+    accepted_at: UtcDateTime | None = None
+    accepted_user_id: str | None = None
+    revoked_at: UtcDateTime | None = None
+    created_at: UtcDateTime
+
+
+class InviteCreate(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+    role: Role
+
+
+class InviteCreated(InviteOut):
+    token: str = Field(description="Shown once; send it to the invitee now")
+
+
+class InviteAccept(BaseModel):
+    token: str = Field(min_length=1, max_length=200)
+
+
 ## Catalog (T2)
 
 # A rich field is written as {"markdown": "..."} or {"doc": {...}} and read per ?rich=:

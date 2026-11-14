@@ -3,11 +3,13 @@
 import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.exc import DBAPIError
 
 from test_junkie_tcms.db import migrate
 from test_junkie_tcms.db.base import Base
+from test_junkie_tcms.db.migrate import alembic_config
 from test_junkie_tcms.db.models import AuditEvent
 from test_junkie_tcms.db.session import AuditAppendOnlyError, make_engine, make_sessionmaker
 
@@ -21,8 +23,14 @@ def test_migrations_match_models(settings):
         engine.dispose()
 
 
-def test_0005_keeps_existing_plans_active(database_url):
-    migrate.upgrade(database_url, "0004")
+def test_migrations_have_one_head():
+    # Branches that each add a revision off the same parent give two heads; re-chain before merging.
+    script = ScriptDirectory.from_config(alembic_config("sqlite://"))
+    assert len(script.get_heads()) == 1, script.get_heads()
+
+
+def test_0006_keeps_existing_plans_active(database_url):
+    migrate.upgrade(database_url, "0005")
     engine = create_engine(database_url)
     try:
         with engine.begin() as conn:

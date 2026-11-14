@@ -91,6 +91,24 @@ def _check_owner_rights(ctx: OrgContext, *roles: str) -> None:
         raise HTTPException(403, "Only an owner can grant, change or remove the owner role")
 
 
+def join_org(db: Session, org_id: str, user: User, role: str) -> Membership:
+    """Add the user with its actor, or reinstate a removed member; 409 for an active member."""
+    m = db.scalar(select(Membership).where(Membership.org_id == org_id, Membership.user_id == user.id))
+    if m is not None and m.removed_at is None:
+        raise HTTPException(409, "Already a member")
+    if m is None:
+        m = Membership(org_id=org_id, user_id=user.id, role=role)
+        db.add(m)
+        db.flush()
+        db.add(Actor(org_id=org_id, kind="user", name=user.name, user_id=user.id))
+    else:
+        m.role, m.removed_at = role, None
+        actor = db.scalar(select(Actor).where(Actor.org_id == org_id, Actor.user_id == user.id))
+        actor.disabled_at = None
+    db.flush()
+    return m
+
+
 def _active_owners(db: Session, org_id: str) -> int:
     return db.scalar(
         select(func.count()).where(
@@ -126,19 +144,7 @@ def members_add(
         )
         db.add(user)
         db.flush()
-    m = db.scalar(select(Membership).where(Membership.org_id == ctx.org.id, Membership.user_id == user.id))
-    if m is not None and m.removed_at is None:
-        raise HTTPException(409, "Already a member")
-    if m is None:
-        m = Membership(org_id=ctx.org.id, user_id=user.id, role=body.role)
-        db.add(m)
-        db.flush()
-        db.add(Actor(org_id=ctx.org.id, kind="user", name=user.name, user_id=user.id))
-    else:
-        m.role, m.removed_at = body.role, None
-        actor = db.scalar(select(Actor).where(Actor.org_id == ctx.org.id, Actor.user_id == user.id))
-        actor.disabled_at = None
-    db.flush()
+    m = join_org(db, ctx.org.id, user, body.role)
     audit.record(db, ctx, "member.add", "user", user.id, {"email": email, "role": body.role})
     db.commit()
     return _member_out(db, m)

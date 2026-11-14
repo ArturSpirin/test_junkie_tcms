@@ -8,8 +8,8 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms.auth import sessions, tokens
-from test_junkie_tcms.auth.scopes import ROLE_SCOPES, lower_role
-from test_junkie_tcms.db.models import Actor, ApiToken, Membership, Org, User, UserSession
+from test_junkie_tcms.auth.scopes import CONSUMER, ROLE_SCOPES, lower_role
+from test_junkie_tcms.db.models import Actor, ApiToken, Consumer, Membership, Org, User, UserSession
 from test_junkie_tcms.settings import Settings
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
@@ -52,6 +52,8 @@ def get_principal(
         if found is None:
             raise _unauthorized("Invalid, revoked or expired token")
         token, actor = found
+        if CONSUMER in token.scopes:
+            raise HTTPException(403, "A consumer token reaches only the consumer routes")
         return Principal(via="api", token=token, actor=actor)
 
     cookie = request.cookies.get(sessions.SESSION_COOKIE)
@@ -143,6 +145,45 @@ def get_org_context(
     return OrgContext(
         org=row, actor=actor, role=role, scopes=scopes, principal=principal, product_ids=product_ids
     )
+
+
+@dataclass
+class ConsumerContext:
+    ctx: OrgContext
+    consumer: Consumer
+
+
+def get_consumer_context(request: Request, db: Session = Depends(get_db)) -> ConsumerContext:
+    """The consumer side: only a paired consumer's own token, while its actor still has a role."""
+    scheme, _, value = request.headers.get("Authorization", "").partition(" ")
+    if scheme.lower() != "bearer" or not value:
+        if request.cookies.get(sessions.SESSION_COOKIE):
+            raise HTTPException(403, "Needs a consumer token")
+        raise _unauthorized()
+    found = tokens.authenticate_token(db, value.strip())
+    if found is None:
+        raise _unauthorized("Invalid, revoked or expired token")
+    token, actor = found
+    if token.scopes != [CONSUMER]:
+        raise HTTPException(403, "Needs a consumer token")
+    consumer = db.scalar(
+        select(Consumer).where(Consumer.org_id == token.org_id, Consumer.actor_id == actor.id)
+    )
+    if consumer is None or consumer.revoked_at is not None or consumer.token_id != token.id:
+        raise _unauthorized("Consumer revoked")
+    role = effective_role(db, actor)
+    if role is None:
+        raise _unauthorized("The consumer's approver is no longer a member")
+    product_ids = frozenset(token.product_ids) if token.product_ids is not None else None
+    ctx = OrgContext(
+        org=db.get(Org, token.org_id),
+        actor=actor,
+        role=role,
+        scopes=frozenset({CONSUMER}),
+        principal=Principal(via="api", token=token, actor=actor),
+        product_ids=product_ids,
+    )
+    return ConsumerContext(ctx=ctx, consumer=consumer)
 
 
 def require_scope(scope: str):

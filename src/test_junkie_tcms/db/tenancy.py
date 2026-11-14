@@ -2,17 +2,20 @@
 
 Every tenant table has a non-null `org_id` (FK to org) and UNIQUE(org_id, id); every FK from one tenant
 table to another is composite and carries `org_id`, so a row can't point into another org. The one link
-from a tenant table to a global parent is membership.user_id -> user.id.
+from a tenant table to a global parent is membership.user_id -> user.id. A pre-tenant table
+(`PRE_TENANT_TABLES`) may leave org_id NULL until its row is bound to an org; the rest of the rule holds.
 """
 
 from sqlalchemy import MetaData, UniqueConstraint
 
-from test_junkie_tcms.db.base import GLOBAL_TABLES
+from test_junkie_tcms.db.base import GLOBAL_TABLES, PRE_TENANT_TABLES
 
 GLOBAL_PARENT_LINKS = {("membership", "user")}
 
 
-def tenancy_violations(metadata: MetaData, global_tables=GLOBAL_TABLES) -> list[str]:
+def tenancy_violations(
+    metadata: MetaData, global_tables=GLOBAL_TABLES, pre_tenant_tables=PRE_TENANT_TABLES
+) -> list[str]:
     problems: list[str] = []
     tenant = {name for name in metadata.tables if name not in global_tables}
     for name in sorted(tenant):
@@ -21,7 +24,7 @@ def tenancy_violations(metadata: MetaData, global_tables=GLOBAL_TABLES) -> list[
         if org_id is None:
             problems.append(f"{name}: no org_id column")
             continue
-        if org_id.nullable:
+        if org_id.nullable and name not in pre_tenant_tables:
             problems.append(f"{name}: org_id is nullable")
         if not any(fk.column.table.name == "org" for fk in org_id.foreign_keys):
             problems.append(f"{name}: org_id has no FK to org")

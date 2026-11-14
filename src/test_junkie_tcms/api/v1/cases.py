@@ -24,6 +24,7 @@ from test_junkie_tcms.api.v1.catalog import (
 from test_junkie_tcms.api.v1.catalog import to_doc as _to_doc
 from test_junkie_tcms.api.v1.schemas import (
     CaseBulkIn,
+    CaseBulkItem,
     CaseBulkOut,
     CaseBulkResult,
     CaseCreate,
@@ -661,34 +662,43 @@ def cases_bulk_upsert(
     p = get_product(db, ctx, product)
     results = []
     for i, item in enumerate(body.items):
-        if item.key is None:
-            if item.feature_id is None or item.title is None:
-                raise HTTPException(422, f"items[{i}]: a new case needs feature_id and title")
-            case, v, content = create_case(db, ctx, p, item, item.feature_id, item.title)
-            changes = content_changes(None, content)
-            changes["entity_version"] = [None, 1]
-            result = "created"
-        else:
-            if item.expected_version is None:
-                raise HTTPException(422, f"items[{i}]: updating {item.key} needs expected_version")
-            if item.feature_id is not None:
-                raise HTTPException(422, f"items[{i}]: use cases_move to change a case's feature")
-            m = CASE_KEY.match(item.key)
-            case = get_case(db, ctx, item.key) if m and m.group(1) == p.key else None
-            if case is None or case.product_id != p.id:
-                raise HTTPException(422, f"items[{i}]: {item.key} is not a case of {p.key}")
-            _check_editable(case, item.expected_version)
-            current = db_current(db, case)
-            new = apply_fields(item, content_of(current, version_tags(db, [current.id])[current.id]))
-            v, changes = edit_case(db, ctx, case, item.expected_version, new, item.change_note)
-            v = v or current
-            result = "updated" if changes else "unchanged"
-        if changes:
-            changes["result"] = [None, result]
-            audit.record(db, ctx, "case.bulk_upsert", "test_case", case.id, changes)
+        case, v, result = upsert_item(db, ctx, p, item, f"items[{i}]")
         results.append(CaseBulkResult(key=case_key(p, case), id=case.id, version=v.version, result=result))
     db.commit()
     return CaseBulkOut(items=results)
+
+
+def upsert_item(
+    db: Session, ctx: OrgContext, p: Product, item: CaseBulkItem, label: str, action: str = "case.bulk_upsert"
+) -> tuple[TestCase, CaseVersion, str]:
+    """Create the item's case (no key) or edit it (key + expected_version), with its audit event; nothing
+    is committed. Errors start with `label`, so the caller can say which item or row it was."""
+    if item.key is None:
+        if item.feature_id is None or item.title is None:
+            raise HTTPException(422, f"{label}: a new case needs feature_id and title")
+        case, v, content = create_case(db, ctx, p, item, item.feature_id, item.title)
+        changes = content_changes(None, content)
+        changes["entity_version"] = [None, 1]
+        result = "created"
+    else:
+        if item.expected_version is None:
+            raise HTTPException(422, f"{label}: updating {item.key} needs expected_version")
+        if item.feature_id is not None:
+            raise HTTPException(422, f"{label}: use cases_move to change a case's feature")
+        m = CASE_KEY.match(item.key)
+        case = get_case(db, ctx, item.key) if m and m.group(1) == p.key else None
+        if case is None or case.product_id != p.id:
+            raise HTTPException(422, f"{label}: {item.key} is not a case of {p.key}")
+        _check_editable(case, item.expected_version)
+        current = db_current(db, case)
+        new = apply_fields(item, content_of(current, version_tags(db, [current.id])[current.id]))
+        v, changes = edit_case(db, ctx, case, item.expected_version, new, item.change_note)
+        v = v or current
+        result = "updated" if changes else "unchanged"
+    if changes:
+        changes["result"] = [None, result]
+        audit.record(db, ctx, action, "test_case", case.id, changes)
+    return case, v, result
 
 
 @router.get(TAGS, response_model=Page[TagOut], **op("tags_list", READ, "cases"))

@@ -14,10 +14,19 @@ def test_cycle_from_an_active_plan_pins_its_cases_and_takes_its_release(owner):
     make_case(owner, p, s["parent"]["id"], "Not in the plan")
     activate(owner, s["plan"]["id"])
     cycle = make_cycle(owner, p, plan_id=s["plan"]["id"], environment="staging")
-    assert (cycle["plan_id"], cycle["release_id"], cycle["status"]) == (s["plan"]["id"], s["release"]["id"], "open")
+    assert (cycle["plan_id"], cycle["release_id"], cycle["status"]) == (
+        s["plan"]["id"],
+        s["release"]["id"],
+        "open",
+    )
     assert cycle["counts"] == UNTESTED
     [cc] = cycle_cases(owner, cycle["id"])
-    assert (cc["case_id"], cc["key"], cc["case_version"], cc["status"]) == (case["id"], "PAY-1", 1, "untested")
+    assert (cc["case_id"], cc["key"], cc["case_version"], cc["status"]) == (
+        case["id"],
+        "PAY-1",
+        1,
+        "untested",
+    )
     assert [st["id"] for st in cc["steps"]] == [st["id"] for st in case["steps"]]
     [event] = events(owner, "cycle")
     assert event["action"] == "cycle.create"
@@ -25,7 +34,9 @@ def test_cycle_from_an_active_plan_pins_its_cases_and_takes_its_release(owner):
 
 def test_only_an_active_plan_starts_a_cycle(owner):
     s = seed(owner)
-    response = owner.post(url(f"/products/{s['product']['id']}/cycles"), json={"name": "R", "plan_id": s["plan"]["id"]})
+    response = owner.post(
+        url(f"/products/{s['product']['id']}/cycles"), json={"name": "R", "plan_id": s["plan"]["id"]}
+    )
     assert response.status_code == 409, response.text
     assert response.json()["code"] == "plan_not_active"
     assert ok(owner.get(url(f"/products/{s['product']['id']}/cycles")))["items"] == []
@@ -67,7 +78,10 @@ def test_preview_counts_per_feature_and_writes_nothing(owner):
     ok(owner.post(url("/cases/PAY-3/archive")))
     preview = ok(owner.post(url(f"/products/{p}/cycles/preview"), json={"product_id": p}))
     assert preview["total"] == 2
-    assert {f["feature_id"]: f["cases"] for f in preview["features"]} == {s["parent"]["id"]: 1, s["child"]["id"]: 1}
+    assert {f["feature_id"]: f["cases"] for f in preview["features"]} == {
+        s["parent"]["id"]: 1,
+        s["child"]["id"]: 1,
+    }
     assert preview["skipped"] == {"archived": 1, "deprecated": 0}
     assert ok(owner.get(url(f"/products/{p}/cycles")))["items"] == []
     draft = owner.post(url(f"/products/{p}/cycles/preview"), json={"plan_id": s["plan"]["id"]})
@@ -79,7 +93,10 @@ def test_cases_from_another_product_are_refused(owner):
     other = seed(owner, "OPS")
     case = make_case(owner, other["product"]["id"], other["child"]["id"], "Elsewhere")
     p = s["product"]["id"]
-    assert owner.post(url(f"/products/{p}/cycles"), json={"name": "R", "case_ids": [case["id"]]}).status_code == 422
+    assert (
+        owner.post(url(f"/products/{p}/cycles"), json={"name": "R", "case_ids": [case["id"]]}).status_code
+        == 422
+    )
     plan = other["plan"]["id"]
     activate(owner, plan)
     assert owner.post(url(f"/products/{p}/cycles"), json={"name": "R", "plan_id": plan}).status_code == 422
@@ -90,7 +107,9 @@ def test_adding_cases_lists_the_ones_already_present(owner):
     p = s["product"]["id"]
     second = make_case(owner, p, s["parent"]["id"], "Second")
     added = ok(
-        owner.post(url(f"/cycles/{s['cycle']['id']}/cases"), json={"case_ids": [s["case"]["id"], second["id"]]})
+        owner.post(
+            url(f"/cycles/{s['cycle']['id']}/cases"), json={"case_ids": [s["case"]["id"], second["id"]]}
+        )
     )
     assert added == {"added": [second["id"]], "already_present": [s["case"]["id"]]}
     assert [c["position"] for c in cycle_cases(owner, s["cycle"]["id"])] == [1, 2]
@@ -99,7 +118,9 @@ def test_adding_cases_lists_the_ones_already_present(owner):
 def test_assign_and_filter_by_assignee(owner):
     s = run_seed(owner)
     actor = add_member(owner, "tess@example.com", "tester")["actor_id"]
-    cc = ok(owner.post(url(f"/cycle-cases/{s['cycle_case']['id']}/assign"), json={"assignee_actor_id": actor}))
+    cc = ok(
+        owner.post(url(f"/cycle-cases/{s['cycle_case']['id']}/assign"), json={"assignee_actor_id": actor})
+    )
     assert cc["assignee_actor_id"] == actor
     assert [c["id"] for c in cycle_cases(owner, s["cycle"]["id"], assignee=actor)] == [cc["id"]]
     assert cycle_cases(owner, s["cycle"]["id"], status="fail") == []
@@ -124,7 +145,9 @@ def test_a_closed_cycle_takes_no_results_or_cases_until_it_reopens(owner):
 
 def test_rename_a_cycle(owner):
     s = run_seed(owner)
-    renamed = ok(owner.patch(url(f"/cycles/{s['cycle']['id']}"), json={"name": "Nightly", "environment": "prod"}))
+    renamed = ok(
+        owner.patch(url(f"/cycles/{s['cycle']['id']}"), json={"name": "Nightly", "environment": "prod"})
+    )
     assert (renamed["name"], renamed["environment"]) == ("Nightly", "prod")
     assert owner.patch(url(f"/cycles/{s['cycle']['id']}"), json={"status": "closed"}).status_code == 422
     assert sorted(e["action"] for e in events(owner, "cycle")) == ["cycle.create", "cycle.update"]

@@ -5,10 +5,13 @@ from pathlib import Path
 
 from catalog_seed import events, make_product, ok, url
 from conftest import login
+
 from test_junkie_tcms.api.v1 import attachments
 
 
-def upload(client, product: str, content: bytes, name: str = "shot.png", mime: str = "image/png", org: str = "acme"):
+def upload(
+    client, product: str, content: bytes, name: str = "shot.png", mime: str = "image/png", org: str = "acme"
+):
     return client.post(
         url(f"/products/{product}/attachments", org),
         params={"filename": name},
@@ -91,11 +94,17 @@ def test_an_upload_over_the_cap_is_413(owner, app, monkeypatch):
 
 def test_base64_upload_and_bad_base64(owner):
     p = make_product(owner)["id"]
-    body = {"filename": "note.txt", "mime": "text/plain", "content_base64": base64.b64encode(b"hello").decode()}
+    body = {
+        "filename": "note.txt",
+        "mime": "text/plain",
+        "content_base64": base64.b64encode(b"hello").decode(),
+    }
     row = ok(owner.post(url(f"/products/{p}/attachments/base64"), json=body), 201)
     assert (row["size"], row["mime"]) == (5, "text/plain")
     assert owner.get(url(f"/attachments/{row['id']}")).content == b"hello"
-    bad = owner.post(url(f"/products/{p}/attachments/base64"), json={"filename": "x", "content_base64": "%%%"})
+    bad = owner.post(
+        url(f"/products/{p}/attachments/base64"), json={"filename": "x", "content_base64": "%%%"}
+    )
     assert bad.status_code == 422
 
 

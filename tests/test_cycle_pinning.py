@@ -11,7 +11,9 @@ def edit_steps(owner, case: dict, version: int = 1) -> dict:
         {"id": first["id"], "action": {"markdown": "Open the basket"}, "expected": {"markdown": "It opens"}},
         {"action": {"markdown": "Pay by voucher"}, "expected": {"markdown": "The order is paid"}},
     ]
-    return ok(owner.patch(url(f"/cases/{case['key']}"), json={"steps": steps}, headers={"If-Match": f'"{version}"'}))
+    return ok(
+        owner.patch(url(f"/cases/{case['key']}"), json={"steps": steps}, headers={"If-Match": f'"{version}"'})
+    )
 
 
 def test_a_case_edit_does_not_change_a_cycle_already_created(owner):

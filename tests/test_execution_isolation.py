@@ -10,7 +10,10 @@ def seeded(owner) -> dict:
     p = s["product"]["id"]
     shot = ok(
         owner.post(
-            url(f"/products/{p}/attachments"), params={"filename": "a.png"}, content=b"png", headers={"Content-Type": "image/png"}
+            url(f"/products/{p}/attachments"),
+            params={"filename": "a.png"},
+            content=b"png",
+            headers={"Content-Type": "image/png"},
         ),
         201,
     )

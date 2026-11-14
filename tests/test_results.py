@@ -32,13 +32,23 @@ def test_a_result_stores_per_step_status_evidence_and_defects(owner):
         "duration_ms": 1200,
         "steps": [
             {"step_id": first, "status": "success"},
-            {"step_id": second, "status": "fail", "actual": {"markdown": "Error 500"}, "attachment_ids": [shot["id"]]},
+            {
+                "step_id": second,
+                "status": "fail",
+                "actual": {"markdown": "Error 500"},
+                "attachment_ids": [shot["id"]],
+            },
         ],
         "attachment_ids": [log["id"]],
         "defects": [{"url": "https://issues.example.com/BUG-7", "key": "BUG-7"}],
     }
     result = ok(record(owner, s["cycle_case"]["id"], **body), 201)
-    assert (result["attempt"], result["status"], result["via"], result["duration_ms"]) == (1, "fail", "ui", 1200)
+    assert (result["attempt"], result["status"], result["via"], result["duration_ms"]) == (
+        1,
+        "fail",
+        "ui",
+        1200,
+    )
     assert result["comment"].strip() == "Card declined"
     assert [(st["step_id"], st["status"]) for st in result["steps"]] == [(first, "success"), (second, "fail")]
     assert result["steps"][1]["actual"].strip() == "Error 500"
@@ -103,10 +113,14 @@ def test_via_tells_api_mcp_and_ui_apart(owner, client_factory):
     cc = s["cycle_case"]["id"]
     bot = bearer(client_factory, token(owner, "read", "write:execution"))
     assert ok(record(bot, cc, status="success"), 201)["via"] == "api"
-    mcp = bot.post(url(f"/cycle-cases/{cc}/results"), json={"status": "success"}, headers={"X-TCMS-Via": "mcp"})
+    mcp = bot.post(
+        url(f"/cycle-cases/{cc}/results"), json={"status": "success"}, headers={"X-TCMS-Via": "mcp"}
+    )
     assert ok(mcp, 201)["via"] == "mcp"
     # The label means nothing on a cookie session.
-    ui = owner.post(url(f"/cycle-cases/{cc}/results"), json={"status": "success"}, headers={"X-TCMS-Via": "mcp"})
+    ui = owner.post(
+        url(f"/cycle-cases/{cc}/results"), json={"status": "success"}, headers={"X-TCMS-Via": "mcp"}
+    )
     assert ok(ui, 201)["via"] == "ui"
 
 

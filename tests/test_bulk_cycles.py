@@ -99,7 +99,8 @@ def test_a_listed_draft_plan_refuses_the_whole_batch(owner):
     activate(owner, s["plan"]["id"])
     draft = make_plan(owner, p, "Draft", release_id=release)
     response = owner.post(
-        url(f"/releases/{release}/cycles/bulk"), json={"mode": "plans", "plan_ids": [s["plan"]["id"], draft["id"]]}
+        url(f"/releases/{release}/cycles/bulk"),
+        json={"mode": "plans", "plan_ids": [s["plan"]["id"], draft["id"]]},
     )
     assert response.status_code == 409 and response.json()["code"] == "plan_not_active"
     assert ok(owner.get(url(f"/products/{p}/cycles")))["items"] == []

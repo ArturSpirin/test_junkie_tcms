@@ -10,3 +10,4 @@
 - Invitees with no account sign up on accept (`token`, `name`, `password`): user, membership and session in one transaction.
 - `sweep-idempotency` command deletes expired `Idempotency-Key` records in batches; a reused expired key is claimed atomically.
 - Execution: cycles pinned to the case version they run, bulk cycles by release in one batch, append-only results with per-step status, and attachments (raw or base64 upload, org-scoped content-addressed storage).
+- Automated runs: cycles in `automated` or `both` mode send automated cases to chosen online consumers as jobs; consumers long-poll, claim and report; jobs can be cancelled or reassigned, and a stalled job is requeued once, then its cases cancel.

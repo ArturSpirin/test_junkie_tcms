@@ -45,6 +45,12 @@ class IdMixin:
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
+class UpdatedMixin:
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+
 def tenant_args(*extra):
     """`__table_args__` for a tenant table: UNIQUE(org_id, id) so children can point at (org_id, id)."""
     return (UniqueConstraint("org_id", "id"), *extra)

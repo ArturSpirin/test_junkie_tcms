@@ -1,7 +1,12 @@
-from datetime import datetime
-from typing import Any, Generic, Literal, TypeVar
+from datetime import date, datetime
+from typing import Annotated, Any, Generic, Literal, TypeVar
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field
+
+from test_junkie_tcms.db.base import aware
+
+# A stored time read back from SQLite is naive; mark it UTC so the API always says so.
+UtcDateTime = Annotated[datetime, AfterValidator(aware)]
 
 Role = Literal["viewer", "tester", "editor", "admin", "owner"]
 
@@ -111,12 +116,191 @@ class TokenCreate(BaseModel):
     # Defaults to the caller's own actor.
     actor_id: str | None = None
     expires_at: datetime | None = None
-    # Product restriction arrives in T2; T1 refuses a value.
+    # Limit the token to these products; None means every product (or the caller's own limit).
     product_ids: list[str] | None = None
 
 
 class TokenCreated(TokenOut):
     token: str = Field(description="Shown once; store it now")
+
+
+## Catalog (T2)
+
+# A rich field is written as {"markdown": "..."} or {"doc": {...}} and read per ?rich=:
+# a Markdown string (default), the doc, or {"markdown", "doc"} for rich=both.
+RichOut = str | dict[str, Any]
+RichMode = Literal["markdown", "doc", "both"]
+
+
+class MarkdownIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    markdown: str = Field(max_length=200_000)
+
+
+class DocIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    doc: dict[str, Any] = Field(description="A rich text doc (TipTap StarterKit node names)")
+
+
+RichIn = MarkdownIn | DocIn
+Name = Field(min_length=1, max_length=200)
+
+
+class Patch(BaseModel):
+    """PATCH bodies: unknown fields are refused, so an immutable field can't look updated."""
+
+    model_config = ConfigDict(extra="forbid")
+
+
+class ProductOut(BaseModel):
+    id: str
+    key: str
+    name: str
+    description: RichOut
+    archived_at: UtcDateTime | None = None
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
+
+
+class ProductCreate(BaseModel):
+    key: str = Field(pattern=r"^[A-Z][A-Z0-9]{1,9}$", description="Short key, e.g. PAY; can't change later")
+    name: str = Name
+    description: RichIn | None = None
+
+
+class ProductUpdate(Patch):
+    name: str | None = Field(None, min_length=1, max_length=200)
+    description: RichIn | None = None
+
+
+class FeatureOut(BaseModel):
+    id: str
+    product_id: str
+    parent_id: str | None = None
+    name: str
+    description: RichOut
+    owner_actor_id: str | None = None
+    position: int
+    archived_at: UtcDateTime | None = None
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
+
+
+class FeatureNode(FeatureOut):
+    children: list["FeatureNode"] = []
+
+
+class FeatureTree(BaseModel):
+    items: list[FeatureNode]
+
+
+class FeatureCreate(BaseModel):
+    name: str = Name
+    description: RichIn | None = None
+    parent_id: str | None = None
+    owner_actor_id: str | None = None
+
+
+class FeatureUpdate(Patch):
+    name: str | None = Field(None, min_length=1, max_length=200)
+    description: RichIn | None = None
+    owner_actor_id: str | None = None
+
+
+class FeatureMove(BaseModel):
+    parent_id: str | None = Field(None, description="New parent; null moves it to the top level")
+    position: int = Field(ge=0, description="Index among its new siblings; past the end appends")
+
+
+ReleaseStatus = Literal["planned", "in_progress", "released", "cancelled"]
+
+
+class ReleaseOut(BaseModel):
+    id: str
+    product_id: str
+    version: str
+    name: str
+    status: str
+    target_date: date | None = None
+    released_at: UtcDateTime | None = None
+    notes: RichOut
+    feature_ids: list[str]
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
+
+
+class ReleaseCreate(BaseModel):
+    version: str = Field(min_length=1, max_length=64)
+    name: str = Name
+    status: ReleaseStatus = "planned"
+    target_date: date | None = None
+    released_at: datetime | None = None
+    notes: RichIn | None = None
+
+
+class ReleaseUpdate(Patch):
+    version: str | None = Field(None, min_length=1, max_length=64)
+    name: str | None = Field(None, min_length=1, max_length=200)
+    status: ReleaseStatus | None = None
+    target_date: date | None = None
+    released_at: datetime | None = None
+    notes: RichIn | None = None
+
+
+class ReleaseFeaturesIn(BaseModel):
+    feature_ids: list[str] = Field(max_length=2000)
+
+
+class PlanQuery(BaseModel):
+    """Selects cases by their fields; T3 resolves it."""
+
+    model_config = ConfigDict(extra="forbid")
+    tags: list[str] = Field([], max_length=50)
+    priority: list[str] = Field([], max_length=10)
+    type: list[str] = Field([], max_length=10)
+    automation: list[str] = Field([], max_length=10)
+
+
+class PlanEntryIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    feature_id: str | None = None
+    query: PlanQuery | None = None
+
+
+class PlanEntriesIn(BaseModel):
+    entries: list[PlanEntryIn] = Field(min_length=1, max_length=500)
+
+
+class PlanEntryOut(Out):
+    id: str
+    feature_id: str | None = None
+    query: dict[str, Any] | None = None
+    position: int
+
+
+class PlanOut(BaseModel):
+    id: str
+    product_id: str
+    release_id: str | None = None
+    name: str
+    description: RichOut
+    status: str
+    entries: list[PlanEntryOut]
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
+
+
+class PlanCreate(BaseModel):
+    name: str = Name
+    description: RichIn | None = None
+    release_id: str | None = None
+
+
+class PlanUpdate(Patch):
+    name: str | None = Field(None, min_length=1, max_length=200)
+    description: RichIn | None = None
+    release_id: str | None = None
+    status: Literal["active", "archived"] | None = None
 
 
 class AuditOut(Out):

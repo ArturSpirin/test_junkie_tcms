@@ -74,8 +74,16 @@ def test_unknown_scope_is_422(owner):
     assert _create(owner, scopes=["read", "root"]).status_code == 422
 
 
-def test_product_ids_refused_until_t2(owner):
+def test_product_ids_must_be_products_of_the_org(owner, client_factory):
+    pay = owner.post("/api/v1/orgs/acme/products", json={"key": "PAY", "name": "Pay"}).json()["id"]
+    created = _create(owner, product_ids=[pay])
+    assert created.status_code == 201
+    assert created.json()["product_ids"] == [pay]
     assert _create(owner, product_ids=["p1"]).status_code == 422
+    globex = client_factory()
+    login(globex, "other@example.com")
+    theirs = globex.post("/api/v1/orgs/globex/products", json={"key": "GLO", "name": "G"}).json()["id"]
+    assert _create(owner, product_ids=[theirs]).status_code == 422
 
 
 def test_viewer_gets_own_read_token_but_nothing_above_role(owner, client_factory):

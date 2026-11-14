@@ -92,6 +92,13 @@ def operations(s: dict) -> list[tuple[str, str, str, str, dict | None]]:
             {"entries": [{"feature_id": f}]},
         ),
         ("plans_remove_entry", "DELETE", f"/plans/{plan}/entries/{entry}", "write:planning", None),
+        (
+            "plans_reorder_entries",
+            "PUT",
+            f"/plans/{plan}/entries/order",
+            "write:planning",
+            {"entry_ids": [entry]},
+        ),
     ]
 
 
@@ -117,6 +124,7 @@ OPERATION_NAMES = [
     "plans_update",
     "plans_add_entries",
     "plans_remove_entry",
+    "plans_reorder_entries",
 ]
 
 

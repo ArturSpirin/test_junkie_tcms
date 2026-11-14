@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     String,
     Text,
@@ -119,6 +120,8 @@ class AuditEvent(TenantMixin, Base):
         ForeignKeyConstraint(["org_id", "token_id"], ["api_token.org_id", "api_token.id"]),
         ForeignKeyConstraint(["org_id", "on_behalf_of_user_id"], ["membership.org_id", "membership.user_id"]),
         CheckConstraint("via IN ('ui', 'api', 'mcp')", name="via"),
+        # An entity's history, e.g. a feature's last editor (T2b).
+        Index("ix_audit_event_entity", "org_id", "entity_type", "entity_id"),
     )
 
     actor_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
@@ -150,7 +153,9 @@ class Outbox(TenantMixin, Base):
 # Catalog (T2). Rich fields hold the JSON doc; *_text holds its plain text for search.
 
 RELEASE_STATUSES = ("planned", "in_progress", "released", "cancelled")
-PLAN_STATUSES = ("active", "archived")
+PLAN_STATUSES = ("draft", "active", "archived")
+# The moves plans_update allows; archived plans are read-only until moved back to active.
+PLAN_MOVES = {("draft", "active"), ("active", "archived"), ("archived", "active")}
 # A plan entry targets exactly one of a case (T3), a feature or a query.
 ONE_TARGET = (
     "(case_id IS NOT NULL AND feature_id IS NULL AND query IS NULL)"
@@ -234,7 +239,7 @@ class TestPlan(TenantMixin, UpdatedMixin, Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     description_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
-    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="draft")
 
 
 class PlanEntry(TenantMixin, Base):

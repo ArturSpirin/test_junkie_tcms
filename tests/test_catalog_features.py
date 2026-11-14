@@ -1,6 +1,7 @@
 """Features: a tree per product; move renumbers, archive takes the subtree, archived parents refuse kids."""
 
 from catalog_seed import events, make_feature, make_product, ok, url
+from conftest import add_member, login
 
 
 def _tree(owner, product, **params):
@@ -112,3 +113,20 @@ def test_archived_parent_or_product_refuses_new_features(owner):
     )
     ok(owner.post(url(f"/products/{p}/archive")))
     assert owner.post(url(f"/products/{p}/features"), json={"name": "x"}).status_code == 409
+
+
+def test_list_shows_the_last_editor_from_the_audit_log(owner, client_factory):
+    p = make_product(owner)["id"]
+    a = make_feature(owner, p, "A")["id"]
+    make_feature(owner, p, "B")
+    add_member(owner, "eddie@example.com", "admin")
+    eddie = client_factory()
+    login(eddie, "eddie@example.com")
+    ok(eddie.patch(url(f"/features/{a}"), json={"name": "A2"}))
+    [event] = [e for e in events(owner, "feature") if e["action"] == "feature.update"]
+    nodes = {n["name"]: n for n in ok(owner.get(url(f"/products/{p}/features")))["items"]}
+    assert nodes["A2"]["updated_by"]["name"] == "Eddie"
+    assert nodes["A2"]["updated_by"]["kind"] == "user"
+    assert nodes["A2"]["updated_by"]["id"] == event["actor_id"]
+    assert nodes["A2"]["updated_at"].removesuffix("Z") == event["created_at"].removesuffix("Z")
+    assert nodes["B"]["updated_by"]["name"] == "Olive Owner"  # its create event

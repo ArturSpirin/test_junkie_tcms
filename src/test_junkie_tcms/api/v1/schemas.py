@@ -186,7 +186,15 @@ class FeatureOut(BaseModel):
     updated_at: UtcDateTime
 
 
+class ActorRef(BaseModel):
+    id: str
+    name: str
+    kind: str
+
+
 class FeatureNode(FeatureOut):
+    # From the feature's latest audit event; null when it has none.
+    updated_by: ActorRef | None = None
     children: list["FeatureNode"] = []
 
 
@@ -262,16 +270,24 @@ class PlanQuery(BaseModel):
 
 
 class PlanEntryIn(BaseModel):
-    """Exactly one of `case_id`, `feature_id` or `query`."""
+    """Exactly one of `case_id`, `feature_id`, `query` or `release_id`. A `release_id` adds one feature entry
+    per feature of that release at write time; the release itself is not stored."""
 
     model_config = ConfigDict(extra="forbid")
     case_id: str | None = None
     feature_id: str | None = None
     query: PlanQuery | None = None
+    release_id: str | None = None
 
 
 class PlanEntriesIn(BaseModel):
     entries: list[PlanEntryIn] = Field(min_length=1, max_length=500)
+
+
+class PlanEntriesOrder(BaseModel):
+    """Every current entry id of the plan, in the new order."""
+
+    entry_ids: list[str] = Field(max_length=5000)
 
 
 class PlanEntryOut(Out):
@@ -304,7 +320,7 @@ class PlanUpdate(Patch):
     name: str | None = Field(None, min_length=1, max_length=200)
     description: RichIn | None = None
     release_id: str | None = None
-    status: Literal["active", "archived"] | None = None
+    status: Literal["draft", "active", "archived"] | None = None
 
 
 class ResolvedCase(BaseModel):

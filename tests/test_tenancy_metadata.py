@@ -31,6 +31,11 @@ def test_tenant_tables_are_the_expected_ones():
         "release_feature",
         "test_plan",
         "plan_entry",
+        "test_case",
+        "case_version",
+        "tag",
+        "case_version_tag",
+        "idempotency_record",
     }
 
 

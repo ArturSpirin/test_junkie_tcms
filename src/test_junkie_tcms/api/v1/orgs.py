@@ -31,7 +31,7 @@ from test_junkie_tcms.auth.deps import (
 from test_junkie_tcms.auth.passwords import hash_password
 from test_junkie_tcms.auth.scopes import ADMIN, READ, ROLE_RANK
 from test_junkie_tcms.db.base import utcnow
-from test_junkie_tcms.db.models import Actor, Membership, Org, User
+from test_junkie_tcms.db.models import Actor, Consumer, Membership, Org, User
 
 router = APIRouter(tags=["orgs"])
 ORG = "/orgs/{org}"
@@ -187,9 +187,15 @@ def members_remove(
 # Agents
 
 
+# A consumer's actor is an agent too, but it shows and changes only on the Consumers screen.
+_NOT_CONSUMER = ~Actor.id.in_(select(Consumer.actor_id))
+
+
 def _get_agent(db: Session, ctx: OrgContext, agent_id: str) -> Actor:
     agent = db.scalar(
-        select(Actor).where(Actor.org_id == ctx.org.id, Actor.id == agent_id, Actor.kind == "agent")
+        select(Actor).where(
+            Actor.org_id == ctx.org.id, Actor.id == agent_id, Actor.kind == "agent", _NOT_CONSUMER
+        )
     )
     if agent is None:
         raise HTTPException(404, "Agent not found")
@@ -210,7 +216,7 @@ def agents_list(
     params: PageParams = Depends(page_params),
     db: Session = Depends(get_db),
 ):
-    query = select(Actor).where(Actor.org_id == ctx.org.id, Actor.kind == "agent")
+    query = select(Actor).where(Actor.org_id == ctx.org.id, Actor.kind == "agent", _NOT_CONSUMER)
     rows, cursor = paginate(db, query, Actor.id, params)
     return Page[AgentOut](items=rows, next_cursor=cursor)
 

@@ -15,8 +15,9 @@ CASE_OPS = {
     "cases_bulk_upsert": "write:cases",
     "tags_list": "read",
 }
-# A token's or invite's secret is never stored for replay; an invite token is single-use anyway.
-NO_IDEMPOTENCY = {"tokens_create", "invites_create", "invites_accept", "auth_login", "auth_logout"}
+NO_IDEMPOTENCY = {"tokens_create", "auth_login", "auth_logout"}  # a token's secret is never stored for replay
+NO_IDEMPOTENCY |= {"pairings_create", "pairings_token", "consumers_heartbeat"}  # no org yet, or consumer-only
+NO_IDEMPOTENCY |= {"invites_create", "invites_accept"}  # invite token never stored for replay
 
 
 @pytest.fixture

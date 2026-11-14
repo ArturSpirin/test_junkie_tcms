@@ -511,3 +511,92 @@ class AuditOut(Out):
     entity_type: str
     entity_id: str
     changes: dict[str, Any] | None
+
+
+ConsumerStatus = Literal["online", "offline", "busy", "revoked"]
+
+
+class PairingCreated(BaseModel):
+    device_code: str
+    user_code: str = Field(description="XXXX-XXXX; the user types it into the Consumers screen's Pair dialog")
+    verification_uri: str
+    expires_in: int
+    interval: int
+
+
+class PairingTokenIn(BaseModel):
+    device_code: str = Field(min_length=1, max_length=200)
+
+
+class PairingToken(BaseModel):
+    access_token: str = Field(description="Shown once; never stored")
+    token_type: Literal["bearer"] = "bearer"
+    consumer_id: str
+    org: str
+
+
+class PairingApprove(BaseModel):
+    user_code: str = Field(min_length=8, max_length=9)
+    name: str = Field(min_length=1, max_length=200, description="User-given; never the machine's hostname")
+    product_ids: list[str] = Field(min_length=1)
+
+
+class ConsumerOut(BaseModel):
+    id: str
+    name: str
+    status: ConsumerStatus
+    product_ids: list[str]
+    last_heartbeat_at: UtcDateTime | None = None
+    busy_job_id: str | None = None
+    tj_version: str | None = None
+    python: str | None = None
+    os: str | None = None
+    revoked_at: UtcDateTime | None = None
+    created_at: UtcDateTime
+
+
+class HeartbeatOut(Out):
+    at: UtcDateTime
+    busy_job_id: str | None = None
+
+
+class InventorySummary(Out):
+    project: str
+    hash: str
+    test_count: int
+    updated_at: UtcDateTime
+
+
+class ConsumerDetail(ConsumerOut):
+    heartbeats: list[HeartbeatOut] = Field(description="The last 24 h, newest first")
+    inventory: list[InventorySummary]
+
+
+class ConsumerUpdate(BaseModel):
+    name: str | None = Field(None, min_length=1, max_length=200)
+    product_ids: list[str] | None = Field(None, min_length=1)
+
+
+class HeartbeatIn(BaseModel):
+    inventory_hashes: dict[str, str] = Field(
+        default_factory=dict, description="Project name to the SHA-256 of its canonical roster"
+    )
+    busy_job_id: str | None = Field(None, max_length=26)
+    tj_version: str | None = Field(None, max_length=64)
+    python: str | None = Field(None, max_length=64)
+    os: str | None = Field(None, max_length=200)
+
+
+class HeartbeatReply(BaseModel):
+    inventory_wanted: list[str] = Field(description="Projects whose hash differs from the stored one")
+    cancel_job_ids: list[str] = []
+
+
+class InventoryIn(BaseModel):
+    hash: str = Field(min_length=64, max_length=64)
+    roster: list[dict[str, Any]]
+
+
+class InventoryReply(BaseModel):
+    changed: bool
+    test_count: int

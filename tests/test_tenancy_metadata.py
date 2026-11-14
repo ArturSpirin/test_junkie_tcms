@@ -2,7 +2,7 @@
 
 from sqlalchemy import Column, ForeignKey, ForeignKeyConstraint, MetaData, String, Table, UniqueConstraint
 
-from test_junkie_tcms.db.base import GLOBAL_TABLES, Base
+from test_junkie_tcms.db.base import GLOBAL_TABLES, PRE_TENANT_TABLES, Base
 from test_junkie_tcms.db.tenancy import tenancy_violations
 
 
@@ -37,7 +37,26 @@ def test_tenant_tables_are_the_expected_ones():
         "tag",
         "case_version_tag",
         "idempotency_record",
+        "consumer",
+        "consumer_product",
+        "pairing_request",
+        "consumer_heartbeat",
+        "consumer_inventory",
     }
+
+
+def test_nullable_org_id_passes_only_for_pre_tenant_tables():
+    metadata = _copy()
+    for name in ("early", "late"):
+        Table(
+            name,
+            metadata,
+            Column("id", String(26), primary_key=True),
+            Column("org_id", String(26), ForeignKey("org.id"), nullable=True),
+            UniqueConstraint("org_id", "id"),
+        )
+    pre_tenant = {**PRE_TENANT_TABLES, "early": "test"}
+    assert tenancy_violations(metadata, pre_tenant_tables=pre_tenant) == ["late: org_id is nullable"]
 
 
 def test_table_without_org_id_fails():

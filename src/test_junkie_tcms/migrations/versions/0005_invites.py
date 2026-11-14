@@ -1,15 +1,15 @@
 """invites: emailed invites to join an org
 
-Revision ID: 0004_invites
-Revises: 0003
+Revision ID: 0005
+Revises: 0004
 Create Date: 2026-11-14 11:20:00.000000
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0004_invites"
-down_revision = "0003"
+revision = "0005"
+down_revision = "0004"
 branch_labels = None
 depends_on = None
 

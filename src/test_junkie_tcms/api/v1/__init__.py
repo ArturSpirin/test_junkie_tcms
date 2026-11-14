@@ -5,6 +5,7 @@ from test_junkie_tcms.api.v1 import (
     auth,
     cases,
     consumers,
+    cycles,
     features,
     invites,
     orgs,
@@ -26,5 +27,6 @@ router.include_router(features.router)
 router.include_router(releases.router)
 router.include_router(plans.router)
 router.include_router(cases.router)
+router.include_router(cycles.router)
 router.include_router(pairing.router)
 router.include_router(consumers.router)

@@ -1,4 +1,4 @@
-"""`test-junkie-tcms serve | migrate | create-admin`."""
+"""`test-junkie-tcms serve | migrate | create-admin | sweep-idempotency`."""
 
 import argparse
 import getpass
@@ -7,6 +7,7 @@ import sys
 
 from sqlalchemy import select
 
+from test_junkie_tcms.api.idempotency import sweep_expired
 from test_junkie_tcms.auth.passwords import hash_password
 from test_junkie_tcms.db import migrate
 from test_junkie_tcms.db.models import Actor, Membership, Org, User
@@ -49,6 +50,9 @@ def main(argv: list[str] | None = None) -> None:
     admin.add_argument("--name", required=True)
     admin.add_argument("--org-slug", required=True)
     admin.add_argument("--org-name", required=True)
+    sweep = sub.add_parser("sweep-idempotency", help="delete expired Idempotency-Key records")
+    sweep.add_argument("--batch-size", type=int, default=1000)
+    sweep.add_argument("--max-batches", type=int, default=None)
     args = parser.parse_args(argv)
     settings = Settings()
 
@@ -67,6 +71,17 @@ def main(argv: list[str] | None = None) -> None:
             sys.exit("The password needs at least 8 characters")
         create_admin(settings, args.email, args.name, args.org_slug, args.org_name, password)
         print(f"Created {args.email} as owner of {args.org_slug}")
+    elif args.command == "sweep-idempotency":
+        if args.batch_size < 1:
+            sys.exit("--batch-size must be at least 1")
+        engine = make_engine(settings.database_url)
+        try:
+            deleted = sweep_expired(
+                make_sessionmaker(engine), batch_size=args.batch_size, max_batches=args.max_batches
+            )
+        finally:
+            engine.dispose()
+        print(f"Deleted {deleted} expired idempotency records")
 
 
 if __name__ == "__main__":

@@ -4,6 +4,7 @@ import pytest
 from fastapi import APIRouter
 from fastapi.testclient import TestClient
 
+from test_junkie_tcms.api.operations import operation
 from test_junkie_tcms.plugins import PluginContext, RetentionPolicy
 
 
@@ -18,7 +19,8 @@ def test_boots_without_plugins(app):
 def test_plugin_mounts_routes_and_sets_retention(app):
     router = APIRouter()
 
-    @router.get("/ping")
+    # Plugin routes carry the same marker as the core API; the MCP server won't start without it.
+    @router.get("/ping", **operation("example_ping", None, "core", mcp=False))
     def ping() -> dict:
         return {"pong": True}
 

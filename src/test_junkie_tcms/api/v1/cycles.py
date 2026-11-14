@@ -244,7 +244,7 @@ def cycle_cases_out(db: Session, rows: list[CycleCase], mode: RichMode) -> list[
 ## Cycles
 
 
-@router.get(CYCLES, response_model=Page[CycleOut], **op("cycles_list", READ, "planning"))
+@router.get(CYCLES, response_model=Page[CycleOut], **op("cycles_list", READ, "execution"))
 def cycles_list(
     product: str,
     status: str | None = Query(None, pattern="^(open|closed)$"),
@@ -321,7 +321,7 @@ def cycles_preview(
     return CyclePreviewOut(total=len(live), features=features, skipped=skipped)
 
 
-@router.get(CYCLE, response_model=CycleOut, **op("cycles_get", READ, "planning"))
+@router.get(CYCLE, response_model=CycleOut, **op("cycles_get", READ, "execution"))
 def cycles_get(id: str, ctx: OrgContext = Depends(require_scope(READ)), db: Session = Depends(get_db)):
     return cycle_out(db, get_cycle(db, ctx, id))
 

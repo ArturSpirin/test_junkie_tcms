@@ -1,10 +1,11 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from sqlalchemy import (
     JSON,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -15,7 +16,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
-from test_junkie_tcms.db.base import Base, IdMixin, TenantMixin, tenant_args
+from test_junkie_tcms.db.base import Base, IdMixin, TenantMixin, UpdatedMixin, tenant_args
 
 ROLES = ("viewer", "tester", "editor", "admin", "owner")
 _ROLE_CHECK = "role IN ('viewer', 'tester', 'editor', 'admin', 'owner')"
@@ -102,7 +103,7 @@ class ApiToken(TenantMixin, Base):
     prefix: Mapped[str] = mapped_column(String(8), unique=True, nullable=False)
     hash: Mapped[str] = mapped_column(String(64), nullable=False)
     scopes: Mapped[list[str]] = mapped_column(JSON, nullable=False)
-    # Product restriction; applied from T2. T1 refuses a non-null value.
+    # Product restriction: None means every product in the org.
     product_ids: Mapped[list[str] | None] = mapped_column(JSON)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -144,3 +145,102 @@ class Outbox(TenantMixin, Base):
     attempts: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_error: Mapped[str | None] = mapped_column(Text)
+
+
+# Catalog (T2). Rich fields hold the JSON doc; *_text holds its plain text for search.
+
+RELEASE_STATUSES = ("planned", "in_progress", "released", "cancelled")
+PLAN_STATUSES = ("active", "archived")
+
+
+class Product(TenantMixin, UpdatedMixin, Base):
+    __tablename__ = "product"
+    __table_args__ = tenant_args(UniqueConstraint("org_id", "key"))
+
+    key: Mapped[str] = mapped_column(String(10), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    description_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Feature(TenantMixin, UpdatedMixin, Base):
+    __tablename__ = "feature"
+    __table_args__ = tenant_args(
+        ForeignKeyConstraint(["org_id", "product_id"], ["product.org_id", "product.id"]),
+        ForeignKeyConstraint(["org_id", "parent_id"], ["feature.org_id", "feature.id"]),
+        ForeignKeyConstraint(["org_id", "owner_actor_id"], ["actor.org_id", "actor.id"]),
+    )
+
+    product_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    parent_id: Mapped[str | None] = mapped_column(String(26))
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    description_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    owner_actor_id: Mapped[str | None] = mapped_column(String(26))
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Release(TenantMixin, UpdatedMixin, Base):
+    __tablename__ = "release"
+    __table_args__ = tenant_args(
+        UniqueConstraint("org_id", "product_id", "version"),
+        ForeignKeyConstraint(["org_id", "product_id"], ["product.org_id", "product.id"]),
+        CheckConstraint(f"status IN {RELEASE_STATUSES}", name="status"),
+    )
+
+    product_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    version: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="planned")
+    target_date: Mapped[date | None] = mapped_column(Date)
+    released_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    notes_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+
+
+class ReleaseFeature(TenantMixin, Base):
+    __tablename__ = "release_feature"
+    __table_args__ = tenant_args(
+        UniqueConstraint("org_id", "release_id", "feature_id"),
+        ForeignKeyConstraint(["org_id", "release_id"], ["release.org_id", "release.id"]),
+        ForeignKeyConstraint(["org_id", "feature_id"], ["feature.org_id", "feature.id"]),
+    )
+
+    release_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    feature_id: Mapped[str] = mapped_column(String(26), nullable=False)
+
+
+class TestPlan(TenantMixin, UpdatedMixin, Base):
+    __test__ = False  # not a pytest class
+    __tablename__ = "test_plan"
+    __table_args__ = tenant_args(
+        ForeignKeyConstraint(["org_id", "product_id"], ["product.org_id", "product.id"]),
+        ForeignKeyConstraint(["org_id", "release_id"], ["release.org_id", "release.id"]),
+        CheckConstraint(f"status IN {PLAN_STATUSES}", name="status"),
+    )
+
+    product_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    release_id: Mapped[str | None] = mapped_column(String(26))
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    description: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    description_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="active")
+
+
+class PlanEntry(TenantMixin, Base):
+    __tablename__ = "plan_entry"
+    __table_args__ = tenant_args(
+        ForeignKeyConstraint(["org_id", "plan_id"], ["test_plan.org_id", "test_plan.id"]),
+        ForeignKeyConstraint(["org_id", "feature_id"], ["feature.org_id", "feature.id"]),
+        CheckConstraint(
+            "(feature_id IS NOT NULL AND query IS NULL) OR (feature_id IS NULL AND query IS NOT NULL)",
+            name="one_target",
+        ),
+    )
+
+    plan_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    feature_id: Mapped[str | None] = mapped_column(String(26))
+    query: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

@@ -97,9 +97,14 @@ class OrgContext:
     role: str
     scopes: frozenset[str]
     principal: Principal
+    # A token limited to some products; None means every product in the org.
+    product_ids: frozenset[str] | None = None
 
     def has(self, scope: str) -> bool:
         return scope in self.scopes
+
+    def sees_product(self, product_id: str) -> bool:
+        return self.product_ids is None or product_id in self.product_ids
 
 
 def _not_found() -> HTTPException:
@@ -130,9 +135,14 @@ def get_org_context(
     if role is None:
         raise _not_found()
     scopes = ROLE_SCOPES[role]
+    product_ids = None
     if principal.token is not None:
         scopes = scopes & frozenset(principal.token.scopes)
-    return OrgContext(org=row, actor=actor, role=role, scopes=scopes, principal=principal)
+        if principal.token.product_ids is not None:
+            product_ids = frozenset(principal.token.product_ids)
+    return OrgContext(
+        org=row, actor=actor, role=role, scopes=scopes, principal=principal, product_ids=product_ids
+    )
 
 
 def require_scope(scope: str):

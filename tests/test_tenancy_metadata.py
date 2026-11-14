@@ -19,7 +19,19 @@ def test_every_tenant_table_follows_the_rule():
 
 def test_tenant_tables_are_the_expected_ones():
     tenant = set(Base.metadata.tables) - set(GLOBAL_TABLES)
-    assert tenant == {"membership", "actor", "api_token", "audit_event", "outbox"}
+    assert tenant == {
+        "membership",
+        "actor",
+        "api_token",
+        "audit_event",
+        "outbox",
+        "product",
+        "feature",
+        "release",
+        "release_feature",
+        "test_plan",
+        "plan_entry",
+    }
 
 
 def test_table_without_org_id_fails():

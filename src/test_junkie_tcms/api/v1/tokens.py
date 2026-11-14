@@ -12,7 +12,7 @@ from test_junkie_tcms.auth.deps import OrgContext, effective_role, get_db, get_o
 from test_junkie_tcms.auth.scopes import ADMIN, ALL_SCOPES, ROLE_SCOPES, TOKENS_SELF
 from test_junkie_tcms.auth.tokens import new_token
 from test_junkie_tcms.db.base import utcnow
-from test_junkie_tcms.db.models import Actor, ApiToken
+from test_junkie_tcms.db.models import Actor, ApiToken, Product
 
 router = APIRouter(tags=["tokens"])
 TOKENS = "/orgs/{org}/tokens"
@@ -24,6 +24,18 @@ def _require_own_or_admin(ctx: OrgContext, actor_id: str) -> None:
     if actor_id == ctx.actor.id and ctx.has(TOKENS_SELF):
         return
     raise HTTPException(403, f"Needs scope {ADMIN}, or {TOKENS_SELF} for your own tokens")
+
+
+def _product_ids(db: Session, ctx: OrgContext, wanted: list[str] | None) -> list[str] | None:
+    """Every id must be a product in this org; a limited caller can't mint a wider token."""
+    if wanted is None:
+        return sorted(ctx.product_ids) if ctx.product_ids is not None else None
+    ids = sorted(set(wanted))
+    found = set(db.scalars(select(Product.id).where(Product.org_id == ctx.org.id, Product.id.in_(ids))))
+    unknown = [i for i in ids if i not in found or not ctx.sees_product(i)]
+    if unknown:
+        raise HTTPException(422, f"Unknown products: {', '.join(unknown)}")
+    return ids
 
 
 @router.get(TOKENS, response_model=Page[TokenOut], **op("tokens_list", TOKENS_SELF, "admin"))
@@ -48,8 +60,7 @@ def tokens_create(
 ):
     actor_id = body.actor_id or ctx.actor.id
     _require_own_or_admin(ctx, actor_id)
-    if body.product_ids is not None:
-        raise HTTPException(422, "product_ids is not supported yet")
+    product_ids = _product_ids(db, ctx, body.product_ids)
     target = db.scalar(select(Actor).where(Actor.org_id == ctx.org.id, Actor.id == actor_id))
     if target is None:
         raise HTTPException(404, "Actor not found")
@@ -77,11 +88,13 @@ def tokens_create(
         prefix=prefix,
         hash=digest,
         scopes=scopes,
+        product_ids=product_ids,
         expires_at=body.expires_at,
     )
     db.add(row)
     db.flush()
-    audit.record(db, ctx, "token.create", "api_token", row.id, {"actor_id": target.id, "scopes": scopes})
+    changes = {"actor_id": target.id, "scopes": scopes, "product_ids": product_ids}
+    audit.record(db, ctx, "token.create", "api_token", row.id, changes)
     db.commit()
     return TokenCreated(**TokenOut.model_validate(row).model_dump(), token=token)
 

@@ -29,6 +29,25 @@ def test_wrong_password_is_401(client_factory):
     assert SESSION_COOKIE not in response.cookies
 
 
+def test_unknown_email_still_runs_argon2(client_factory, monkeypatch):
+    from test_junkie_tcms.auth import passwords
+
+    calls = []
+    real = passwords._hasher
+
+    class Spy:
+        def verify(self, h, p):
+            calls.append(h)
+            return real.verify(h, p)
+
+    monkeypatch.setattr(passwords, "_hasher", Spy())
+    response = client_factory().post(
+        "/api/v1/auth/login", json={"email": "nobody@example.com", "password": "nope-nope"}
+    )
+    assert response.status_code == 401
+    assert calls == [passwords._DUMMY_HASH]
+
+
 def test_no_credentials_is_401(client_factory):
     assert client_factory().get("/api/v1/me").status_code == 401
 

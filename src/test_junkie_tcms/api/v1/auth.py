@@ -46,7 +46,9 @@ def auth_login(
     settings: Settings = Depends(get_settings),
 ) -> MeOut:
     user = db.scalar(select(User).where(User.email == body.email.strip().lower()))
-    if user is None or not user.is_active or not verify_password(user.password_hash, body.password):
+    # Always run argon2, even for an unknown email, so timing doesn't reveal which emails exist.
+    password_ok = verify_password(user.password_hash if user else None, body.password)
+    if user is None or not user.is_active or not password_ok:
         raise HTTPException(401, "Wrong email or password")
     row, cookie, csrf = sessions.start_session(
         db, settings, user, request.client.host if request.client else None, request.headers.get("user-agent")

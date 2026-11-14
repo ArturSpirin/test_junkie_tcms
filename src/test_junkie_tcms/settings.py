@@ -12,3 +12,6 @@ class Settings(BaseSettings):
     # Local http only: drops the Secure flag from the cookies.
     insecure_cookies: bool = False
     session_ttl_hours: int = 24 * 14
+    # Where uploaded result attachments are kept (LocalStorage), and the largest one accepted.
+    attachments_dir: str = "./attachments"
+    attachment_max_bytes: int = 25 * 1024 * 1024

@@ -69,6 +69,6 @@ def auth_logout(principal: Principal = Depends(get_principal), db: Session = Dep
     return response
 
 
-@router.get("/me", response_model=MeOut, **op("me_get", None, "auth"))
+@router.get("/me", response_model=MeOut, **op("me_get", None, "core"))
 def me_get(principal: Principal = Depends(get_principal), db: Session = Depends(get_db)) -> MeOut:
     return _me(db, principal)

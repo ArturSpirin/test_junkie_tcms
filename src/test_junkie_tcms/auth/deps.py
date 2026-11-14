@@ -13,6 +13,8 @@ from test_junkie_tcms.db.models import Actor, ApiToken, Consumer, Membership, Or
 from test_junkie_tcms.settings import Settings
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+# ASGI scope key the MCP dispatcher sets on its in-process requests; no client header can set it.
+MCP_VIA_KEY = "tcms.via_mcp"
 
 
 def get_settings(request: Request) -> Settings:
@@ -29,7 +31,7 @@ def get_db(request: Request) -> Iterator[Session]:
 
 @dataclass
 class Principal:
-    via: str  # "ui" for a cookie session, "api" for a bearer token
+    via: str  # "ui" for a cookie session, "api" for a bearer token, "mcp" for a token over /mcp
     user: User | None = None
     session: UserSession | None = None
     token: ApiToken | None = None
@@ -54,7 +56,8 @@ def get_principal(
         token, actor = found
         if CONSUMER in token.scopes:
             raise HTTPException(403, "A consumer token reaches only the consumer routes")
-        return Principal(via="api", token=token, actor=actor)
+        via = "mcp" if request.scope.get(MCP_VIA_KEY) else "api"
+        return Principal(via=via, token=token, actor=actor)
 
     cookie = request.cookies.get(sessions.SESSION_COOKIE)
     if not cookie:

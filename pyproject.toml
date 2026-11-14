@@ -23,6 +23,9 @@ dependencies = [
     "python-ulid==4.1.0",
     "markdown-it-py==4.3.0",
     "mdit-py-plugins==0.7.0",
+    # MCP server (T5). mcp requires httpx2; only mcp_server/dispatch.py imports it.
+    "mcp==2.3.0",
+    "httpx2==2.16.0",
 ]
 
 [project.optional-dependencies]

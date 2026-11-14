@@ -1,4 +1,4 @@
-"""`test-junkie-tcms serve | migrate | create-admin | sweep-idempotency`."""
+"""`test-junkie-tcms serve | migrate | create-admin | sweep-idempotency | mcp`."""
 
 import argparse
 import getpass
@@ -53,7 +53,22 @@ def main(argv: list[str] | None = None) -> None:
     sweep = sub.add_parser("sweep-idempotency", help="delete expired Idempotency-Key records")
     sweep.add_argument("--batch-size", type=int, default=1000)
     sweep.add_argument("--max-batches", type=int, default=None)
+    bridge = sub.add_parser("mcp", help="stdio MCP server that relays to a TCMS server's /mcp")
+    bridge.add_argument("--url", required=True, help="the TCMS server, e.g. https://tcms.example.com")
+    bridge.add_argument("--token-env", default="TJ_TCMS_TOKEN", help="env var that holds the API token")
+    bridge.add_argument("--toolsets", default=None, help='comma list or "all"; the server default if unset')
     args = parser.parse_args(argv)
+    if args.command == "mcp":
+        token = os.environ.get(args.token_env)
+        if not token:
+            sys.exit(f"Set {args.token_env} to an API token")
+        import anyio
+
+        from test_junkie_tcms.mcp_server import bridge as mcp_bridge
+
+        anyio.run(mcp_bridge.run, args.url, token, args.toolsets)
+        return
+
     settings = Settings()
 
     if args.command == "migrate":

@@ -15,3 +15,7 @@ class Settings(BaseSettings):
     # Where uploaded result attachments are kept (LocalStorage), and the largest one accepted.
     attachments_dir: str = "./attachments"
     attachment_max_bytes: int = 25 * 1024 * 1024
+    # MCP toolsets `/mcp` lists when the client names none: a comma list, or "all". `core` is always on.
+    mcp_default_toolsets: str = "core,cases,execution"
+    # Host headers `/mcp` accepts (comma list, `*` wildcards); empty turns DNS-rebinding checks off.
+    mcp_allowed_hosts: str = ""

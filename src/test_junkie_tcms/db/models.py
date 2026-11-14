@@ -385,7 +385,7 @@ class IdempotencyRecord(TenantMixin, Base):
     status_code: Mapped[int | None] = mapped_column(Integer)
     response_body: Mapped[Any | None] = mapped_column(JSON(none_as_null=True))
     response_headers: Mapped[dict[str, str] | None] = mapped_column(JSON(none_as_null=True))
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
 
 
 # Consumers (T7, PLAN-58): a machine running the test_junkie daemon, paired by device code.

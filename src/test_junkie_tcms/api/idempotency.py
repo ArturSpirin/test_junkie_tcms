@@ -3,24 +3,26 @@
 The `idempotency` dependency adds a `pending` record to the request's own session, so the handler's single
 commit writes its data and the record together: a crash can't leave the data written and the key free. The
 `IdempotencyRecorder` middleware then stores the response on that record, and a later request with the same
-key replays it.
+key replays it. `sweep_expired` (the `sweep-idempotency` command) deletes records past their window.
 """
 
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 import anyio
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import Response
-from sqlalchemy import select, update
+from sqlalchemy import and_, delete, or_, select, update
 
 from test_junkie_tcms.auth.deps import OrgContext, get_db, get_org_context
 from test_junkie_tcms.db.base import aware, new_id, utcnow
 from test_junkie_tcms.db.models import IdempotencyRecord
 
 TTL = timedelta(hours=24)
+# A pending record is kept this long past its expiry, so the sweeper never deletes one a request still uses.
+PENDING_GRACE = timedelta(hours=1)
 STATE_KEY = "idempotency_record_id"
 REPLAYED = "Idempotent-Replayed"
 # Response headers a replay repeats.
@@ -45,6 +47,36 @@ async def _request_hash(request: Request) -> str:
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
 
 
+def _lookup(db, ctx: OrgContext, key: str) -> IdempotencyRecord | None:
+    # populate_existing: after a lost claim the identity map would hand back the stale row read before it.
+    return db.scalar(
+        select(IdempotencyRecord)
+        .where(
+            IdempotencyRecord.org_id == ctx.org.id,
+            IdempotencyRecord.actor_id == ctx.actor.id,
+            IdempotencyRecord.key == key,
+        )
+        .execution_options(populate_existing=True)
+    )
+
+
+def _claim(db, rec: IdempotencyRecord, fresh: dict, now: datetime) -> bool:
+    """Reuse an expired row in place: a delete and an insert in one flush would hit the UNIQUE key.
+
+    The UPDATE re-checks expiry, so it matches 0 rows when the sweeper deleted the row or another request
+    claimed it since the lookup. It runs in the request session and commits with the handler; on SQLite that
+    takes the write lock here, before the handler runs, rather than at its first flush.
+    """
+    result = db.execute(
+        update(IdempotencyRecord)
+        .where(IdempotencyRecord.id == rec.id, IdempotencyRecord.expires_at <= now)
+        .values(**fresh)
+        .execution_options(synchronize_session=False)
+    )
+    db.expire(rec)
+    return result.rowcount == 1
+
+
 def idempotency(
     request: Request,
     key: str | None = Header(
@@ -63,13 +95,7 @@ def idempotency(
     if not key:
         raise HTTPException(422, "Idempotency-Key must not be empty")
     now = utcnow()
-    rec = db.scalar(
-        select(IdempotencyRecord).where(
-            IdempotencyRecord.org_id == ctx.org.id,
-            IdempotencyRecord.actor_id == ctx.actor.id,
-            IdempotencyRecord.key == key,
-        )
-    )
+    rec = _lookup(db, ctx, key)
     fresh = {
         "method": request.method,
         "path": request.url.path[:500],
@@ -80,16 +106,17 @@ def idempotency(
         "response_headers": None,
         "expires_at": now + TTL,
     }
+    if rec is not None and aware(rec.expires_at) <= now:
+        if _claim(db, rec, fresh, now):
+            request.state.idempotency_record_id = rec.id
+            return Idem(key=key, record_id=rec.id)
+        rec = _lookup(db, ctx, key)  # swept (None), or claimed by another request (fresh)
     if rec is None:
         rec = IdempotencyRecord(id=new_id(), org_id=ctx.org.id, actor_id=ctx.actor.id, key=key, **fresh)
         db.add(rec)
-    elif aware(rec.expires_at) <= now:
-        # Reuse the expired row in place: a delete and an insert in one flush would hit the UNIQUE key.
-        for field, value in fresh.items():
-            setattr(rec, field, value)
     elif rec.request_hash != request_hash:
         raise HTTPException(422, "Idempotency-Key was already used with a different request")
-    elif rec.state == "pending":
+    elif rec.state == "pending" or aware(rec.expires_at) <= now:
         raise HTTPException(
             409,
             "A request with this Idempotency-Key is still running, or its result was not recorded:"
@@ -122,6 +149,43 @@ def _store(sessionmaker, record_id: str, status: int, headers: dict[str, str], b
             .values(state="done", status_code=status, response_body=stored_body, response_headers=headers)
         )
         db.commit()
+
+
+def _sweepable(now: datetime):
+    expired = IdempotencyRecord.expires_at <= now
+    past_grace = IdempotencyRecord.expires_at <= now - PENDING_GRACE
+    return and_(expired, or_(IdempotencyRecord.state == "done", past_grace))
+
+
+def sweep_expired(sessionmaker, *, batch_size: int = 1000, max_batches: int | None = None, now=None) -> int:
+    """Delete expired records, oldest first, one DELETE and commit per batch; return how many went.
+
+    The outer DELETE repeats the condition, so on Postgres a row a request re-claimed after the subquery
+    picked it is checked against its new `expires_at` and kept. Short batches keep SQLite's write lock brief.
+    """
+    if batch_size < 1:
+        raise ValueError("batch_size must be at least 1")
+    now = now or utcnow()
+    batch = (
+        select(IdempotencyRecord.id)
+        .where(_sweepable(now))
+        .order_by(IdempotencyRecord.expires_at)
+        .limit(batch_size)
+    )
+    total = batches = 0
+    while max_batches is None or batches < max_batches:
+        with sessionmaker() as db:
+            deleted = db.execute(
+                delete(IdempotencyRecord)
+                .where(IdempotencyRecord.id.in_(batch), _sweepable(now))
+                .execution_options(synchronize_session=False)
+            ).rowcount
+            db.commit()
+        total += deleted
+        batches += 1
+        if deleted < batch_size:
+            break
+    return total
 
 
 class IdempotencyRecorder:

@@ -41,6 +41,9 @@ docker compose exec -e TJ_TCMS_ADMIN_PASSWORD=change-me-now app \
 - `test-junkie-tcms serve [--host H] [--port P]`: applies migrations, then serves.
 - `test-junkie-tcms migrate`: applies migrations.
 - `test-junkie-tcms create-admin ...`: the first user, their org and the owner role.
+- `test-junkie-tcms sweep-idempotency [--batch-size N] [--max-batches M]`: deletes `Idempotency-Key` records
+  past their 24 h window, `N` (default 1000) per commit. A record still pending is kept an hour longer. Run it
+  hourly, e.g. from cron: `0 * * * * test-junkie-tcms sweep-idempotency`.
 
 ## Auth
 

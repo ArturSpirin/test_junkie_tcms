@@ -42,6 +42,12 @@ def test_tenant_tables_are_the_expected_ones():
         "pairing_request",
         "consumer_heartbeat",
         "consumer_inventory",
+        "cycle_batch",
+        "cycle",
+        "cycle_case",
+        "result",
+        "result_attachment",
+        "attachment",
     }
 
 

@@ -1,0 +1,144 @@
+"""Request dependencies: the database session, who is calling, and what they may do in an org."""
+
+from collections.abc import Iterator
+from dataclasses import dataclass
+
+from fastapi import Depends, HTTPException, Path, Request
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from test_junkie_tcms.auth import sessions, tokens
+from test_junkie_tcms.auth.scopes import ROLE_SCOPES, lower_role
+from test_junkie_tcms.db.models import Actor, ApiToken, Membership, Org, User, UserSession
+from test_junkie_tcms.settings import Settings
+
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+def get_settings(request: Request) -> Settings:
+    return request.app.state.settings
+
+
+def get_db(request: Request) -> Iterator[Session]:
+    db = request.app.state.sessionmaker()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+@dataclass
+class Principal:
+    via: str  # "ui" for a cookie session, "api" for a bearer token
+    user: User | None = None
+    session: UserSession | None = None
+    token: ApiToken | None = None
+    actor: Actor | None = None  # the token's actor; cookie principals get one per org
+
+
+def _unauthorized(detail: str = "Not authenticated") -> HTTPException:
+    return HTTPException(401, detail, headers={"WWW-Authenticate": "Bearer"})
+
+
+def get_principal(
+    request: Request, db: Session = Depends(get_db), settings: Settings = Depends(get_settings)
+) -> Principal:
+    auth = request.headers.get("Authorization")
+    if auth:
+        scheme, _, value = auth.partition(" ")
+        if scheme.lower() != "bearer" or not value:
+            raise _unauthorized()
+        found = tokens.authenticate_token(db, value.strip())
+        if found is None:
+            raise _unauthorized("Invalid, revoked or expired token")
+        token, actor = found
+        return Principal(via="api", token=token, actor=actor)
+
+    cookie = request.cookies.get(sessions.SESSION_COOKIE)
+    if not cookie:
+        raise _unauthorized()
+    row = sessions.find_session(db, settings, cookie)
+    if row is None:
+        raise _unauthorized("Session expired or signed out")
+    user = db.get(User, row.user_id)
+    if user is None or not user.is_active:
+        raise _unauthorized()
+    if request.method not in SAFE_METHODS and not sessions.csrf_ok(
+        settings,
+        row,
+        request.cookies.get(sessions.CSRF_COOKIE),
+        request.headers.get(sessions.CSRF_HEADER),
+    ):
+        raise HTTPException(403, "CSRF token missing or wrong")
+    return Principal(via="ui", user=user, session=row)
+
+
+def member_role(db: Session, org_id: str, user_id: str) -> str | None:
+    return db.scalar(
+        select(Membership.role).where(
+            Membership.org_id == org_id, Membership.user_id == user_id, Membership.removed_at.is_(None)
+        )
+    )
+
+
+def effective_role(db: Session, actor: Actor) -> str | None:
+    """A user's membership role; an agent's own role clamped to its owner's current role."""
+    if actor.disabled_at is not None:
+        return None
+    if actor.kind == "user":
+        return member_role(db, actor.org_id, actor.user_id)
+    return lower_role(actor.role, member_role(db, actor.org_id, actor.owner_user_id))
+
+
+@dataclass
+class OrgContext:
+    org: Org
+    actor: Actor
+    role: str
+    scopes: frozenset[str]
+    principal: Principal
+
+    def has(self, scope: str) -> bool:
+        return scope in self.scopes
+
+
+def _not_found() -> HTTPException:
+    return HTTPException(404, "Org not found")
+
+
+def get_org_context(
+    org: str = Path(description="Org slug"),
+    principal: Principal = Depends(get_principal),
+    db: Session = Depends(get_db),
+) -> OrgContext:
+    row = db.scalar(select(Org).where(Org.slug == org))
+    if row is None:
+        raise _not_found()
+    if principal.token is not None:
+        if principal.token.org_id != row.id:
+            raise _not_found()
+        actor = principal.actor
+    else:
+        actor = db.scalar(
+            select(Actor).where(
+                Actor.org_id == row.id, Actor.kind == "user", Actor.user_id == principal.user.id
+            )
+        )
+        if actor is None:
+            raise _not_found()
+    role = effective_role(db, actor)
+    if role is None:
+        raise _not_found()
+    scopes = ROLE_SCOPES[role]
+    if principal.token is not None:
+        scopes = scopes & frozenset(principal.token.scopes)
+    return OrgContext(org=row, actor=actor, role=role, scopes=scopes, principal=principal)
+
+
+def require_scope(scope: str):
+    def check(ctx: OrgContext = Depends(get_org_context)) -> OrgContext:
+        if not ctx.has(scope):
+            raise HTTPException(403, f"Needs scope {scope}")
+        return ctx
+
+    return check

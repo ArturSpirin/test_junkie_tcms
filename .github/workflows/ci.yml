@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, staging]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: tcms
+          POSTGRES_PASSWORD: tcms
+          POSTGRES_DB: tcms
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U tcms -d tcms"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+    env:
+      TJ_TCMS_TEST_POSTGRES_URL: postgresql+psycopg://tcms:tcms@localhost:5432/tcms
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: pip install -r requirements.lock
+      - run: pip install --no-deps -e .
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t test-junkie-tcms .

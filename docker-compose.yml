@@ -1,0 +1,30 @@
+services:
+  db:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: tcms
+      POSTGRES_PASSWORD: tcms
+      POSTGRES_DB: tcms
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tcms -d tcms"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      TJ_TCMS_DATABASE_URL: postgresql+psycopg://tcms:tcms@db:5432/tcms
+      TJ_TCMS_SECRET_KEY: ${TJ_TCMS_SECRET_KEY:-dev-insecure-change-me}
+      # Plain http on localhost; drop this behind TLS.
+      TJ_TCMS_INSECURE_COOKIES: "true"
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:

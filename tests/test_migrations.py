@@ -7,6 +7,7 @@ from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.exc import DBAPIError
 
+from test_junkie_tcms.db import migrate
 from test_junkie_tcms.db.base import Base
 from test_junkie_tcms.db.migrate import alembic_config
 from test_junkie_tcms.db.models import AuditEvent
@@ -26,6 +27,35 @@ def test_migrations_have_one_head():
     # Branches that each add a revision off the same parent give two heads; re-chain before merging.
     script = ScriptDirectory.from_config(alembic_config("sqlite://"))
     assert len(script.get_heads()) == 1, script.get_heads()
+
+
+def test_0006_keeps_existing_plans_active(database_url):
+    migrate.upgrade(database_url, "0005")
+    engine = create_engine(database_url)
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO org (id, slug, name, created_at) VALUES ('O1', 'o', 'O', '2026-11-14')")
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO product (id, org_id, key, name, description, description_text,"
+                    " created_at, updated_at)"
+                    " VALUES ('P1', 'O1', 'PAY', 'Pay', '{}', '', '2026-11-14', '2026-11-14')"
+                )
+            )
+            conn.execute(
+                text(
+                    "INSERT INTO test_plan (id, org_id, product_id, name, description, description_text,"
+                    " status, created_at, updated_at)"
+                    " VALUES ('T1', 'O1', 'P1', 'Smoke', '{}', '', 'active', '2026-11-14', '2026-11-14')"
+                )
+            )
+        migrate.upgrade(database_url)
+        with engine.connect() as conn:
+            assert conn.scalar(text("SELECT status FROM test_plan WHERE id = 'T1'")) == "active"
+    finally:
+        engine.dispose()
 
 
 @pytest.fixture

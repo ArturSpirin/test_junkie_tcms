@@ -1,9 +1,10 @@
 """Features: a tree under each product, ordered by position among siblings."""
 
 from collections import defaultdict
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
@@ -19,6 +20,7 @@ from test_junkie_tcms.api.v1.catalog import (
     to_doc,
 )
 from test_junkie_tcms.api.v1.schemas import (
+    ActorRef,
     FeatureCreate,
     FeatureMove,
     FeatureNode,
@@ -29,8 +31,8 @@ from test_junkie_tcms.api.v1.schemas import (
 )
 from test_junkie_tcms.auth.deps import OrgContext, get_db, require_scope
 from test_junkie_tcms.auth.scopes import READ, WRITE_CATALOG
-from test_junkie_tcms.db.base import utcnow
-from test_junkie_tcms.db.models import Actor, Feature
+from test_junkie_tcms.db.base import aware, utcnow
+from test_junkie_tcms.db.models import Actor, AuditEvent, Feature
 from test_junkie_tcms.richtext import doc_to_md, doc_to_text
 
 router = APIRouter(tags=["catalog"])
@@ -111,13 +113,52 @@ def features_list(
     for f in rows:
         children[f.parent_id if f.parent_id in ids else None].append(f)
 
+    last = _last_edits(db, ctx.org.id, p.id)
+
+    def node(f: Feature) -> FeatureNode:
+        data = feature_out(f, mode).model_dump()
+        if f.id in last:
+            data["updated_at"], data["updated_by"] = last[f.id]
+        return FeatureNode(**data, children=build(f.id))
+
     def build(parent_id: str | None) -> list[FeatureNode]:
-        return [
-            FeatureNode(**feature_out(f, mode).model_dump(), children=build(f.id))
-            for f in sorted(children[parent_id], key=_order)
-        ]
+        return [node(f) for f in sorted(children[parent_id], key=_order)]
 
     return FeatureTree(items=build(None))
+
+
+def _last_edits(db: Session, org_id: str, product_id: str) -> dict[str, tuple[datetime, ActorRef]]:
+    """Each feature's latest `feature` audit event: its time and actor.
+
+    Archiving audits only the archived root, so its descendants keep their older last editor. Release
+    membership edits are audited on the release, so they don't count as a feature edit."""
+    latest = (
+        select(
+            AuditEvent.entity_id,
+            AuditEvent.created_at,
+            AuditEvent.actor_id,
+            func.row_number()
+            .over(
+                partition_by=AuditEvent.entity_id,
+                order_by=(AuditEvent.created_at.desc(), AuditEvent.id.desc()),
+            )
+            .label("rn"),
+        )
+        .join(Feature, and_(Feature.org_id == AuditEvent.org_id, Feature.id == AuditEvent.entity_id))
+        .where(
+            AuditEvent.org_id == org_id, AuditEvent.entity_type == "feature", Feature.product_id == product_id
+        )
+        .subquery()
+    )
+    rows = db.execute(
+        select(latest.c.entity_id, latest.c.created_at, Actor.id, Actor.name, Actor.kind)
+        .join(Actor, and_(Actor.org_id == org_id, Actor.id == latest.c.actor_id))
+        .where(latest.c.rn == 1)
+    )
+    return {
+        entity_id: (aware(at), ActorRef(id=actor_id, name=name, kind=kind))
+        for entity_id, at, actor_id, name, kind in rows
+    }
 
 
 @router.post(

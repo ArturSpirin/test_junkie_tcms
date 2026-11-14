@@ -7,7 +7,7 @@ def test_create_with_release_and_rich_description(owner):
     p = make_product(owner)["id"]
     r = make_release(owner, p)["id"]
     plan = make_plan(owner, p, "Smoke", release_id=r, description={"markdown": "Run `fast` ones"})
-    assert (plan["release_id"], plan["status"], plan["entries"]) == (r, "active", [])
+    assert (plan["release_id"], plan["status"], plan["entries"]) == (r, "draft", [])
     assert plan["description"] == "Run `fast` ones"
     assert ok(owner.get(url(f"/plans/{plan['id']}")))["name"] == "Smoke"
     assert [x["id"] for x in ok(owner.get(url("/products/PAY/plans")))["items"]] == [plan["id"]]
@@ -83,12 +83,112 @@ def test_entry_feature_must_be_active_and_in_the_product(owner):
 def test_archived_status_hides_the_plan(owner):
     p = make_product(owner)["id"]
     plan = make_plan(owner, p)["id"]
+    ok(owner.patch(url(f"/plans/{plan}"), json={"status": "active"}))
     updated = ok(owner.patch(url(f"/plans/{plan}"), json={"status": "archived", "name": "Old smoke"}))
     assert (updated["status"], updated["name"]) == ("archived", "Old smoke")
     assert ok(owner.get(url(f"/products/{p}/plans")))["items"] == []
     assert len(ok(owner.get(url(f"/products/{p}/plans"), params={"include_archived": True}))["items"]) == 1
-    [update] = [e for e in events(owner, "plan") if e["action"] == "plan.update"]
-    assert update["changes"] == {"name": ["Smoke", "Old smoke"], "status": ["active", "archived"]}
+    updates = [e["changes"] for e in events(owner, "plan") if e["action"] == "plan.update"]
+    assert {"name": ["Smoke", "Old smoke"], "status": ["active", "archived"]} in updates
+
+
+def test_status_moves(owner):
+    p = make_product(owner)["id"]
+    plan = make_plan(owner, p)["id"]
+    patch = lambda body: owner.patch(url(f"/plans/{plan}"), json=body)  # noqa: E731
+    assert patch({"status": "archived"}).status_code == 409
+    assert ok(patch({"status": "draft"}))["status"] == "draft"  # same status: no move
+    assert ok(patch({"status": "active"}))["status"] == "active"
+    assert patch({"status": "draft"}).status_code == 409
+    assert ok(patch({"status": "archived"}))["status"] == "archived"
+    assert patch({"status": "draft"}).status_code == 409
+    assert ok(patch({"status": "active", "name": "Back"}))["name"] == "Back"
+    moves = [e["changes"]["status"] for e in events(owner, "plan") if "status" in (e["changes"] or {})]
+    assert sorted(map(str, moves)) == sorted(
+        map(str, [[None, "draft"], ["draft", "active"], ["active", "archived"], ["archived", "active"]])
+    )
+
+
+def test_archived_plan_is_read_only(owner):
+    p = make_product(owner)["id"]
+    a = make_feature(owner, p, "A")["id"]
+    plan = make_plan(owner, p)["id"]
+    [entry] = ok(owner.post(url(f"/plans/{plan}/entries"), json={"entries": [{"feature_id": a}]}))["entries"]
+    ok(owner.patch(url(f"/plans/{plan}"), json={"status": "active"}))
+    ok(owner.patch(url(f"/plans/{plan}"), json={"status": "archived"}))
+    assert owner.patch(url(f"/plans/{plan}"), json={"name": "x"}).status_code == 409
+    assert owner.post(url(f"/plans/{plan}/entries"), json={"entries": [{"feature_id": a}]}).status_code == 409
+    assert owner.delete(url(f"/plans/{plan}/entries/{entry['id']}")).status_code == 409
+    order = {"entry_ids": [entry["id"]]}
+    assert owner.put(url(f"/plans/{plan}/entries/order"), json=order).status_code == 409
+    got = ok(owner.get(url(f"/plans/{plan}")))
+    assert (got["name"], len(got["entries"])) == ("Smoke", 1)
+
+
+def test_entries_from_a_release_expand_once_and_are_not_tied_to_it(owner):
+    p = make_product(owner)["id"]
+    a = make_feature(owner, p, "A")["id"]
+    a1 = make_feature(owner, p, "A1", parent_id=a)["id"]
+    b = make_feature(owner, p, "B")["id"]
+    gone = make_feature(owner, p, "Gone")["id"]
+    other = make_feature(owner, p, "Other")["id"]
+    r = make_release(owner, p)["id"]
+    ok(owner.put(url(f"/releases/{r}/features"), json={"feature_ids": [b, a1, a, gone]}))
+    ok(owner.post(url(f"/features/{gone}/archive")))
+    plan = make_plan(owner, p)["id"]
+    ok(owner.post(url(f"/plans/{plan}/entries"), json={"entries": [{"feature_id": b}]}))
+    body = {"entries": [{"release_id": r}, {"release_id": r}]}
+    entries = ok(owner.post(url(f"/plans/{plan}/entries"), json=body))["entries"]
+    # Tree order (A, A1), B already in the plan, the archived one skipped, the repeat adds nothing.
+    assert [(e["feature_id"], e["position"]) for e in entries] == [(b, 0), (a, 1), (a1, 2)]
+    [added] = [
+        e
+        for e in events(owner, "plan")
+        if e["action"] == "plan.add_entries" and "release_ids" in e["changes"]
+    ]
+    assert added["changes"]["release_ids"] == [None, [r]]
+    assert (
+        ok(owner.post(url(f"/plans/{plan}/entries"), json={"entries": [{"release_id": r}]}))["entries"]
+        == entries
+    )
+    assert len([e for e in events(owner, "plan") if e["action"] == "plan.add_entries"]) == 2
+    ok(owner.put(url(f"/releases/{r}/features"), json={"feature_ids": [other]}))
+    assert ok(owner.get(url(f"/plans/{plan}")))["entries"] == entries
+
+
+def test_release_entry_must_be_of_the_plans_product(owner):
+    pay = make_product(owner, "PAY")["id"]
+    ops = make_product(owner, "OPS")["id"]
+    theirs = make_release(owner, ops)["id"]
+    plan = make_plan(owner, pay)["id"]
+    body = {"entries": [{"release_id": theirs}]}
+    assert owner.post(url(f"/plans/{plan}/entries"), json=body).status_code == 422
+    body = {"entries": [{"release_id": "nope"}]}
+    assert owner.post(url(f"/plans/{plan}/entries"), json=body).status_code == 422
+    mine = make_release(owner, pay)["id"]
+    a = make_feature(owner, pay, "A")["id"]
+    both = {"entries": [{"release_id": mine, "feature_id": a}]}
+    assert owner.post(url(f"/plans/{plan}/entries"), json=both).status_code == 422
+
+
+def test_reorder_entries(owner):
+    p = make_product(owner)["id"]
+    feats = [make_feature(owner, p, n)["id"] for n in ("A", "B", "C")]
+    plan = make_plan(owner, p)["id"]
+    body = {"entries": [{"feature_id": f} for f in feats]}
+    ids = [e["id"] for e in ok(owner.post(url(f"/plans/{plan}/entries"), json=body))["entries"]]
+    order = url(f"/plans/{plan}/entries/order")
+    new = [ids[2], ids[0], ids[1]]
+    entries = ok(owner.put(order, json={"entry_ids": new}))["entries"]
+    assert [(e["id"], e["position"]) for e in entries] == [(new[0], 0), (new[1], 1), (new[2], 2)]
+    assert [e["id"] for e in ok(owner.get(url(f"/plans/{plan}")))["entries"]] == new
+    [event] = [e for e in events(owner, "plan") if e["action"] == "plan.reorder_entries"]
+    assert event["changes"] == {"order": [ids, new]}
+    ok(owner.put(order, json={"entry_ids": new}))  # same order: no event
+    assert len([e for e in events(owner, "plan") if e["action"] == "plan.reorder_entries"]) == 1
+    for bad in (new[:2], new + ["nope"], [new[0], new[0], new[1]], [new[0], new[1], "nope"]):
+        assert owner.put(order, json={"entry_ids": bad}).status_code == 409
+    assert [e["id"] for e in ok(owner.get(url(f"/plans/{plan}")))["entries"]] == new
 
 
 def test_archived_product_refuses_new_plans(owner):

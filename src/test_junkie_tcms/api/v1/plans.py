@@ -8,7 +8,9 @@ from test_junkie_tcms import audit
 from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
-from test_junkie_tcms.api.v1.cases import case_key, subtree
+from test_junkie_tcms.api.selection import plan_cases
+from test_junkie_tcms.api.selection import plan_entries as _entries
+from test_junkie_tcms.api.v1.cases import case_key
 from test_junkie_tcms.api.v1.catalog import (
     get_plan,
     get_product,
@@ -36,13 +38,11 @@ from test_junkie_tcms.auth.scopes import READ, WRITE_PLANNING
 from test_junkie_tcms.db.models import (
     PLAN_MOVES,
     CaseVersion,
-    CaseVersionTag,
     Feature,
     PlanEntry,
     Product,
     Release,
     ReleaseFeature,
-    Tag,
     TestCase,
     TestPlan,
 )
@@ -51,11 +51,6 @@ from test_junkie_tcms.richtext import doc_to_md, doc_to_text
 router = APIRouter(tags=["planning"])
 PLANS = "/orgs/{org}/products/{product}/plans"
 PLAN = "/orgs/{org}/plans/{id}"
-
-
-def _entries(db: Session, plan: TestPlan) -> list[PlanEntry]:
-    rows = db.scalars(select(PlanEntry).where(PlanEntry.org_id == plan.org_id, PlanEntry.plan_id == plan.id))
-    return sorted(rows, key=lambda e: (e.position, e.id))
 
 
 def plan_out(db: Session, plan: TestPlan, mode: RichMode) -> PlanOut:
@@ -129,33 +124,6 @@ def _check_cases(db: Session, ctx: OrgContext, product_id: str, ids: list[str]) 
 
 def _entry_changes(e: PlanEntry) -> dict:
     return {"case_id": e.case_id, "feature_id": e.feature_id, "query": e.query, "position": e.position}
-
-
-def _query_cases(db: Session, org_id: str, product_id: str, q: dict) -> list[TestCase]:
-    """The product's cases whose current version matches: any of `tags`, and each non-empty field list."""
-    current = and_(
-        CaseVersion.org_id == TestCase.org_id,
-        CaseVersion.case_id == TestCase.id,
-        CaseVersion.version == TestCase.current_version,
-    )
-    query = (
-        select(TestCase)
-        .join(CaseVersion, current)
-        .where(TestCase.org_id == org_id, TestCase.product_id == product_id)
-    )
-    for field in ("priority", "type", "automation"):
-        if q.get(field):
-            query = query.where(getattr(CaseVersion, field).in_(q[field]))
-    if q.get("tags"):
-        query = query.where(
-            select(CaseVersionTag.id)
-            .join(Tag, Tag.id == CaseVersionTag.tag_id)
-            .where(
-                CaseVersionTag.case_version_id == CaseVersion.id, Tag.name.in_([t.lower() for t in q["tags"]])
-            )
-            .exists()
-        )
-    return list(db.scalars(query.order_by(TestCase.number)))
 
 
 @router.get(PLANS, response_model=Page[PlanOut], **op("plans_list", READ, "planning"))
@@ -388,27 +356,7 @@ def plans_resolve(
     and `deprecated` cases are left out."""
     plan = get_plan(db, ctx, id)
     product = db.get(Product, plan.product_id)
-    cases = {
-        c.id: c
-        for c in db.scalars(
-            select(TestCase).where(TestCase.org_id == plan.org_id, TestCase.product_id == product.id)
-        )
-    }
-    by_feature: dict[str, list[TestCase]] = {}
-    for c in sorted(cases.values(), key=lambda c: c.number):
-        by_feature.setdefault(c.feature_id, []).append(c)
-    ordered: dict[str, TestCase] = {}
-    for e in _entries(db, plan):
-        if e.case_id is not None:
-            found = [cases[e.case_id]] if e.case_id in cases else []
-        elif e.feature_id is not None:
-            features = subtree(db, plan.org_id, product.id, [e.feature_id])
-            found = sorted((c for f in features for c in by_feature.get(f, [])), key=lambda c: c.number)
-        else:
-            found = _query_cases(db, plan.org_id, product.id, e.query or {})
-        for c in found:
-            if c.archived_at is None and c.status != "deprecated":
-                ordered.setdefault(c.id, c)
+    ordered = {c.id: c for c in plan_cases(db, plan)}
     titles = dict(
         db.execute(
             select(CaseVersion.case_id, CaseVersion.title)

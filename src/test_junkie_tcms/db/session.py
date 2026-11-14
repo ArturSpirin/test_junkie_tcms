@@ -1,7 +1,7 @@
 from sqlalchemy import Engine, create_engine, event
 from sqlalchemy.orm import Session, sessionmaker
 
-from test_junkie_tcms.db.models import AuditEvent, CaseVersion, CaseVersionTag
+from test_junkie_tcms.db.models import AuditEvent, CaseVersion, CaseVersionTag, Result, ResultAttachment
 
 
 class AuditAppendOnlyError(RuntimeError):
@@ -42,13 +42,14 @@ class CaseVersionImmutableError(RuntimeError):
     pass
 
 
-IMMUTABLE = (CaseVersion, CaseVersionTag)
+# Results are append-only too (T4): a retest is the next attempt, never an edit.
+IMMUTABLE = (CaseVersion, CaseVersionTag, Result, ResultAttachment)
 IMMUTABLE_TABLES = {m.__tablename__ for m in IMMUTABLE}
 
 
 @event.listens_for(Session, "before_flush")
 def _case_versions_immutable(session: Session, _ctx, _instances) -> None:
-    """A case version and its tags are written once: every edit adds a new version instead."""
+    """A case version, its tags and a result are written once: an edit adds a new row instead."""
     for obj in session.deleted:
         if isinstance(obj, IMMUTABLE):
             raise CaseVersionImmutableError(f"{obj.__tablename__} is immutable")

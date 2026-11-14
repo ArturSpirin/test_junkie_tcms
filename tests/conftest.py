@@ -46,9 +46,14 @@ def database_url(request, tmp_path):
 
 
 @pytest.fixture
-def settings(database_url):
+def settings(database_url, tmp_path):
     migrate.upgrade(database_url)
-    return Settings(database_url=database_url, secret_key="test", insecure_cookies=True)
+    return Settings(
+        database_url=database_url,
+        secret_key="test",
+        insecure_cookies=True,
+        attachments_dir=str(tmp_path / "attachments"),
+    )
 
 
 @pytest.fixture

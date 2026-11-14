@@ -9,3 +9,4 @@
 - Test plans: new plans start as `draft` (moves `draft → active → archived`, `archived → active`); archived plans are read-only; add a release's features as entries; reorder entries; feature list shows the last editor.
 - Invitees with no account sign up on accept (`token`, `name`, `password`): user, membership and session in one transaction.
 - `sweep-idempotency` command deletes expired `Idempotency-Key` records in batches; a reused expired key is claimed atomically.
+- Execution: cycles pinned to the case version they run, bulk cycles by release in one batch, append-only results with per-step status, and attachments (raw or base64 upload, org-scoped content-addressed storage).

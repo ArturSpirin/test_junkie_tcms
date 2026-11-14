@@ -476,3 +476,139 @@ class ConsumerInventory(TenantMixin, UpdatedMixin, Base):
     hash: Mapped[str] = mapped_column(String(64), nullable=False)
     roster: Mapped[Any] = mapped_column(JSON, nullable=False)
     test_count: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+# Execution (T4). A cycle_case pins the case_version it runs; result and result_attachment rows
+# are never updated or deleted (db/session.py guards it), and a retest is the next attempt.
+
+CYCLE_CASE_STATUSES = ("untested", "success", "fail", "error", "ignore", "skip", "cancel")
+RESULT_STATUSES = CYCLE_CASE_STATUSES[1:]
+STEP_STATUSES = ("untested", "success", "fail", "error", "skip")
+CYCLE_STATUSES = ("open", "closed")
+BATCH_MODES = ("features", "plans")
+RESULT_VIAS = ("ui", "api", "mcp")
+
+
+class CycleBatch(TenantMixin, Base):
+    __tablename__ = "cycle_batch"
+    __table_args__ = tenant_args(
+        ForeignKeyConstraint(["org_id", "product_id"], ["product.org_id", "product.id"]),
+        ForeignKeyConstraint(["org_id", "release_id"], ["release.org_id", "release.id"]),
+        ForeignKeyConstraint(["org_id", "created_by_actor_id"], ["actor.org_id", "actor.id"]),
+        CheckConstraint(f"mode IN {BATCH_MODES}", name="mode"),
+    )
+
+    product_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    release_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    mode: Mapped[str] = mapped_column(String(16), nullable=False)
+    environment: Mapped[str | None] = mapped_column(String(64))
+    created_by_actor_id: Mapped[str] = mapped_column(String(26), nullable=False)
+
+
+class Cycle(TenantMixin, UpdatedMixin, Base):
+    __tablename__ = "cycle"
+    __table_args__ = tenant_args(
+        ForeignKeyConstraint(["org_id", "product_id"], ["product.org_id", "product.id"]),
+        ForeignKeyConstraint(["org_id", "release_id"], ["release.org_id", "release.id"]),
+        ForeignKeyConstraint(["org_id", "plan_id"], ["test_plan.org_id", "test_plan.id"]),
+        ForeignKeyConstraint(["org_id", "batch_id"], ["cycle_batch.org_id", "cycle_batch.id"]),
+        ForeignKeyConstraint(["org_id", "feature_id"], ["feature.org_id", "feature.id"]),
+        ForeignKeyConstraint(["org_id", "default_assignee_actor_id"], ["actor.org_id", "actor.id"]),
+        ForeignKeyConstraint(["org_id", "created_by_actor_id"], ["actor.org_id", "actor.id"]),
+        CheckConstraint(f"status IN {CYCLE_STATUSES}", name="status"),
+        Index("ix_cycle_org_id_batch_id", "org_id", "batch_id"),
+    )
+
+    product_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    release_id: Mapped[str | None] = mapped_column(String(26))
+    plan_id: Mapped[str | None] = mapped_column(String(26))
+    batch_id: Mapped[str | None] = mapped_column(String(26))
+    # Set on a bulk cycle made per affected feature.
+    feature_id: Mapped[str | None] = mapped_column(String(26))
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    environment: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="open")
+    default_assignee_actor_id: Mapped[str | None] = mapped_column(String(26))
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by_actor_id: Mapped[str] = mapped_column(String(26), nullable=False)
+
+
+class CycleCase(TenantMixin, UpdatedMixin, Base):
+    __tablename__ = "cycle_case"
+    __table_args__ = tenant_args(
+        UniqueConstraint("org_id", "cycle_id", "case_id"),
+        ForeignKeyConstraint(["org_id", "cycle_id"], ["cycle.org_id", "cycle.id"]),
+        ForeignKeyConstraint(["org_id", "case_id"], ["test_case.org_id", "test_case.id"]),
+        ForeignKeyConstraint(["org_id", "case_version_id"], ["case_version.org_id", "case_version.id"]),
+        ForeignKeyConstraint(["org_id", "assignee_actor_id"], ["actor.org_id", "actor.id"]),
+        CheckConstraint(f"status IN {CYCLE_CASE_STATUSES}", name="status"),
+    )
+
+    cycle_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    case_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    # The pin: the row of the version this cycle runs, and its number for display.
+    case_version_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    case_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    assignee_actor_id: Mapped[str | None] = mapped_column(String(26))
+    status: Mapped[str] = mapped_column(String(16), nullable=False, default="untested")
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_result_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class Result(TenantMixin, Base):
+    __tablename__ = "result"
+    __table_args__ = tenant_args(
+        UniqueConstraint("org_id", "cycle_case_id", "attempt"),
+        ForeignKeyConstraint(["org_id", "cycle_case_id"], ["cycle_case.org_id", "cycle_case.id"]),
+        ForeignKeyConstraint(["org_id", "actor_id"], ["actor.org_id", "actor.id"]),
+        CheckConstraint(f"status IN {RESULT_STATUSES}", name="status"),
+        CheckConstraint(f"via IN {RESULT_VIAS}", name="via"),
+    )
+
+    cycle_case_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    actor_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    via: Mapped[str] = mapped_column(String(8), nullable=False)
+    comment: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    comment_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    duration_ms: Mapped[int | None] = mapped_column(Integer)
+    # [{"step_id", "status", "actual": doc, "attachment_ids": [...]}]
+    steps: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    attachment_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    # [{"url", "key"?}]
+    defects: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Attachment(TenantMixin, Base):
+    """A stored file, deduplicated by content within a product; the bytes live in Storage."""
+
+    __tablename__ = "attachment"
+    __table_args__ = tenant_args(
+        UniqueConstraint("org_id", "product_id", "sha256", "filename"),
+        ForeignKeyConstraint(["org_id", "product_id"], ["product.org_id", "product.id"]),
+        ForeignKeyConstraint(["org_id", "created_by_actor_id"], ["actor.org_id", "actor.id"]),
+    )
+
+    product_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    mime: Mapped[str] = mapped_column(String(127), nullable=False)
+    size: Mapped[int] = mapped_column(Integer, nullable=False)
+    storage_key: Mapped[str] = mapped_column(String(300), nullable=False)
+    created_by_actor_id: Mapped[str] = mapped_column(String(26), nullable=False)
+
+
+class ResultAttachment(TenantMixin, Base):
+    __tablename__ = "result_attachment"
+    __table_args__ = tenant_args(
+        UniqueConstraint("org_id", "result_id", "attachment_id"),
+        ForeignKeyConstraint(["org_id", "result_id"], ["result.org_id", "result.id"]),
+        ForeignKeyConstraint(["org_id", "attachment_id"], ["attachment.org_id", "attachment.id"]),
+    )
+
+    result_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    attachment_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)

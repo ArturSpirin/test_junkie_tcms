@@ -23,8 +23,12 @@ services:
       TJ_TCMS_SECRET_KEY: ${TJ_TCMS_SECRET_KEY:-dev-insecure-change-me}
       # Plain http on localhost; drop this behind TLS.
       TJ_TCMS_INSECURE_COOKIES: "true"
+      TJ_TCMS_ATTACHMENTS_DIR: /data/attachments
+    volumes:
+      - attachments:/data/attachments
     ports:
       - "8000:8000"
 
 volumes:
   pgdata:
+  attachments:

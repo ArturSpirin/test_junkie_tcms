@@ -151,6 +151,12 @@ class Outbox(TenantMixin, Base):
 
 RELEASE_STATUSES = ("planned", "in_progress", "released", "cancelled")
 PLAN_STATUSES = ("active", "archived")
+# A plan entry targets exactly one of a case (T3), a feature or a query.
+ONE_TARGET = (
+    "(case_id IS NOT NULL AND feature_id IS NULL AND query IS NULL)"
+    " OR (case_id IS NULL AND feature_id IS NOT NULL AND query IS NULL)"
+    " OR (case_id IS NULL AND feature_id IS NULL AND query IS NOT NULL)"
+)
 
 
 class Product(TenantMixin, UpdatedMixin, Base):
@@ -162,6 +168,8 @@ class Product(TenantMixin, UpdatedMixin, Base):
     description: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     description_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # The last case number given out; cases_create bumps it with UPDATE ... RETURNING (T3).
+    case_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
 
 class Feature(TenantMixin, UpdatedMixin, Base):
@@ -234,14 +242,121 @@ class PlanEntry(TenantMixin, Base):
     __table_args__ = tenant_args(
         ForeignKeyConstraint(["org_id", "plan_id"], ["test_plan.org_id", "test_plan.id"]),
         ForeignKeyConstraint(["org_id", "feature_id"], ["feature.org_id", "feature.id"]),
-        CheckConstraint(
-            "(feature_id IS NOT NULL AND query IS NULL) OR (feature_id IS NULL AND query IS NOT NULL)",
-            name="one_target",
-        ),
+        ForeignKeyConstraint(["org_id", "case_id"], ["test_case.org_id", "test_case.id"]),
+        CheckConstraint(ONE_TARGET, name="one_target"),
     )
 
     plan_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
     feature_id: Mapped[str | None] = mapped_column(String(26))
     # none_as_null: a feature entry stores SQL NULL here, not JSON null, so `one_target` holds.
     query: Mapped[dict[str, Any] | None] = mapped_column(JSON(none_as_null=True))
+    case_id: Mapped[str | None] = mapped_column(String(26))
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+# Cases (T3). test_case holds identity and the current version's filter columns; case_version
+# rows are never updated or deleted (db/session.py guards it), and every content edit adds one.
+
+CASE_STATUSES = ("draft", "ready", "deprecated")
+AUTOMATIONS = ("manual", "automated", "to_automate")
+PRIORITIES = ("low", "medium", "high", "critical")
+CASE_TYPES = ("functional", "regression", "smoke", "acceptance", "performance", "security", "other")
+IDEMPOTENCY_STATES = ("pending", "done")
+
+
+class TestCase(TenantMixin, UpdatedMixin, Base):
+    __test__ = False  # not a pytest class
+    __tablename__ = "test_case"
+    __table_args__ = tenant_args(
+        UniqueConstraint("org_id", "product_id", "number"),
+        ForeignKeyConstraint(["org_id", "product_id"], ["product.org_id", "product.id"]),
+        ForeignKeyConstraint(["org_id", "feature_id"], ["feature.org_id", "feature.id"]),
+        CheckConstraint(f"status IN {CASE_STATUSES}", name="status"),
+        CheckConstraint(f"automation IN {AUTOMATIONS}", name="automation"),
+    )
+
+    product_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    feature_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    number: Mapped[int] = mapped_column(Integer, nullable=False)
+    current_version: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    automation: Mapped[str] = mapped_column(String(16), nullable=False)
+    automation_ref: Mapped[str | None] = mapped_column(String(500))
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CaseVersion(TenantMixin, Base):
+    __tablename__ = "case_version"
+    __table_args__ = tenant_args(
+        UniqueConstraint("org_id", "case_id", "version"),
+        ForeignKeyConstraint(["org_id", "case_id"], ["test_case.org_id", "test_case.id"]),
+        ForeignKeyConstraint(["org_id", "created_by_actor_id"], ["actor.org_id", "actor.id"]),
+        CheckConstraint(f"priority IN {PRIORITIES}", name="priority"),
+        CheckConstraint(f"type IN {CASE_TYPES}", name="type"),
+        CheckConstraint(f"status IN {CASE_STATUSES}", name="status"),
+        CheckConstraint(f"automation IN {AUTOMATIONS}", name="automation"),
+    )
+
+    case_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    title_text: Mapped[str] = mapped_column(Text, nullable=False)
+    preconditions: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    preconditions_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # [{"id", "action": doc, "expected": doc}], in order.
+    steps: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    steps_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    priority: Mapped[str] = mapped_column(String(16), nullable=False)
+    type: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    automation: Mapped[str] = mapped_column(String(16), nullable=False)
+    automation_ref: Mapped[str | None] = mapped_column(String(500))
+    links: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    custom: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    change_note: Mapped[str | None] = mapped_column(String(500))
+    created_by_actor_id: Mapped[str] = mapped_column(String(26), nullable=False)
+
+
+class Tag(TenantMixin, Base):
+    __tablename__ = "tag"
+    __table_args__ = tenant_args(
+        UniqueConstraint("org_id", "product_id", "name"),
+        ForeignKeyConstraint(["org_id", "product_id"], ["product.org_id", "product.id"]),
+    )
+
+    product_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class CaseVersionTag(TenantMixin, Base):
+    __tablename__ = "case_version_tag"
+    __table_args__ = tenant_args(
+        UniqueConstraint("org_id", "case_version_id", "tag_id"),
+        ForeignKeyConstraint(["org_id", "case_version_id"], ["case_version.org_id", "case_version.id"]),
+        ForeignKeyConstraint(["org_id", "tag_id"], ["tag.org_id", "tag.id"]),
+    )
+
+    case_version_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    tag_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+
+
+class IdempotencyRecord(TenantMixin, Base):
+    """One Idempotency-Key per (org, actor): pending until the recorder stores the first response."""
+
+    __tablename__ = "idempotency_record"
+    __table_args__ = tenant_args(
+        UniqueConstraint("org_id", "actor_id", "key"),
+        ForeignKeyConstraint(["org_id", "actor_id"], ["actor.org_id", "actor.id"]),
+        CheckConstraint(f"state IN {IDEMPOTENCY_STATES}", name="state"),
+    )
+
+    actor_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    key: Mapped[str] = mapped_column(String(255), nullable=False)
+    method: Mapped[str] = mapped_column(String(8), nullable=False)
+    path: Mapped[str] = mapped_column(String(500), nullable=False)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    state: Mapped[str] = mapped_column(String(8), nullable=False)
+    status_code: Mapped[int | None] = mapped_column(Integer)
+    response_body: Mapped[Any | None] = mapped_column(JSON(none_as_null=True))
+    response_headers: Mapped[dict[str, str] | None] = mapped_column(JSON(none_as_null=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

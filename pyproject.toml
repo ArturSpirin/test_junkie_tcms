@@ -31,8 +31,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "httpx==0.28.1",
-    "pytest==9.2.0",
     "ruff==0.15.12",
+    # The tests run on Test Junkie itself: python -m test_junkie run -s tests
+    "test-junkie==0.9a8",
 ]
 
 [project.scripts]
@@ -43,11 +44,6 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 test_junkie_tcms = ["migrations/*.py", "migrations/*.mako", "migrations/versions/*.py"]
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-pythonpath = ["src", "tests"]
-addopts = "-q"
 
 [tool.ruff]
 line-length = 110

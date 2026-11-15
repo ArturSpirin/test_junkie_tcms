@@ -1,6 +1,6 @@
 """Cases and cycles to test execution (T4) against, on top of catalog_seed."""
 
-from catalog_seed import ok, seed, url
+from tests.catalog_seed import ok, seed, url
 
 STEPS = [
     {"action": {"markdown": "Open the cart"}, "expected": {"markdown": "The cart opens"}},

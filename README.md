@@ -63,8 +63,9 @@ Every change is written to an append-only audit log naming the person, the agent
 ```sh
 pip install -r requirements.lock && pip install --no-deps -e .
 ruff check . && ruff format --check .
-pytest
+PYTHONPATH=. python -m test_junkie run -s tests
 ```
 
-The tests run on SQLite. Set `TJ_TCMS_TEST_POSTGRES_URL=postgresql+psycopg://user:pw@host:port/db` to run them
-on Postgres too.
+The tests are [Test Junkie](https://github.com/ArturSpirin/test_junkie) suites, one per file under `tests/`, and
+the run exits non-zero on any failed or errored test. They run on SQLite. To run them on Postgres too, set
+`TJ_TCMS_TEST_POSTGRES_URL=postgresql+psycopg://user:pw@host:port/db`.

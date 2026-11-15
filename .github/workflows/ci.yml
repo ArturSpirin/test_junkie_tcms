@@ -37,7 +37,9 @@ jobs:
       - run: pip install --no-deps -e .
       - run: ruff check .
       - run: ruff format --check .
-      - run: pytest
+      # Test Junkie exits non-zero on any failed, errored or ignored test.
+      # PYTHONPATH=. lets the suites import tests.support (the CLI does not add the project root).
+      - run: PYTHONPATH=. python -m test_junkie run -s tests
 
   docker:
     runs-on: ubuntu-latest

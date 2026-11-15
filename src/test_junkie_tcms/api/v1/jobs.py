@@ -101,7 +101,8 @@ def jobs_next(
     db: Session = Depends(get_db),
 ):
     """Long-poll for this consumer's next job, up to `wait` seconds; 204 when none came. A job the consumer
-    already holds comes back again. Each wait holds one server worker thread, so N waiting consumers hold N."""
+    already holds comes back again. Each wait holds one server worker thread, so N waiting consumers hold
+    N."""
     consumer_id, org_id = cc.consumer.id, cc.consumer.org_id
     deadline = _clock() + wait
     while True:
@@ -209,7 +210,9 @@ def jobs_cancel(
         job.cancel_sent_at = job.finished_at
     release(db, job)
     cancelled = cancel_open_cases(db, ctx, job, "job cancelled")
-    audit.record(db, ctx, "job.cancel", "job", job.id, {"status": [before, "cancelled"], "cancelled": cancelled})
+    audit.record(
+        db, ctx, "job.cancel", "job", job.id, {"status": [before, "cancelled"], "cancelled": cancelled}
+    )
     db.commit()
     return job_out(job)
 

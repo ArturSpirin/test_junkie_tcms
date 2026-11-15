@@ -1,6 +1,8 @@
 """T3's contract: case operations, optional Idempotency-Key on org POSTs, required If-Match on case writes."""
 
-import pytest
+from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
+
+from tests import support
 
 CASE_OPS = {
     "cases_list": "read",
@@ -24,9 +26,8 @@ NO_IDEMPOTENCY |= {"cycles_preview"}  # writes nothing
 NO_IDEMPOTENCY |= {"exports_create"}  # a read in POST form: writes nothing
 
 
-@pytest.fixture
-def spec(client_factory):
-    response = client_factory().get("/api/v1/openapi.json")
+def spec(env):
+    response = env.client().get("/api/v1/openapi.json")
     assert response.status_code == 200
     return response.json()["paths"]
 
@@ -44,30 +45,54 @@ def header(op, name):
     return next((p for p in op.get("parameters", []) if p["in"] == "header" and p["name"] == name), None)
 
 
-@pytest.mark.parametrize("name", sorted(CASE_OPS))
-def test_case_operation_is_marked(spec, name):
-    op = ops(spec)[name]
-    assert (op["x-scope"], op["x-toolset"], op["x-mcp"]) == (CASE_OPS[name], "cases", True)
+@Suite(parameters=support.DATABASES)
+class OpenapiCases:
+    @beforeTest()
+    def open_env(self, suite_parameter):
+        self.env = support.Env(suite_parameter)
 
+    @afterTest()
+    def close_env(self):
+        self.env.close()
 
-def test_plans_resolve_is_a_planning_read(spec):
-    op = ops(spec)["plans_resolve"]
-    assert (op["x-scope"], op["x-toolset"]) == ("read", "planning")
+    @afterClass()
+    def sweep(self):
+        support.close_all()
 
+    def spec(self):
+        return spec(self.env)
 
-def test_idempotency_key_is_optional_on_every_org_post(spec):
-    posts = ops(spec, "post")
-    assert "members_add" in posts and "agents_create" in posts and "cases_create" in posts
-    for name, op in posts.items():
-        param = header(op, "Idempotency-Key")
-        if name in NO_IDEMPOTENCY:
-            assert param is None, name
-        else:
-            assert param is not None and not param.get("required", False), name
+    @test(parameters=sorted(CASE_OPS))
+    def test_case_operation_is_marked(self, suite_parameter, parameter):
+        name = parameter
+        spec = self.spec()
+        op = ops(spec)[name]
+        assert (op["x-scope"], op["x-toolset"], op["x-mcp"]) == (CASE_OPS[name], "cases", True)
 
+    @test()
+    def test_plans_resolve_is_a_planning_read(self, suite_parameter):
+        spec = self.spec()
+        op = ops(spec)["plans_resolve"]
+        assert (op["x-scope"], op["x-toolset"]) == ("read", "planning")
 
-def test_if_match_is_required_on_versioned_writes(spec):
-    all_ops = ops(spec)
-    for name in ("cases_update", "cases_restore"):
-        assert header(all_ops[name], "If-Match")["required"] is True, name
-    assert header(all_ops["cases_update"], "Idempotency-Key") is None  # PATCH is guarded by If-Match instead
+    @test()
+    def test_idempotency_key_is_optional_on_every_org_post(self, suite_parameter):
+        spec = self.spec()
+        posts = ops(spec, "post")
+        assert "members_add" in posts and "agents_create" in posts and "cases_create" in posts
+        for name, op in posts.items():
+            param = header(op, "Idempotency-Key")
+            if name in NO_IDEMPOTENCY:
+                assert param is None, name
+            else:
+                assert param is not None and not param.get("required", False), name
+
+    @test()
+    def test_if_match_is_required_on_versioned_writes(self, suite_parameter):
+        spec = self.spec()
+        all_ops = ops(spec)
+        for name in ("cases_update", "cases_restore"):
+            assert header(all_ops[name], "If-Match")["required"] is True, name
+        assert (
+            header(all_ops["cases_update"], "Idempotency-Key") is None
+        )  # PATCH is guarded by If-Match instead

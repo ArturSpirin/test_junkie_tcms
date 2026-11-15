@@ -2,14 +2,15 @@
 
 from datetime import UTC, datetime, timedelta
 
-import pytest
-from conftest import add_member, bearer, login
 from sqlalchemy import select, update
+from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
 
 from test_junkie_tcms.api.v1 import invites
 from test_junkie_tcms.auth.sessions import CSRF_COOKIE, CSRF_HEADER
 from test_junkie_tcms.auth.tokens import token_hash
 from test_junkie_tcms.db.models import Invite, User
+from tests import support
+from tests.support import add_member, login
 
 INVITES = "/api/v1/orgs/acme/invites"
 ACCEPT = "/api/v1/invites:accept"
@@ -22,145 +23,10 @@ def _invite(owner, email=INVITEE, role="tester"):
     return response.json()
 
 
-@pytest.fixture
-def globex(client_factory):
-    client = client_factory()
-    login(client, "other@example.com")
-    return client
-
-
-@pytest.fixture
-def invitee(globex, client_factory):
-    """A signed-in user with an account (a Globex member) who isn't in Acme yet."""
-    add_member(globex, INVITEE, "viewer", org="globex")
-    client = client_factory()
-    login(client, INVITEE)
-    return client
-
-
 def _actions(owner, entity_id):
     response = owner.get("/api/v1/orgs/acme/audit", params={"entity_type": "invite", "entity_id": entity_id})
     assert response.status_code == 200, response.text
     return [(e["action"], e["via"]) for e in response.json()["items"]]
-
-
-def test_token_is_shown_once_and_stored_hashed(owner, app):
-    created = _invite(owner)
-    assert created["token"].startswith("tji_")
-    assert created["status"] == "pending"
-    created_at = datetime.fromisoformat(created["created_at"])
-    assert datetime.fromisoformat(created["expires_at"]) - created_at == timedelta(days=7)
-    [listed] = owner.get(INVITES).json()["items"]
-    assert listed["id"] == created["id"]
-    assert "token" not in listed
-    with app.state.sessionmaker() as db:
-        row = db.get(Invite, created["id"])
-        assert row.token_hash == token_hash(created["token"])
-        assert created["token"] not in {row.token_hash, row.email}
-    assert _actions(owner, created["id"]) == [("invite.create", "ui")]
-
-
-def test_below_admin_cannot_invite_and_admin_cannot_invite_an_owner(owner, client_factory):
-    add_member(owner, "tess@example.com", "tester")
-    add_member(owner, "ada@example.com", "admin")
-    tester, admin = client_factory(), client_factory()
-    login(tester, "tess@example.com")
-    login(admin, "ada@example.com")
-    assert tester.post(INVITES, json={"email": INVITEE, "role": "viewer"}).status_code == 403
-    assert tester.get(INVITES).status_code == 403
-    assert admin.post(INVITES, json={"email": INVITEE, "role": "owner"}).status_code == 403
-    assert admin.post(INVITES, json={"email": INVITEE, "role": "admin"}).status_code == 201
-
-
-def test_member_or_pending_invite_conflicts(owner):
-    add_member(owner, "vic@example.com", "viewer")
-    assert owner.post(INVITES, json={"email": "Vic@Example.com", "role": "tester"}).status_code == 409
-    _invite(owner)
-    assert owner.post(INVITES, json={"email": INVITEE, "role": "viewer"}).status_code == 409
-
-
-def test_accept_joins_the_org_once(owner, invitee):
-    created = _invite(owner, role="tester")
-    response = invitee.post(ACCEPT, json={"token": created["token"]})
-    assert response.status_code == 200, response.text
-    member = response.json()
-    assert (member["email"], member["role"]) == (INVITEE, "tester")
-    assert invitee.get("/api/v1/orgs/acme/members").status_code == 200
-    [row] = owner.get(INVITES, params={"status": "accepted"}).json()["items"]
-    assert row["accepted_user_id"] == member["user_id"]
-    assert owner.get(INVITES).json()["items"] == []
-    used = invitee.post(ACCEPT, json={"token": created["token"]})
-    assert (used.status_code, used.json()["detail"]) == (410, "Invite already used")
-    assert sorted(_actions(owner, created["id"])) == [("invite.accept", "ui"), ("invite.create", "ui")]
-
-
-def test_accept_reinstates_a_removed_member(owner, client_factory):
-    vic = add_member(owner, "vic@example.com", "viewer")
-    assert owner.delete(f"/api/v1/orgs/acme/members/{vic['user_id']}").status_code == 204
-    created = _invite(owner, "vic@example.com", "admin")
-    client = client_factory()
-    login(client, "vic@example.com")
-    response = client.post(ACCEPT, json={"token": created["token"]})
-    assert response.status_code == 200, response.text
-    assert (response.json()["role"], response.json()["removed_at"]) == ("admin", None)
-
-
-def test_a_refused_join_leaves_the_invite_unclaimed(owner, invitee):
-    created = _invite(owner)
-    add_member(owner, INVITEE, "viewer")  # joined another way after the invite went out
-    response = invitee.post(ACCEPT, json={"token": created["token"]})
-    assert (response.status_code, response.json()["detail"]) == (409, "Already a member")
-    [row] = owner.get(INVITES, params={"status": "pending"}).json()["items"]
-    assert (row["id"], row["accepted_at"]) == (created["id"], None)
-
-
-def test_expired_invite_is_refused(owner, invitee, app):
-    created = _invite(owner)
-    with app.state.sessionmaker() as db:
-        past = datetime.now(UTC) - timedelta(seconds=1)
-        db.execute(update(Invite).where(Invite.id == created["id"]).values(expires_at=past))
-        db.commit()
-    [row] = owner.get(INVITES, params={"status": "expired"}).json()["items"]
-    assert row["status"] == "expired"
-    response = invitee.post(ACCEPT, json={"token": created["token"]})
-    assert (response.status_code, response.json()["detail"]) == (410, "Invite expired")
-    assert _invite(owner)["status"] == "pending"
-
-
-def test_revoked_invite_is_refused(owner, invitee):
-    created = _invite(owner)
-    assert owner.delete(f"{INVITES}/{created['id']}").status_code == 204
-    assert owner.delete(f"{INVITES}/{created['id']}").status_code == 204
-    response = invitee.post(ACCEPT, json={"token": created["token"]})
-    assert (response.status_code, response.json()["detail"]) == (410, "Invite revoked")
-    [row] = owner.get(INVITES, params={"status": "revoked"}).json()["items"]
-    assert row["revoked_at"] is not None
-    assert sorted(_actions(owner, created["id"])) == [("invite.create", "ui"), ("invite.revoke", "ui")]
-
-
-def test_unknown_token_and_wrong_email(owner, invitee, globex):
-    assert invitee.post(ACCEPT, json={"token": "tji_nope"}).status_code == 404
-    created = _invite(owner)
-    owner.delete(f"{INVITES}/{created['id']}")
-    # The wrong user learns nothing about the invite's state: 403, not 410.
-    response = globex.post(ACCEPT, json={"token": created["token"]})
-    assert (response.status_code, response.json()["detail"]) == (403, "This invite is for another email")
-
-
-def test_an_api_token_cannot_accept(owner, client_factory):
-    created = _invite(owner)
-    token = owner.post("/api/v1/orgs/acme/tokens", json={"name": "t", "scopes": ["read"]}).json()["token"]
-    assert bearer(client_factory, token).post(ACCEPT, json={"token": created["token"]}).status_code == 403
-
-
-def test_revoke_rules(owner, invitee, globex, app):
-    created = _invite(owner)
-    assert globex.delete(f"/api/v1/orgs/globex/invites/{created['id']}").status_code == 404
-    assert owner.delete(f"{INVITES}/01NOTANINVITE000000000000").status_code == 404
-    assert invitee.post(ACCEPT, json={"token": created["token"]}).status_code == 200
-    assert owner.delete(f"{INVITES}/{created['id']}").status_code == 409
-    with app.state.sessionmaker() as db:
-        assert db.scalar(select(Invite.revoked_at).where(Invite.id == created["id"])) is None
 
 
 NEWCOMER = "nia@example.com"
@@ -172,119 +38,295 @@ def _pending(owner, invite_id):
     assert (row["id"], row["accepted_at"]) == (invite_id, None)
 
 
-def test_signup_on_accept_creates_the_user_joins_and_signs_in(owner, client_factory):
-    created = _invite(owner, NEWCOMER, "editor")
-    client = client_factory()
-    response = client.post(ACCEPT, json={"token": created["token"], **SIGNUP})
-    assert response.status_code == 200, response.text
-    member = response.json()
-    assert (member["email"], member["name"], member["role"]) == (NEWCOMER, "Nia New", "editor")
-    client.headers[CSRF_HEADER] = client.cookies[CSRF_COOKIE]
-    me = client.get("/api/v1/me").json()
-    assert (me["email"], [o["slug"] for o in me["orgs"]]) == (NEWCOMER, ["acme"])
-    assert client.get("/api/v1/orgs/acme/members").status_code == 200
-    login(client_factory(), NEWCOMER, SIGNUP["password"])
-    [entry] = [
-        e
-        for e in owner.get("/api/v1/orgs/acme/audit", params={"entity_id": created["id"]}).json()["items"]
-        if e["action"] == "invite.accept"
-    ]
-    assert (entry["via"], entry["changes"]) == (
-        "ui",
-        {"user_id": member["user_id"], "role": "editor", "signed_up": True},
-    )
-    used = client_factory().post(ACCEPT, json={"token": created["token"], **SIGNUP})
-    assert (used.status_code, used.json()["detail"]) == (410, "Invite already used")
+@Suite(parameters=support.DATABASES)
+class Invites:
+    @beforeTest()
+    def open_env(self, suite_parameter):
+        self.env = support.Env(suite_parameter)
+        self._globex = None
+        self._invitee = None
 
+    @afterTest()
+    def close_env(self):
+        self.env.close()
 
-def test_signup_for_an_email_with_an_account_is_refused(owner, invitee):
-    created = _invite(owner)
-    response = invitee.post(ACCEPT, json={"token": created["token"], **SIGNUP})
-    assert (response.status_code, response.json()["detail"]) == (
-        409,
-        "An account exists for this email; sign in, then accept",
-    )
-    _pending(owner, created["id"])
+    @afterClass()
+    def sweep(self):
+        support.close_all()
 
+    def globex(self):
+        if self._globex is None:
+            client = self.env.client()
+            login(client, "other@example.com")
+            self._globex = client
+        return self._globex
 
-def test_signup_race_with_another_signup_rolls_back_the_claim(owner, globex, client_factory, monkeypatch):
-    created = _invite(owner, NEWCOMER)
-    add_member(globex, NEWCOMER, "viewer", org="globex")  # the account appears after the check
-    monkeypatch.setattr(invites, "_user_by_email", lambda db, email: None)
-    client = client_factory()
-    response = client.post(ACCEPT, json={"token": created["token"], **SIGNUP})
-    assert (response.status_code, response.json()["detail"]) == (
-        409,
-        "An account exists for this email; sign in, then accept",
-    )
-    assert CSRF_COOKIE not in client.cookies
-    _pending(owner, created["id"])
+    def invitee(self):
+        """A signed-in user with an account (a Globex member) who isn't in Acme yet."""
+        if self._invitee is None:
+            globex = self.globex()
+            add_member(globex, INVITEE, "viewer", org="globex")
+            client = self.env.client()
+            login(client, INVITEE)
+            self._invitee = client
+        return self._invitee
 
+    def spec(self):
+        response = self.env.client().get("/api/v1/openapi.json")
+        assert response.status_code == 200
+        return {
+            op["operationId"]: op
+            for path in response.json()["paths"].values()
+            for op in path.values()
+            if isinstance(op, dict) and "operationId" in op
+        }
 
-@pytest.mark.parametrize("state", ["expired", "revoked", "used"])
-def test_signup_on_a_closed_invite_is_refused(owner, client_factory, app, state):
-    created = _invite(owner, NEWCOMER)
-    with app.state.sessionmaker() as db:
-        values = {
-            "expired": {"expires_at": datetime.now(UTC) - timedelta(seconds=1)},
-            "revoked": {"revoked_at": datetime.now(UTC)},
-            "used": {"accepted_at": datetime.now(UTC)},
-        }[state]
-        db.execute(update(Invite).where(Invite.id == created["id"]).values(**values))
-        db.commit()
-    response = client_factory().post(ACCEPT, json={"token": created["token"], **SIGNUP})
-    detail = {"expired": "Invite expired", "revoked": "Invite revoked", "used": "Invite already used"}[state]
-    assert (response.status_code, response.json()["detail"]) == (410, detail)
-    with app.state.sessionmaker() as db:
-        assert db.scalar(select(User).where(User.email == NEWCOMER)) is None
+    @test()
+    def test_token_is_shown_once_and_stored_hashed(self, suite_parameter):
+        owner, app = self.env.owner, self.env.app
+        created = _invite(owner)
+        assert created["token"].startswith("tji_")
+        assert created["status"] == "pending"
+        created_at = datetime.fromisoformat(created["created_at"])
+        assert datetime.fromisoformat(created["expires_at"]) - created_at == timedelta(days=7)
+        [listed] = owner.get(INVITES).json()["items"]
+        assert listed["id"] == created["id"]
+        assert "token" not in listed
+        with app.state.sessionmaker() as db:
+            row = db.get(Invite, created["id"])
+            assert row.token_hash == token_hash(created["token"])
+            assert created["token"] not in {row.token_hash, row.email}
+        assert _actions(owner, created["id"]) == [("invite.create", "ui")]
 
+    @test()
+    def test_below_admin_cannot_invite_and_admin_cannot_invite_an_owner(self, suite_parameter):
+        owner = self.env.owner
+        add_member(owner, "tess@example.com", "tester")
+        add_member(owner, "ada@example.com", "admin")
+        tester, admin = self.env.client(), self.env.client()
+        login(tester, "tess@example.com")
+        login(admin, "ada@example.com")
+        assert tester.post(INVITES, json={"email": INVITEE, "role": "viewer"}).status_code == 403
+        assert tester.get(INVITES).status_code == 403
+        assert admin.post(INVITES, json={"email": INVITEE, "role": "owner"}).status_code == 403
+        assert admin.post(INVITES, json={"email": INVITEE, "role": "admin"}).status_code == 201
 
-def test_signup_needs_name_and_password_together(owner, client_factory):
-    created = _invite(owner, NEWCOMER)
-    client = client_factory()
-    assert client.post(ACCEPT, json={"token": created["token"], "name": "Nia"}).status_code == 422
-    assert (
-        client.post(ACCEPT, json={"token": created["token"], "password": "correct horse"}).status_code == 422
-    )
-    short = client.post(ACCEPT, json={"token": created["token"], "name": "Nia", "password": "short"})
-    assert short.status_code == 422
-    assert client.post(ACCEPT, json={"token": created["token"]}).status_code == 401
-    _pending(owner, created["id"])
+    @test()
+    def test_member_or_pending_invite_conflicts(self, suite_parameter):
+        owner = self.env.owner
+        add_member(owner, "vic@example.com", "viewer")
+        assert owner.post(INVITES, json={"email": "Vic@Example.com", "role": "tester"}).status_code == 409
+        _invite(owner)
+        assert owner.post(INVITES, json={"email": INVITEE, "role": "viewer"}).status_code == 409
 
+    @test()
+    def test_accept_joins_the_org_once(self, suite_parameter):
+        owner, invitee = self.env.owner, self.invitee()
+        created = _invite(owner, role="tester")
+        response = invitee.post(ACCEPT, json={"token": created["token"]})
+        assert response.status_code == 200, response.text
+        member = response.json()
+        assert (member["email"], member["role"]) == (INVITEE, "tester")
+        assert invitee.get("/api/v1/orgs/acme/members").status_code == 200
+        [row] = owner.get(INVITES, params={"status": "accepted"}).json()["items"]
+        assert row["accepted_user_id"] == member["user_id"]
+        assert owner.get(INVITES).json()["items"] == []
+        used = invitee.post(ACCEPT, json={"token": created["token"]})
+        assert (used.status_code, used.json()["detail"]) == (410, "Invite already used")
+        assert sorted(_actions(owner, created["id"])) == [("invite.accept", "ui"), ("invite.create", "ui")]
 
-def test_invites_are_per_org(owner, globex):
-    _invite(owner)
-    assert globex.get("/api/v1/orgs/globex/invites").json()["items"] == []
-    assert globex.get(INVITES).status_code == 404
+    @test()
+    def test_accept_reinstates_a_removed_member(self, suite_parameter):
+        owner = self.env.owner
+        vic = add_member(owner, "vic@example.com", "viewer")
+        assert owner.delete(f"/api/v1/orgs/acme/members/{vic['user_id']}").status_code == 204
+        created = _invite(owner, "vic@example.com", "admin")
+        client = self.env.client()
+        login(client, "vic@example.com")
+        response = client.post(ACCEPT, json={"token": created["token"]})
+        assert response.status_code == 200, response.text
+        assert (response.json()["role"], response.json()["removed_at"]) == ("admin", None)
 
+    @test()
+    def test_a_refused_join_leaves_the_invite_unclaimed(self, suite_parameter):
+        owner, invitee = self.env.owner, self.invitee()
+        created = _invite(owner)
+        add_member(owner, INVITEE, "viewer")  # joined another way after the invite went out
+        response = invitee.post(ACCEPT, json={"token": created["token"]})
+        assert (response.status_code, response.json()["detail"]) == (409, "Already a member")
+        [row] = owner.get(INVITES, params={"status": "pending"}).json()["items"]
+        assert (row["id"], row["accepted_at"]) == (created["id"], None)
 
-@pytest.fixture
-def spec(client_factory):
-    response = client_factory().get("/api/v1/openapi.json")
-    assert response.status_code == 200
-    return {
-        op["operationId"]: op
-        for path in response.json()["paths"].values()
-        for op in path.values()
-        if isinstance(op, dict) and "operationId" in op
-    }
+    @test()
+    def test_expired_invite_is_refused(self, suite_parameter):
+        owner, invitee, app = self.env.owner, self.invitee(), self.env.app
+        created = _invite(owner)
+        with app.state.sessionmaker() as db:
+            past = datetime.now(UTC) - timedelta(seconds=1)
+            db.execute(update(Invite).where(Invite.id == created["id"]).values(expires_at=past))
+            db.commit()
+        [row] = owner.get(INVITES, params={"status": "expired"}).json()["items"]
+        assert row["status"] == "expired"
+        response = invitee.post(ACCEPT, json={"token": created["token"]})
+        assert (response.status_code, response.json()["detail"]) == (410, "Invite expired")
+        assert _invite(owner)["status"] == "pending"
 
+    @test()
+    def test_revoked_invite_is_refused(self, suite_parameter):
+        owner, invitee = self.env.owner, self.invitee()
+        created = _invite(owner)
+        assert owner.delete(f"{INVITES}/{created['id']}").status_code == 204
+        assert owner.delete(f"{INVITES}/{created['id']}").status_code == 204
+        response = invitee.post(ACCEPT, json={"token": created["token"]})
+        assert (response.status_code, response.json()["detail"]) == (410, "Invite revoked")
+        [row] = owner.get(INVITES, params={"status": "revoked"}).json()["items"]
+        assert row["revoked_at"] is not None
+        assert sorted(_actions(owner, created["id"])) == [("invite.create", "ui"), ("invite.revoke", "ui")]
 
-@pytest.mark.parametrize("name", ["invites_create", "invites_list", "invites_revoke"])
-def test_admin_operations_are_marked(spec, name):
-    assert (spec[name]["x-scope"], spec[name]["x-toolset"], spec[name]["x-mcp"]) == ("admin", "admin", True)
+    @test()
+    def test_unknown_token_and_wrong_email(self, suite_parameter):
+        owner, invitee, globex = self.env.owner, self.invitee(), self.globex()
+        assert invitee.post(ACCEPT, json={"token": "tji_nope"}).status_code == 404
+        created = _invite(owner)
+        owner.delete(f"{INVITES}/{created['id']}")
+        # The wrong user learns nothing about the invite's state: 403, not 410.
+        response = globex.post(ACCEPT, json={"token": created["token"]})
+        assert (response.status_code, response.json()["detail"]) == (403, "This invite is for another email")
 
+    @test()
+    def test_an_api_token_cannot_accept(self, suite_parameter):
+        owner = self.env.owner
+        created = _invite(owner)
+        token = owner.post("/api/v1/orgs/acme/tokens", json={"name": "t", "scopes": ["read"]}).json()["token"]
+        assert self.env.bearer(token).post(ACCEPT, json={"token": created["token"]}).status_code == 403
 
-def test_accept_is_not_an_mcp_tool(spec):
-    assert spec["invites_accept"]["x-mcp"] is False
-    assert spec["invites_accept"].get("x-scope") is None
+    @test()
+    def test_revoke_rules(self, suite_parameter):
+        owner, invitee, globex, app = self.env.owner, self.invitee(), self.globex(), self.env.app
+        created = _invite(owner)
+        assert globex.delete(f"/api/v1/orgs/globex/invites/{created['id']}").status_code == 404
+        assert owner.delete(f"{INVITES}/01NOTANINVITE000000000000").status_code == 404
+        assert invitee.post(ACCEPT, json={"token": created["token"]}).status_code == 200
+        assert owner.delete(f"{INVITES}/{created['id']}").status_code == 409
+        with app.state.sessionmaker() as db:
+            assert db.scalar(select(Invite.revoked_at).where(Invite.id == created["id"])) is None
 
+    @test()
+    def test_signup_on_accept_creates_the_user_joins_and_signs_in(self, suite_parameter):
+        owner = self.env.owner
+        created = _invite(owner, NEWCOMER, "editor")
+        client = self.env.client()
+        response = client.post(ACCEPT, json={"token": created["token"], **SIGNUP})
+        assert response.status_code == 200, response.text
+        member = response.json()
+        assert (member["email"], member["name"], member["role"]) == (NEWCOMER, "Nia New", "editor")
+        client.headers[CSRF_HEADER] = client.cookies[CSRF_COOKIE]
+        me = client.get("/api/v1/me").json()
+        assert (me["email"], [o["slug"] for o in me["orgs"]]) == (NEWCOMER, ["acme"])
+        assert client.get("/api/v1/orgs/acme/members").status_code == 200
+        login(self.env.client(), NEWCOMER, SIGNUP["password"])
+        [entry] = [
+            e
+            for e in owner.get("/api/v1/orgs/acme/audit", params={"entity_id": created["id"]}).json()["items"]
+            if e["action"] == "invite.accept"
+        ]
+        assert (entry["via"], entry["changes"]) == (
+            "ui",
+            {"user_id": member["user_id"], "role": "editor", "signed_up": True},
+        )
+        used = self.env.client().post(ACCEPT, json={"token": created["token"], **SIGNUP})
+        assert (used.status_code, used.json()["detail"]) == (410, "Invite already used")
 
-def test_accept_contract_has_the_signup_fields(client_factory):
-    doc = client_factory().get("/api/v1/openapi.json").json()
-    props = doc["components"]["schemas"]["InviteAccept"]["properties"]
-    assert set(props) == {"token", "name", "password"}
-    assert doc["components"]["schemas"]["InviteAccept"]["required"] == ["token"]
-    description = doc["paths"]["/api/v1/invites:accept"]["post"]["description"].lower()
-    assert "creates the user" in description
-    assert "replace any session" in description
+    @test()
+    def test_signup_for_an_email_with_an_account_is_refused(self, suite_parameter):
+        owner, invitee = self.env.owner, self.invitee()
+        created = _invite(owner)
+        response = invitee.post(ACCEPT, json={"token": created["token"], **SIGNUP})
+        assert (response.status_code, response.json()["detail"]) == (
+            409,
+            "An account exists for this email; sign in, then accept",
+        )
+        _pending(owner, created["id"])
+
+    @test()
+    def test_signup_race_with_another_signup_rolls_back_the_claim(self, suite_parameter):
+        owner, globex = self.env.owner, self.globex()
+        created = _invite(owner, NEWCOMER)
+        add_member(globex, NEWCOMER, "viewer", org="globex")  # the account appears after the check
+        self.env.patch(invites, "_user_by_email", lambda db, email: None)
+        client = self.env.client()
+        response = client.post(ACCEPT, json={"token": created["token"], **SIGNUP})
+        assert (response.status_code, response.json()["detail"]) == (
+            409,
+            "An account exists for this email; sign in, then accept",
+        )
+        assert CSRF_COOKIE not in client.cookies
+        _pending(owner, created["id"])
+
+    @test(parameters=["expired", "revoked", "used"])
+    def test_signup_on_a_closed_invite_is_refused(self, suite_parameter, parameter):
+        state = parameter
+        owner, app = self.env.owner, self.env.app
+        created = _invite(owner, NEWCOMER)
+        with app.state.sessionmaker() as db:
+            values = {
+                "expired": {"expires_at": datetime.now(UTC) - timedelta(seconds=1)},
+                "revoked": {"revoked_at": datetime.now(UTC)},
+                "used": {"accepted_at": datetime.now(UTC)},
+            }[state]
+            db.execute(update(Invite).where(Invite.id == created["id"]).values(**values))
+            db.commit()
+        response = self.env.client().post(ACCEPT, json={"token": created["token"], **SIGNUP})
+        detail = {"expired": "Invite expired", "revoked": "Invite revoked", "used": "Invite already used"}[
+            state
+        ]
+        assert (response.status_code, response.json()["detail"]) == (410, detail)
+        with app.state.sessionmaker() as db:
+            assert db.scalar(select(User).where(User.email == NEWCOMER)) is None
+
+    @test()
+    def test_signup_needs_name_and_password_together(self, suite_parameter):
+        owner = self.env.owner
+        created = _invite(owner, NEWCOMER)
+        client = self.env.client()
+        assert client.post(ACCEPT, json={"token": created["token"], "name": "Nia"}).status_code == 422
+        assert (
+            client.post(ACCEPT, json={"token": created["token"], "password": "correct horse"}).status_code
+            == 422
+        )
+        short = client.post(ACCEPT, json={"token": created["token"], "name": "Nia", "password": "short"})
+        assert short.status_code == 422
+        assert client.post(ACCEPT, json={"token": created["token"]}).status_code == 401
+        _pending(owner, created["id"])
+
+    @test()
+    def test_invites_are_per_org(self, suite_parameter):
+        owner, globex = self.env.owner, self.globex()
+        _invite(owner)
+        assert globex.get("/api/v1/orgs/globex/invites").json()["items"] == []
+        assert globex.get(INVITES).status_code == 404
+
+    @test(parameters=["invites_create", "invites_list", "invites_revoke"])
+    def test_admin_operations_are_marked(self, suite_parameter, parameter):
+        spec, name = self.spec(), parameter
+        assert (spec[name]["x-scope"], spec[name]["x-toolset"], spec[name]["x-mcp"]) == (
+            "admin",
+            "admin",
+            True,
+        )
+
+    @test()
+    def test_accept_is_not_an_mcp_tool(self, suite_parameter):
+        spec = self.spec()
+        assert spec["invites_accept"]["x-mcp"] is False
+        assert spec["invites_accept"].get("x-scope") is None
+
+    @test()
+    def test_accept_contract_has_the_signup_fields(self, suite_parameter):
+        doc = self.env.client().get("/api/v1/openapi.json").json()
+        props = doc["components"]["schemas"]["InviteAccept"]["properties"]
+        assert set(props) == {"token", "name", "password"}
+        assert doc["components"]["schemas"]["InviteAccept"]["required"] == ["token"]
+        description = doc["paths"]["/api/v1/invites:accept"]["post"]["description"].lower()
+        assert "creates the user" in description
+        assert "replace any session" in description

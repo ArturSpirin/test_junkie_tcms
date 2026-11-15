@@ -67,5 +67,5 @@ PYTHONPATH=. python -m test_junkie run -s tests
 ```
 
 The tests are [Test Junkie](https://github.com/ArturSpirin/test_junkie) suites, one per file under `tests/`, and
-the run exits non-zero on any failed or errored test. They run on SQLite. Set `TJ_TCMS_TEST_POSTGRES_URL=postgresql+psycopg://user:pw@host:port/db` to run them
-on Postgres too.
+the run exits non-zero on any failed or errored test. They run on SQLite. To run them on Postgres too, set
+`TJ_TCMS_TEST_POSTGRES_URL=postgresql+psycopg://user:pw@host:port/db`.

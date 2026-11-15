@@ -6,7 +6,7 @@ from datetime import timedelta
 from types import SimpleNamespace
 
 from fastapi import HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
@@ -218,16 +218,38 @@ def requeue_or_fail(db: Session, job: Job, now, reason: str = LOST) -> None:
     audit.record(db, ctx, "job.fail", "job", job.id, {"reason": reason, "cancelled": cancelled})
 
 
+def stalled_ids(db: Session, org_id: str, cutoff) -> list[str]:
+    return db.scalars(
+        select(Job.id).where(Job.org_id == org_id, Job.status.in_(HELD), Job.last_beat_at < cutoff)
+    ).all()
+
+
+def take_stalled(db: Session, job_id: str, cutoff, now) -> Job | None:
+    """Claims a stalled job for this check with a conditional update, the way jobs_next claims, so two
+    overlapping checks can't both requeue or fail it: the loser's WHERE no longer matches."""
+    taken = db.execute(
+        update(Job)
+        .where(Job.id == job_id, Job.status.in_(HELD), Job.last_beat_at < cutoff)
+        .values(last_beat_at=now, updated_at=now)
+    ).rowcount
+    if taken != 1:
+        return None
+    job = db.get(Job, job_id)
+    db.refresh(job)
+    return job
+
+
 def stall_check(db: Session, org_id: str, now) -> int:
     """Requeue or fail the org's held jobs with no heartbeat for STALL_AFTER. Runs inline from the heartbeat,
     jobs_next and jobs_list: there is no worker. Returns how many it moved; the caller commits."""
     cutoff = now - STALL_AFTER
-    stalled = db.scalars(
-        select(Job).where(Job.org_id == org_id, Job.status.in_(HELD), Job.last_beat_at < cutoff)
-    ).all()
-    for job in stalled:
-        requeue_or_fail(db, job, now)
-    return len(stalled)
+    moved = 0
+    for job_id in stalled_ids(db, org_id, cutoff):
+        job = take_stalled(db, job_id, cutoff, now)
+        if job is not None:
+            requeue_or_fail(db, job, now)
+            moved += 1
+    return moved
 
 
 def fail_consumer_jobs(db: Session, consumer: Consumer, now) -> None:

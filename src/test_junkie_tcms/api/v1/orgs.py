@@ -37,7 +37,7 @@ router = APIRouter(tags=["orgs"])
 ORG = "/orgs/{org}"
 
 
-@router.get("/orgs", response_model=Page[OrgOut], **op("orgs_list", READ, "orgs"))
+@router.get("/orgs", response_model=Page[OrgOut], **op("orgs_list", READ, "core"))
 def orgs_list(principal: Principal = Depends(get_principal), db: Session = Depends(get_db)):
     if principal.token is not None:
         actors = [principal.actor]
@@ -47,7 +47,7 @@ def orgs_list(principal: Principal = Depends(get_principal), db: Session = Depen
     return Page[OrgOut](items=sorted(orgs, key=lambda o: o.slug))
 
 
-@router.get(ORG, response_model=OrgOut, **op("orgs_get", READ, "orgs"))
+@router.get(ORG, response_model=OrgOut, **op("orgs_get", READ, "core"))
 def orgs_get(ctx: OrgContext = Depends(require_scope(READ))):
     return ctx.org
 

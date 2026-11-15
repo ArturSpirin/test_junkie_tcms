@@ -108,16 +108,16 @@ def test_an_attachment_of_another_product_is_refused(owner):
     assert refused.status_code == 422, refused.text
 
 
-def test_via_tells_api_mcp_and_ui_apart(owner, client_factory):
+def test_via_tells_api_and_ui_apart_and_a_header_cannot_claim_mcp(owner, client_factory):
+    # via="mcp" over /mcp is tested in test_mcp_server.py.
     s = run_seed(owner)
     cc = s["cycle_case"]["id"]
     bot = bearer(client_factory, token(owner, "read", "write:execution"))
     assert ok(record(bot, cc, status="success"), 201)["via"] == "api"
-    mcp = bot.post(
+    forged = bot.post(
         url(f"/cycle-cases/{cc}/results"), json={"status": "success"}, headers={"X-TCMS-Via": "mcp"}
     )
-    assert ok(mcp, 201)["via"] == "mcp"
-    # The label means nothing on a cookie session.
+    assert ok(forged, 201)["via"] == "api"
     ui = owner.post(
         url(f"/cycle-cases/{cc}/results"), json={"status": "success"}, headers={"X-TCMS-Via": "mcp"}
     )

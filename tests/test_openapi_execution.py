@@ -4,10 +4,10 @@ import pytest
 from test_openapi_cases import ops
 
 EXECUTION_OPS = {
-    "cycles_list": ("read", "planning", True),
+    "cycles_list": ("read", "execution", True),
     "cycles_create": ("write:planning", "planning", True),
     "cycles_preview": ("read", "planning", True),
-    "cycles_get": ("read", "planning", True),
+    "cycles_get": ("read", "execution", True),
     "cycles_update": ("write:planning", "planning", True),
     "cycles_close": ("write:planning", "planning", True),
     "cycles_reopen": ("write:planning", "planning", True),

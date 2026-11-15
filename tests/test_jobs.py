@@ -9,7 +9,7 @@ from execution_seed import cycle_cases, make_case
 from sqlalchemy import select
 from test_consumers import ROSTER, FakeConsumer, approve, count, set_column
 
-from test_junkie_tcms.api.v1 import consumers, cycles, jobs, results
+from test_junkie_tcms.api.v1 import consumers, cycles, job_queue, jobs, results
 from test_junkie_tcms.db.base import utcnow
 from test_junkie_tcms.db.models import Consumer, Cycle, Job
 
@@ -237,6 +237,25 @@ def test_heartbeat_just_after_the_stall_window_keeps_the_job(owner, world, clock
     ok(a.heartbeat())
     [kept] = job_list(owner, cycle["id"])
     assert (kept["id"], kept["status"], kept["consumer_id"]) == (job["id"], "claimed", a.consumer["id"])
+
+
+def test_overlapping_stall_checks_move_a_job_once(app, owner, world, clock):
+    a, b = world["a"], world["b"]
+    set_column(app, Consumer, "last_heartbeat_at", clock.now + timedelta(seconds=121), id=b.consumer["id"])
+    cycle = ok(create(owner, world, a), 201)
+    job = ok(next_job(a))
+    clock.tick(121)
+    cutoff = clock.now - job_queue.STALL_AFTER
+    with app.state.sessionmaker() as late:  # this check listed the job before the other one moved it
+        org_id = late.get(Consumer, a.consumer["id"]).org_id
+        assert job_queue.stalled_ids(late, org_id, cutoff) == [job["id"]]
+        late.rollback()
+        with app.state.sessionmaker() as first:
+            assert job_queue.stall_check(first, org_id, clock.now) == 1
+            first.commit()
+        assert job_queue.take_stalled(late, job["id"], cutoff, clock.now) is None
+    [requeued] = job_list(owner, cycle["id"])
+    assert (requeued["status"], requeued["consumer_id"], requeued["attempts"]) == ("queued", b.consumer["id"], 2)
 
 
 # Long-poll

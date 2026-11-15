@@ -255,7 +255,11 @@ def _create_path(db: Session, ctx: OrgContext, p: Product, path: str, paths: dic
 def _item(
     db: Session, ctx: OrgContext, p: Product, row: dict[str, str], paths: dict[str, str], create: bool
 ) -> CaseBulkItem:
-    """The row as a bulk item, after the checks only an import needs (version, feature, path)."""
+    """The row as a bulk item, after the checks only an import needs (version, feature, path). A column
+    the row doesn't have (a mapped CSV that maps nothing to it) is empty on a new case and keeps the
+    case's value on an edit."""
+    given = set(row)
+    row = {c: "" for c in COLUMNS} | row
     key = row["key"].strip() or None
     path = row["feature"].strip()
     by_path = {v: k for k, v in reversed(list(paths.items()))}
@@ -280,7 +284,7 @@ def _item(
             raise RowError(
                 "version", f"{key} is at version {case.current_version}, not {version}; export it again"
             )
-        if feature_id != case.feature_id:
+        if "feature" in given and feature_id != case.feature_id:
             raise RowError("feature", f"{key} is in another feature; use cases_move to move it")
         feature_id = None
     elif feature_id is None:
@@ -315,6 +319,10 @@ def _item(
     for column in ("priority", "type", "status", "automation"):
         if row[column].strip():
             data[column] = row[column].strip()
+    if key:
+        for column in ("preconditions", "steps", "automation_ref", "tags", "links", "custom"):
+            if column not in given:
+                del data[column]
     try:
         return CaseBulkItem.model_validate(data)
     except ValidationError as e:
@@ -386,13 +394,13 @@ def _csv_rows(text: str, mapping: dict[str, str | None] | None, errors: list) ->
         if mapping is None:
             out.append((n, raw, "", column_of))
             continue
-        row = {c: raw[theirs[c]] if c in theirs and theirs[c] else "" for c in COLUMNS}
+        row = {c: raw[theirs[c]] for c in COLUMNS if theirs.get(c)}
         if "step_action" in theirs or "step_expected" in theirs:
             action = raw[theirs["step_action"]] if "step_action" in theirs else ""
             expected = raw[theirs["step_expected"]] if "step_expected" in theirs else ""
             step = [{"action": action, "expected": expected}] if action.strip() or expected.strip() else []
             row["steps"] = json.dumps(step, ensure_ascii=False)
-        if row["tags"].strip():
+        if row.get("tags", "").strip():
             row["tags"] = _tags(row["tags"])
         out.append((n, row, "", column_of))
     return out
@@ -450,7 +458,7 @@ def imports_create(
     keys: list[str] = []
     seen: set[str] = set()
     for n, row, label, column_of in source:
-        key = row["key"].strip()
+        key = row.get("key", "").strip()
         if key and key in seen:
             errors.append({"row": n, "column": column_of("key"), "detail": label + f"{key} appears twice"})
             continue

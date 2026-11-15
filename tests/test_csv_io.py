@@ -289,6 +289,25 @@ class CsvIo:
         assert [(e["row"], e["column"]) for e in r.json()["errors"]] == [(1, "Rev")]
         assert ok(owner.get(url("/cases/PAY-2")))["title"] == "Renamed"
 
+    @test()
+    def test_mapped_edit_keeps_the_columns_it_doesnt_map(self, suite_parameter):
+        owner = self.env.owner
+        s = source(owner)
+        p = s["product"]["id"]
+        before = rows(export(owner, p))[0]
+        mapping = {"ID": "key", "Rev": "version", "Section": "feature", "Name": "title"}
+        text = "ID,Rev,Section,Name\nPAY-1,1,Checkout > Card,Pay by saved card\n"
+        out = ok(do_import(owner, p, text, mapping=mapping))
+        assert (out["created"], out["updated"]) == (0, 1)
+        text = "ID,Rev,Name\nPAY-1,2,Pay by stored card\n"
+        out = ok(do_import(owner, p, text, mapping={"ID": "key", "Rev": "version", "Name": "title"}))
+        assert (out["created"], out["updated"]) == (0, 1)
+        after = rows(export(owner, p))[0]
+        assert (after["title"], after["version"]) == ("Pay by stored card", "3")
+        keep = ("feature", "preconditions", "steps", "automation_ref", "tags", "links", "custom")
+        assert {c: after[c] for c in keep} == {c: before[c] for c in keep}
+        assert len(json.loads(after["steps"])) == 2
+
 
 FOREIGN = (
     "Title,Section,Steps,Expected Result,Labels,Priority,Notes\n"

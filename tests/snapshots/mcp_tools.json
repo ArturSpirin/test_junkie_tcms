@@ -1,0 +1,7921 @@
+[
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "owner_user_id": {
+    "location": "body",
+    "wire": "owner_user_id"
+   },
+   "role": {
+    "location": "body",
+    "wire": "role"
+   }
+  },
+  "description": "Agents Create",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "name": {
+     "maxLength": 200,
+     "minLength": 1,
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "owner_user_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "role": {
+     "enum": [
+      "viewer",
+      "tester",
+      "editor",
+      "admin",
+      "owner"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "name",
+    "org",
+    "role"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "agents_create",
+  "path": "/api/v1/orgs/{org}/agents",
+  "scope": "admin",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": true,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "agent_id": {
+    "location": "path",
+    "wire": "agent_id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Agents Disable",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "agent_id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "agent_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "agents_disable",
+  "path": "/api/v1/orgs/{org}/agents/{agent_id}/disable",
+  "scope": "admin",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Agents List",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "agents_list",
+  "path": "/api/v1/orgs/{org}/agents",
+  "scope": "admin",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "agent_id": {
+    "location": "path",
+    "wire": "agent_id"
+   },
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "role": {
+    "location": "body",
+    "wire": "role"
+   }
+  },
+  "description": "Agents Update",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "agent_id": {
+     "type": "string"
+    },
+    "name": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "role": {
+     "anyOf": [
+      {
+       "enum": [
+        "viewer",
+        "tester",
+        "editor",
+        "admin",
+        "owner"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "agent_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "PATCH",
+  "name": "agents_update",
+  "path": "/api/v1/orgs/{org}/agents/{agent_id}",
+  "scope": "admin",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "content_base64": {
+    "location": "body",
+    "wire": "content_base64"
+   },
+   "filename": {
+    "location": "body",
+    "wire": "filename"
+   },
+   "mime": {
+    "location": "body",
+    "wire": "mime"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   }
+  },
+  "description": "Attachments Upload Base64. Uploads a small file (up to 5 MB) sent as base64 in JSON, for clients that can't send a raw body.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "content_base64": {
+     "maxLength": 7000000,
+     "type": "string"
+    },
+    "filename": {
+     "maxLength": 255,
+     "minLength": 1,
+     "type": "string"
+    },
+    "mime": {
+     "default": "application/octet-stream",
+     "maxLength": 127,
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "content_base64",
+    "filename",
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "attachments_upload_base64",
+  "path": "/api/v1/orgs/{org}/products/{product}/attachments/base64",
+  "scope": "write:execution",
+  "toolset": "execution"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "action": {
+    "location": "query",
+    "wire": "action"
+   },
+   "actor_id": {
+    "location": "query",
+    "wire": "actor_id"
+   },
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "entity_id": {
+    "location": "query",
+    "wire": "entity_id"
+   },
+   "entity_type": {
+    "location": "query",
+    "wire": "entity_type"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "since": {
+    "location": "query",
+    "wire": "since"
+   },
+   "until": {
+    "location": "query",
+    "wire": "until"
+   },
+   "via": {
+    "location": "query",
+    "wire": "via"
+   }
+  },
+  "description": "Audit List",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "action": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Exact action, e.g. invite.create"
+    },
+    "actor_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "entity_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "entity_type": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "since": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "From this time, inclusive"
+    },
+    "until": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Up to this time, exclusive"
+    },
+    "via": {
+     "anyOf": [
+      {
+       "enum": [
+        "ui",
+        "api",
+        "mcp"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "audit_list",
+  "path": "/api/v1/orgs/{org}/audit",
+  "scope": "audit:read",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": true,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "case": {
+    "location": "path",
+    "wire": "case"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Cases Archive",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "case",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "cases_archive",
+  "path": "/api/v1/orgs/{org}/cases/{case}/archive",
+  "scope": "write:cases",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "items": {
+    "location": "body",
+    "wire": "items"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   }
+  },
+  "description": "Cases Bulk Upsert. All or nothing: one bad item (422, 409) writes none.",
+  "input_schema": {
+   "$defs": {
+    "CaseBulkItem": {
+     "additionalProperties": false,
+     "description": "With `key` (and `expected_version`) it updates that case; without, it creates one (`feature_id` and\n`title` required).",
+     "properties": {
+      "automation": {
+       "anyOf": [
+        {
+         "enum": [
+          "manual",
+          "automated",
+          "to_automate"
+         ],
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Automation"
+      },
+      "automation_ref": {
+       "anyOf": [
+        {
+         "maxLength": 500,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Automation Ref"
+      },
+      "change_note": {
+       "anyOf": [
+        {
+         "maxLength": 500,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Change Note"
+      },
+      "custom": {
+       "anyOf": [
+        {
+         "additionalProperties": true,
+         "type": "object"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Free-form, for plugins; at most 16 KB as JSON",
+       "title": "Custom"
+      },
+      "expected_version": {
+       "anyOf": [
+        {
+         "minimum": 1.0,
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Expected Version"
+      },
+      "feature_id": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Feature Id"
+      },
+      "key": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Key"
+      },
+      "links": {
+       "anyOf": [
+        {
+         "items": {
+          "$ref": "#/$defs/Link"
+         },
+         "maxItems": 50,
+         "type": "array"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Links"
+      },
+      "preconditions": {
+       "anyOf": [
+        {
+         "$ref": "#/$defs/MarkdownIn"
+        },
+        {
+         "$ref": "#/$defs/DocIn"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Preconditions"
+      },
+      "priority": {
+       "anyOf": [
+        {
+         "enum": [
+          "low",
+          "medium",
+          "high",
+          "critical"
+         ],
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Priority"
+      },
+      "status": {
+       "anyOf": [
+        {
+         "enum": [
+          "draft",
+          "ready",
+          "deprecated"
+         ],
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Status"
+      },
+      "steps": {
+       "anyOf": [
+        {
+         "items": {
+          "$ref": "#/$defs/StepIn"
+         },
+         "maxItems": 200,
+         "type": "array"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Steps"
+      },
+      "tags": {
+       "anyOf": [
+        {
+         "items": {
+          "type": "string"
+         },
+         "maxItems": 50,
+         "type": "array"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "description": "Names; made lowercase, created on first use",
+       "title": "Tags"
+      },
+      "title": {
+       "anyOf": [
+        {
+         "maxLength": 500,
+         "minLength": 1,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Title"
+      },
+      "type": {
+       "anyOf": [
+        {
+         "enum": [
+          "functional",
+          "regression",
+          "smoke",
+          "acceptance",
+          "performance",
+          "security",
+          "other"
+         ],
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Type"
+      }
+     },
+     "title": "CaseBulkItem",
+     "type": "object"
+    },
+    "DocIn": {
+     "additionalProperties": false,
+     "properties": {
+      "doc": {
+       "additionalProperties": true,
+       "description": "A rich text doc (TipTap StarterKit node names)",
+       "title": "Doc",
+       "type": "object"
+      }
+     },
+     "required": [
+      "doc"
+     ],
+     "title": "DocIn",
+     "type": "object"
+    },
+    "Link": {
+     "additionalProperties": false,
+     "properties": {
+      "key": {
+       "anyOf": [
+        {
+         "maxLength": 100,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Key"
+      },
+      "url": {
+       "maxLength": 2000,
+       "pattern": "^https?://",
+       "title": "Url",
+       "type": "string"
+      }
+     },
+     "required": [
+      "url"
+     ],
+     "title": "Link",
+     "type": "object"
+    },
+    "MarkdownIn": {
+     "additionalProperties": false,
+     "properties": {
+      "markdown": {
+       "maxLength": 200000,
+       "title": "Markdown",
+       "type": "string"
+      }
+     },
+     "required": [
+      "markdown"
+     ],
+     "title": "MarkdownIn",
+     "type": "object"
+    },
+    "StepIn": {
+     "additionalProperties": false,
+     "description": "A step without `id` is new; one with an `id` keeps it from the current version, so reordering is\nsending the same ids in a new order.",
+     "properties": {
+      "action": {
+       "anyOf": [
+        {
+         "$ref": "#/$defs/MarkdownIn"
+        },
+        {
+         "$ref": "#/$defs/DocIn"
+        }
+       ],
+       "title": "Action"
+      },
+      "expected": {
+       "anyOf": [
+        {
+         "$ref": "#/$defs/MarkdownIn"
+        },
+        {
+         "$ref": "#/$defs/DocIn"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Expected"
+      },
+      "id": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Id"
+      }
+     },
+     "required": [
+      "action"
+     ],
+     "title": "StepIn",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "items": {
+     "items": {
+      "$ref": "#/$defs/CaseBulkItem"
+     },
+     "maxItems": 200,
+     "minItems": 1,
+     "type": "array"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "items",
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "cases_bulk_upsert",
+  "path": "/api/v1/orgs/{org}/products/{product}/cases/bulk",
+  "scope": "write:cases",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "automation": {
+    "location": "body",
+    "wire": "automation"
+   },
+   "automation_ref": {
+    "location": "body",
+    "wire": "automation_ref"
+   },
+   "change_note": {
+    "location": "body",
+    "wire": "change_note"
+   },
+   "custom": {
+    "location": "body",
+    "wire": "custom"
+   },
+   "feature_id": {
+    "location": "body",
+    "wire": "feature_id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "links": {
+    "location": "body",
+    "wire": "links"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "preconditions": {
+    "location": "body",
+    "wire": "preconditions"
+   },
+   "priority": {
+    "location": "body",
+    "wire": "priority"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   },
+   "status": {
+    "location": "body",
+    "wire": "status"
+   },
+   "steps": {
+    "location": "body",
+    "wire": "steps"
+   },
+   "tags": {
+    "location": "body",
+    "wire": "tags"
+   },
+   "title": {
+    "location": "body",
+    "wire": "title"
+   },
+   "type": {
+    "location": "body",
+    "wire": "type"
+   }
+  },
+  "description": "Cases Create",
+  "input_schema": {
+   "$defs": {
+    "DocIn": {
+     "additionalProperties": false,
+     "properties": {
+      "doc": {
+       "additionalProperties": true,
+       "description": "A rich text doc (TipTap StarterKit node names)",
+       "title": "Doc",
+       "type": "object"
+      }
+     },
+     "required": [
+      "doc"
+     ],
+     "title": "DocIn",
+     "type": "object"
+    },
+    "Link": {
+     "additionalProperties": false,
+     "properties": {
+      "key": {
+       "anyOf": [
+        {
+         "maxLength": 100,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Key"
+      },
+      "url": {
+       "maxLength": 2000,
+       "pattern": "^https?://",
+       "title": "Url",
+       "type": "string"
+      }
+     },
+     "required": [
+      "url"
+     ],
+     "title": "Link",
+     "type": "object"
+    },
+    "MarkdownIn": {
+     "additionalProperties": false,
+     "properties": {
+      "markdown": {
+       "maxLength": 200000,
+       "title": "Markdown",
+       "type": "string"
+      }
+     },
+     "required": [
+      "markdown"
+     ],
+     "title": "MarkdownIn",
+     "type": "object"
+    },
+    "StepIn": {
+     "additionalProperties": false,
+     "description": "A step without `id` is new; one with an `id` keeps it from the current version, so reordering is\nsending the same ids in a new order.",
+     "properties": {
+      "action": {
+       "anyOf": [
+        {
+         "$ref": "#/$defs/MarkdownIn"
+        },
+        {
+         "$ref": "#/$defs/DocIn"
+        }
+       ],
+       "title": "Action"
+      },
+      "expected": {
+       "anyOf": [
+        {
+         "$ref": "#/$defs/MarkdownIn"
+        },
+        {
+         "$ref": "#/$defs/DocIn"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Expected"
+      },
+      "id": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Id"
+      }
+     },
+     "required": [
+      "action"
+     ],
+     "title": "StepIn",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "automation": {
+     "anyOf": [
+      {
+       "enum": [
+        "manual",
+        "automated",
+        "to_automate"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "automation_ref": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "change_note": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "custom": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Free-form, for plugins; at most 16 KB as JSON"
+    },
+    "feature_id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "links": {
+     "anyOf": [
+      {
+       "items": {
+        "$ref": "#/$defs/Link"
+       },
+       "maxItems": 50,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "preconditions": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MarkdownIn"
+      },
+      {
+       "$ref": "#/$defs/DocIn"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "priority": {
+     "anyOf": [
+      {
+       "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "product": {
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "enum": [
+        "draft",
+        "ready",
+        "deprecated"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "steps": {
+     "anyOf": [
+      {
+       "items": {
+        "$ref": "#/$defs/StepIn"
+       },
+       "maxItems": 200,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "tags": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 50,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Names; made lowercase, created on first use"
+    },
+    "title": {
+     "maxLength": 500,
+     "minLength": 1,
+     "type": "string"
+    },
+    "type": {
+     "anyOf": [
+      {
+       "enum": [
+        "functional",
+        "regression",
+        "smoke",
+        "acceptance",
+        "performance",
+        "security",
+        "other"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "feature_id",
+    "org",
+    "product",
+    "title"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "cases_create",
+  "path": "/api/v1/orgs/{org}/products/{product}/cases",
+  "scope": "write:cases",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "case": {
+    "location": "path",
+    "wire": "case"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Cases Get",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "case",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "cases_get",
+  "path": "/api/v1/orgs/{org}/cases/{case}",
+  "scope": "read",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "automation": {
+    "location": "query",
+    "wire": "automation"
+   },
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "feature": {
+    "location": "query",
+    "wire": "feature"
+   },
+   "include_archived": {
+    "location": "query",
+    "wire": "include_archived"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   },
+   "q": {
+    "location": "query",
+    "wire": "q"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   },
+   "status": {
+    "location": "query",
+    "wire": "status"
+   },
+   "tag": {
+    "location": "query",
+    "wire": "tag"
+   }
+  },
+  "description": "Cases List",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "automation": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "feature": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A feature id; its subtree is included"
+    },
+    "include_archived": {
+     "default": false,
+     "type": "boolean"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "type": "string"
+    },
+    "q": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Case-insensitive part of the title"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    },
+    "status": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "tag": {
+     "default": [],
+     "description": "Repeatable; a case must have every tag",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "required": [
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "cases_list",
+  "path": "/api/v1/orgs/{org}/products/{product}/cases",
+  "scope": "read",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "case": {
+    "location": "path",
+    "wire": "case"
+   },
+   "feature_id": {
+    "location": "body",
+    "wire": "feature_id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Cases Move. Moves the case to another feature of its product; not a content edit, so no new version.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case": {
+     "type": "string"
+    },
+    "feature_id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "case",
+    "feature_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "cases_move",
+  "path": "/api/v1/orgs/{org}/cases/{case}/move",
+  "scope": "write:cases",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "case": {
+    "location": "path",
+    "wire": "case"
+   },
+   "change_note": {
+    "location": "body",
+    "wire": "change_note"
+   },
+   "expected_version": {
+    "location": "header",
+    "wire": "If-Match"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   },
+   "version": {
+    "location": "body",
+    "wire": "version"
+   }
+  },
+  "description": "Cases Restore. Copies an old version's content into a new version.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case": {
+     "type": "string"
+    },
+    "change_note": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "expected_version": {
+     "description": "The version you last read; a stale one fails with 409 and current_version",
+     "minimum": 0,
+     "type": "integer"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    },
+    "version": {
+     "minimum": 1.0,
+     "type": "integer"
+    }
+   },
+   "required": [
+    "case",
+    "expected_version",
+    "org",
+    "version"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "cases_restore",
+  "path": "/api/v1/orgs/{org}/cases/{case}/restore",
+  "scope": "write:cases",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "automation": {
+    "location": "body",
+    "wire": "automation"
+   },
+   "automation_ref": {
+    "location": "body",
+    "wire": "automation_ref"
+   },
+   "case": {
+    "location": "path",
+    "wire": "case"
+   },
+   "change_note": {
+    "location": "body",
+    "wire": "change_note"
+   },
+   "custom": {
+    "location": "body",
+    "wire": "custom"
+   },
+   "expected_version": {
+    "location": "header",
+    "wire": "If-Match"
+   },
+   "links": {
+    "location": "body",
+    "wire": "links"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "preconditions": {
+    "location": "body",
+    "wire": "preconditions"
+   },
+   "priority": {
+    "location": "body",
+    "wire": "priority"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   },
+   "status": {
+    "location": "body",
+    "wire": "status"
+   },
+   "steps": {
+    "location": "body",
+    "wire": "steps"
+   },
+   "tags": {
+    "location": "body",
+    "wire": "tags"
+   },
+   "title": {
+    "location": "body",
+    "wire": "title"
+   },
+   "type": {
+    "location": "body",
+    "wire": "type"
+   }
+  },
+  "description": "Cases Update",
+  "input_schema": {
+   "$defs": {
+    "DocIn": {
+     "additionalProperties": false,
+     "properties": {
+      "doc": {
+       "additionalProperties": true,
+       "description": "A rich text doc (TipTap StarterKit node names)",
+       "title": "Doc",
+       "type": "object"
+      }
+     },
+     "required": [
+      "doc"
+     ],
+     "title": "DocIn",
+     "type": "object"
+    },
+    "Link": {
+     "additionalProperties": false,
+     "properties": {
+      "key": {
+       "anyOf": [
+        {
+         "maxLength": 100,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Key"
+      },
+      "url": {
+       "maxLength": 2000,
+       "pattern": "^https?://",
+       "title": "Url",
+       "type": "string"
+      }
+     },
+     "required": [
+      "url"
+     ],
+     "title": "Link",
+     "type": "object"
+    },
+    "MarkdownIn": {
+     "additionalProperties": false,
+     "properties": {
+      "markdown": {
+       "maxLength": 200000,
+       "title": "Markdown",
+       "type": "string"
+      }
+     },
+     "required": [
+      "markdown"
+     ],
+     "title": "MarkdownIn",
+     "type": "object"
+    },
+    "StepIn": {
+     "additionalProperties": false,
+     "description": "A step without `id` is new; one with an `id` keeps it from the current version, so reordering is\nsending the same ids in a new order.",
+     "properties": {
+      "action": {
+       "anyOf": [
+        {
+         "$ref": "#/$defs/MarkdownIn"
+        },
+        {
+         "$ref": "#/$defs/DocIn"
+        }
+       ],
+       "title": "Action"
+      },
+      "expected": {
+       "anyOf": [
+        {
+         "$ref": "#/$defs/MarkdownIn"
+        },
+        {
+         "$ref": "#/$defs/DocIn"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Expected"
+      },
+      "id": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Id"
+      }
+     },
+     "required": [
+      "action"
+     ],
+     "title": "StepIn",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "automation": {
+     "anyOf": [
+      {
+       "enum": [
+        "manual",
+        "automated",
+        "to_automate"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "automation_ref": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "case": {
+     "type": "string"
+    },
+    "change_note": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "custom": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Free-form, for plugins; at most 16 KB as JSON"
+    },
+    "expected_version": {
+     "description": "The version you last read; a stale one fails with 409 and current_version",
+     "minimum": 0,
+     "type": "integer"
+    },
+    "links": {
+     "anyOf": [
+      {
+       "items": {
+        "$ref": "#/$defs/Link"
+       },
+       "maxItems": 50,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "preconditions": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MarkdownIn"
+      },
+      {
+       "$ref": "#/$defs/DocIn"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "priority": {
+     "anyOf": [
+      {
+       "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "enum": [
+        "draft",
+        "ready",
+        "deprecated"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "steps": {
+     "anyOf": [
+      {
+       "items": {
+        "$ref": "#/$defs/StepIn"
+       },
+       "maxItems": 200,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "tags": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 50,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Names; made lowercase, created on first use"
+    },
+    "title": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "type": {
+     "anyOf": [
+      {
+       "enum": [
+        "functional",
+        "regression",
+        "smoke",
+        "acceptance",
+        "performance",
+        "security",
+        "other"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "case",
+    "expected_version",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "PATCH",
+  "name": "cases_update",
+  "path": "/api/v1/orgs/{org}/cases/{case}",
+  "scope": "write:cases",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "case": {
+    "location": "path",
+    "wire": "case"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   },
+   "version": {
+    "location": "path",
+    "wire": "version"
+   }
+  },
+  "description": "Cases Version Get",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    },
+    "version": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "case",
+    "org",
+    "version"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "cases_version_get",
+  "path": "/api/v1/orgs/{org}/cases/{case}/versions/{version}",
+  "scope": "read",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "case": {
+    "location": "path",
+    "wire": "case"
+   },
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Cases Versions List. Newest first; the cursor is the last version number of the previous page.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case": {
+     "type": "string"
+    },
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "case",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "cases_versions_list",
+  "path": "/api/v1/orgs/{org}/cases/{case}/versions",
+  "scope": "read",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "consumer_id": {
+    "location": "path",
+    "wire": "consumer_id"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Consumers Get",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "consumer_id": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "consumer_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "consumers_get",
+  "path": "/api/v1/orgs/{org}/consumers/{consumer_id}",
+  "scope": "read",
+  "toolset": "consumers"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "query",
+    "wire": "product"
+   },
+   "status": {
+    "location": "query",
+    "wire": "status"
+   }
+  },
+  "description": "Consumers List",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Only consumers that serve this product id"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "enum": [
+        "online",
+        "offline",
+        "busy",
+        "revoked"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Revoked consumers show only with status=revoked"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "consumers_list",
+  "path": "/api/v1/orgs/{org}/consumers",
+  "scope": "read",
+  "toolset": "consumers"
+ },
+ {
+  "annotations": {
+   "destructive_hint": true,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "consumer_id": {
+    "location": "path",
+    "wire": "consumer_id"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Consumers Revoke",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "consumer_id": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "consumer_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "DELETE",
+  "name": "consumers_revoke",
+  "path": "/api/v1/orgs/{org}/consumers/{consumer_id}",
+  "scope": "admin",
+  "toolset": "consumers"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "consumer_id": {
+    "location": "path",
+    "wire": "consumer_id"
+   },
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product_ids": {
+    "location": "body",
+    "wire": "product_ids"
+   }
+  },
+  "description": "Consumers Update",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "consumer_id": {
+     "type": "string"
+    },
+    "name": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "minItems": 1,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "consumer_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "PATCH",
+  "name": "consumers_update",
+  "path": "/api/v1/orgs/{org}/consumers/{consumer_id}",
+  "scope": "admin",
+  "toolset": "consumers"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Cycle Batches Get",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "cycle_batches_get",
+  "path": "/api/v1/orgs/{org}/cycle-batches/{id}",
+  "scope": "read",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "case_ids": {
+    "location": "body",
+    "wire": "case_ids"
+   },
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Cycle Cases Add. Adds live cases at their current version; a case already in the cycle is listed, not added again.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case_ids": {
+     "items": {
+      "type": "string"
+     },
+     "maxItems": 1000,
+     "minItems": 1,
+     "type": "array"
+    },
+    "id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "case_ids",
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "cycle_cases_add",
+  "path": "/api/v1/orgs/{org}/cycles/{id}/cases",
+  "scope": "write:planning",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "assignee_actor_id": {
+    "location": "body",
+    "wire": "assignee_actor_id"
+   },
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Cycle Cases Assign",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "assignee_actor_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "assignee_actor_id",
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "cycle_cases_assign",
+  "path": "/api/v1/orgs/{org}/cycle-cases/{id}/assign",
+  "scope": "write:planning",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "assignee": {
+    "location": "query",
+    "wire": "assignee"
+   },
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   },
+   "status": {
+    "location": "query",
+    "wire": "status"
+   }
+  },
+  "description": "Cycle Cases List. The cycle's cases with the title and steps of the version each one is pinned to.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "assignee": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "An actor id"
+    },
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "id": {
+     "type": "string"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "enum": [
+        "untested",
+        "success",
+        "fail",
+        "error",
+        "ignore",
+        "skip",
+        "cancel"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "cycle_cases_list",
+  "path": "/api/v1/orgs/{org}/cycles/{id}/cases",
+  "scope": "read",
+  "toolset": "execution"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Cycle Cases Refresh Version. Re-pins the case to its current version, only while it has no result (409 once one is recorded).",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "cycle_cases_refresh_version",
+  "path": "/api/v1/orgs/{org}/cycle-cases/{id}/refresh-version",
+  "scope": "write:planning",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "environment": {
+    "location": "body",
+    "wire": "environment"
+   },
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "mode": {
+    "location": "body",
+    "wire": "mode"
+   },
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "plan_ids": {
+    "location": "body",
+    "wire": "plan_ids"
+   }
+  },
+  "description": "Cycles Bulk Create. Pick a release: `features` makes one cycle per affected (non-archived) feature, each case in the\ncycle of its nearest affected feature; `plans` makes one cycle per active plan of the release (or per\nlisted plan). All the cycles share one batch, and the call makes all or none of them.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "environment": {
+     "anyOf": [
+      {
+       "maxLength": 64,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "mode": {
+     "default": "features",
+     "enum": [
+      "features",
+      "plans"
+     ],
+     "type": "string"
+    },
+    "name": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "plan_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 200,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "cycles_bulk_create",
+  "path": "/api/v1/orgs/{org}/releases/{id}/cycles/bulk",
+  "scope": "write:planning",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Cycles Close. Closes the cycle: no more results or cases until it reopens. Closing a closed cycle is a no-op.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "cycles_close",
+  "path": "/api/v1/orgs/{org}/cycles/{id}/close",
+  "scope": "write:planning",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "case_ids": {
+    "location": "body",
+    "wire": "case_ids"
+   },
+   "default_assignee_actor_id": {
+    "location": "body",
+    "wire": "default_assignee_actor_id"
+   },
+   "environment": {
+    "location": "body",
+    "wire": "environment"
+   },
+   "feature_ids": {
+    "location": "body",
+    "wire": "feature_ids"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "plan_id": {
+    "location": "body",
+    "wire": "plan_id"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   },
+   "product_id": {
+    "location": "body",
+    "wire": "product_id"
+   },
+   "release_id": {
+    "location": "body",
+    "wire": "release_id"
+   }
+  },
+  "description": "Cycles Create. A cycle from at most one source: `product_id` (every live case), an active `plan_id`, `feature_ids`\n(with their sub-features) or `case_ids`; none makes an empty cycle. Archived and deprecated cases are\nleft out. Each case is pinned to its current version: a later edit doesn't change this cycle.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 1000,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "default_assignee_actor_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "environment": {
+     "anyOf": [
+      {
+       "maxLength": 64,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "feature_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 200,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "name": {
+     "maxLength": 200,
+     "minLength": 1,
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "plan_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "product": {
+     "type": "string"
+    },
+    "product_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "release_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "name",
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "cycles_create",
+  "path": "/api/v1/orgs/{org}/products/{product}/cycles",
+  "scope": "write:planning",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Cycles Get",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "cycles_get",
+  "path": "/api/v1/orgs/{org}/cycles/{id}",
+  "scope": "read",
+  "toolset": "execution"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   },
+   "status": {
+    "location": "query",
+    "wire": "status"
+   }
+  },
+  "description": "Cycles List",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "type": "string"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "pattern": "^(open|closed)$",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "cycles_list",
+  "path": "/api/v1/orgs/{org}/products/{product}/cycles",
+  "scope": "read",
+  "toolset": "execution"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "case_ids": {
+    "location": "body",
+    "wire": "case_ids"
+   },
+   "feature_ids": {
+    "location": "body",
+    "wire": "feature_ids"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "plan_id": {
+    "location": "body",
+    "wire": "plan_id"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   },
+   "product_id": {
+    "location": "body",
+    "wire": "product_id"
+   }
+  },
+  "description": "Cycles Preview. What `cycles_create` would pin for this source, per feature; writes nothing.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 1000,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "feature_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 200,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "plan_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "product": {
+     "type": "string"
+    },
+    "product_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "cycles_preview",
+  "path": "/api/v1/orgs/{org}/products/{product}/cycles/preview",
+  "scope": "read",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Cycles Reopen",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "cycles_reopen",
+  "path": "/api/v1/orgs/{org}/cycles/{id}/reopen",
+  "scope": "write:planning",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "default_assignee_actor_id": {
+    "location": "body",
+    "wire": "default_assignee_actor_id"
+   },
+   "environment": {
+    "location": "body",
+    "wire": "environment"
+   },
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Cycles Update",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "default_assignee_actor_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "environment": {
+     "anyOf": [
+      {
+       "maxLength": 64,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "id": {
+     "type": "string"
+    },
+    "name": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "PATCH",
+  "name": "cycles_update",
+  "path": "/api/v1/orgs/{org}/cycles/{id}",
+  "scope": "write:planning",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "feature": {
+    "location": "body",
+    "wire": "feature"
+   },
+   "format": {
+    "location": "body",
+    "wire": "format"
+   },
+   "include_archived": {
+    "location": "body",
+    "wire": "include_archived"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   }
+  },
+  "description": "Exports Create. The product's cases (or a feature subtree's) at their current version, by case number.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "feature": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A feature id; its subtree is exported"
+    },
+    "format": {
+     "default": "csv",
+     "enum": [
+      "csv",
+      "md-bundle"
+     ],
+     "type": "string"
+    },
+    "include_archived": {
+     "default": false,
+     "type": "boolean"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "exports_create",
+  "path": "/api/v1/orgs/{org}/products/{product}/exports",
+  "scope": "read",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": true,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Features Archive. Archives the feature and every feature under it.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "features_archive",
+  "path": "/api/v1/orgs/{org}/features/{id}/archive",
+  "scope": "write:catalog",
+  "toolset": "catalog"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "owner_actor_id": {
+    "location": "body",
+    "wire": "owner_actor_id"
+   },
+   "parent_id": {
+    "location": "body",
+    "wire": "parent_id"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Features Create",
+  "input_schema": {
+   "$defs": {
+    "DocIn": {
+     "additionalProperties": false,
+     "properties": {
+      "doc": {
+       "additionalProperties": true,
+       "description": "A rich text doc (TipTap StarterKit node names)",
+       "title": "Doc",
+       "type": "object"
+      }
+     },
+     "required": [
+      "doc"
+     ],
+     "title": "DocIn",
+     "type": "object"
+    },
+    "MarkdownIn": {
+     "additionalProperties": false,
+     "properties": {
+      "markdown": {
+       "maxLength": 200000,
+       "title": "Markdown",
+       "type": "string"
+      }
+     },
+     "required": [
+      "markdown"
+     ],
+     "title": "MarkdownIn",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "description": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MarkdownIn"
+      },
+      {
+       "$ref": "#/$defs/DocIn"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "name": {
+     "maxLength": 200,
+     "minLength": 1,
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "owner_actor_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "parent_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "product": {
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "name",
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "features_create",
+  "path": "/api/v1/orgs/{org}/products/{product}/features",
+  "scope": "write:catalog",
+  "toolset": "catalog"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Features Get",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "features_get",
+  "path": "/api/v1/orgs/{org}/features/{id}",
+  "scope": "read",
+  "toolset": "catalog"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "include_archived": {
+    "location": "query",
+    "wire": "include_archived"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Features List",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "include_archived": {
+     "default": false,
+     "type": "boolean"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "features_list",
+  "path": "/api/v1/orgs/{org}/products/{product}/features",
+  "scope": "read",
+  "toolset": "catalog"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "parent_id": {
+    "location": "body",
+    "wire": "parent_id"
+   },
+   "position": {
+    "location": "body",
+    "wire": "position"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Features Move",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "parent_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "New parent; null moves it to the top level"
+    },
+    "position": {
+     "description": "Index among its new siblings; past the end appends",
+     "minimum": 0.0,
+     "type": "integer"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org",
+    "position"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "features_move",
+  "path": "/api/v1/orgs/{org}/features/{id}/move",
+  "scope": "write:catalog",
+  "toolset": "catalog"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "owner_actor_id": {
+    "location": "body",
+    "wire": "owner_actor_id"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Features Update",
+  "input_schema": {
+   "$defs": {
+    "DocIn": {
+     "additionalProperties": false,
+     "properties": {
+      "doc": {
+       "additionalProperties": true,
+       "description": "A rich text doc (TipTap StarterKit node names)",
+       "title": "Doc",
+       "type": "object"
+      }
+     },
+     "required": [
+      "doc"
+     ],
+     "title": "DocIn",
+     "type": "object"
+    },
+    "MarkdownIn": {
+     "additionalProperties": false,
+     "properties": {
+      "markdown": {
+       "maxLength": 200000,
+       "title": "Markdown",
+       "type": "string"
+      }
+     },
+     "required": [
+      "markdown"
+     ],
+     "title": "MarkdownIn",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "description": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MarkdownIn"
+      },
+      {
+       "$ref": "#/$defs/DocIn"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "id": {
+     "type": "string"
+    },
+    "name": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "owner_actor_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "PATCH",
+  "name": "features_update",
+  "path": "/api/v1/orgs/{org}/features/{id}",
+  "scope": "write:catalog",
+  "toolset": "catalog"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "create_features": {
+    "location": "body",
+    "wire": "create_features"
+   },
+   "csv": {
+    "location": "body",
+    "wire": "csv"
+   },
+   "dry_run": {
+    "location": "body",
+    "wire": "dry_run"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "mapping": {
+    "location": "body",
+    "wire": "mapping"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   }
+  },
+  "description": "Imports Create. Import a CSV in the export's format. A row with `key` edits that case and must carry the\n`version` it was exported at; a row without one creates a case in `feature`. All or nothing: any\nbad row gives 422 with `errors: [{row, column, detail}]` (row 1 is the first after the header) and\nwrites nothing. `dry_run` checks every row and returns the counts without writing; that answer is\nnot kept for an `Idempotency-Key` replay.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "create_features": {
+     "default": false,
+     "description": "Create missing features named in the `feature` path",
+     "type": "boolean"
+    },
+    "csv": {
+     "type": "string"
+    },
+    "dry_run": {
+     "default": false,
+     "description": "Check every row and report the counts, but write nothing",
+     "type": "boolean"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "mapping": {
+     "anyOf": [
+      {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Not supported yet"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "csv",
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "imports_create",
+  "path": "/api/v1/orgs/{org}/products/{product}/imports",
+  "scope": "write:cases",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "email": {
+    "location": "body",
+    "wire": "email"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "role": {
+    "location": "body",
+    "wire": "role"
+   }
+  },
+  "description": "Invites Create",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "email": {
+     "maxLength": 320,
+     "minLength": 3,
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "role": {
+     "enum": [
+      "viewer",
+      "tester",
+      "editor",
+      "admin",
+      "owner"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "email",
+    "org",
+    "role"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "invites_create",
+  "path": "/api/v1/orgs/{org}/invites",
+  "scope": "admin",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "status": {
+    "location": "query",
+    "wire": "status"
+   }
+  },
+  "description": "Invites List",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "enum": [
+        "pending",
+        "expired",
+        "accepted",
+        "revoked"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Default: open invites (pending and expired)"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "invites_list",
+  "path": "/api/v1/orgs/{org}/invites",
+  "scope": "admin",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": true,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "invite_id": {
+    "location": "path",
+    "wire": "invite_id"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Invites Revoke",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "invite_id": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "invite_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "DELETE",
+  "name": "invites_revoke",
+  "path": "/api/v1/orgs/{org}/invites/{invite_id}",
+  "scope": "admin",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {},
+  "description": "Me Get",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {},
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "me_get",
+  "path": "/api/v1/me",
+  "scope": null,
+  "toolset": "core"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "email": {
+    "location": "body",
+    "wire": "email"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "password": {
+    "location": "body",
+    "wire": "password"
+   },
+   "role": {
+    "location": "body",
+    "wire": "role"
+   }
+  },
+  "description": "Members Add",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "email": {
+     "maxLength": 320,
+     "minLength": 3,
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "name": {
+     "maxLength": 200,
+     "minLength": 1,
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "password": {
+     "anyOf": [
+      {
+       "maxLength": 1000,
+       "minLength": 8,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "role": {
+     "enum": [
+      "viewer",
+      "tester",
+      "editor",
+      "admin",
+      "owner"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "email",
+    "name",
+    "org",
+    "role"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "members_add",
+  "path": "/api/v1/orgs/{org}/members",
+  "scope": "admin",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Members List",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "members_list",
+  "path": "/api/v1/orgs/{org}/members",
+  "scope": "read",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": true,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "user_id": {
+    "location": "path",
+    "wire": "user_id"
+   }
+  },
+  "description": "Members Remove",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "user_id": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "org",
+    "user_id"
+   ],
+   "type": "object"
+  },
+  "method": "DELETE",
+  "name": "members_remove",
+  "path": "/api/v1/orgs/{org}/members/{user_id}",
+  "scope": "admin",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "role": {
+    "location": "body",
+    "wire": "role"
+   },
+   "user_id": {
+    "location": "path",
+    "wire": "user_id"
+   }
+  },
+  "description": "Members Update",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "role": {
+     "enum": [
+      "viewer",
+      "tester",
+      "editor",
+      "admin",
+      "owner"
+     ],
+     "type": "string"
+    },
+    "user_id": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "org",
+    "role",
+    "user_id"
+   ],
+   "type": "object"
+  },
+  "method": "PATCH",
+  "name": "members_update",
+  "path": "/api/v1/orgs/{org}/members/{user_id}",
+  "scope": "admin",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Orgs Get",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "orgs_get",
+  "path": "/api/v1/orgs/{org}",
+  "scope": "read",
+  "toolset": "core"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {},
+  "description": "Orgs List",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {},
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "orgs_list",
+  "path": "/api/v1/orgs",
+  "scope": "read",
+  "toolset": "core"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Orgs Update",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "name": {
+     "maxLength": 200,
+     "minLength": 1,
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "name",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "PATCH",
+  "name": "orgs_update",
+  "path": "/api/v1/orgs/{org}",
+  "scope": "admin",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product_ids": {
+    "location": "body",
+    "wire": "product_ids"
+   },
+   "user_code": {
+    "location": "body",
+    "wire": "user_code"
+   }
+  },
+  "description": "Pairings Approve",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "name": {
+     "description": "User-given; never the machine's hostname",
+     "maxLength": 200,
+     "minLength": 1,
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product_ids": {
+     "items": {
+      "type": "string"
+     },
+     "minItems": 1,
+     "type": "array"
+    },
+    "user_code": {
+     "maxLength": 9,
+     "minLength": 8,
+     "type": "string"
+    }
+   },
+   "required": [
+    "name",
+    "org",
+    "product_ids",
+    "user_code"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "pairings_approve",
+  "path": "/api/v1/orgs/{org}/pair/approve",
+  "scope": "admin",
+  "toolset": "consumers"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "entries": {
+    "location": "body",
+    "wire": "entries"
+   },
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Plans Add Entries. Appends entries in order: `{case_id}` (a live case of the plan's product), `{feature_id}` (an active\nfeature of it), `{query}`, or `{release_id}` (a release of the product).\n\nA release expands now to one feature entry per feature of the release, in feature tree order, skipping\nfeatures the plan (or this request) already has and archived ones. The release id isn't stored, so a\nlater change to the release doesn't change the plan. Nothing new to add returns the plan unchanged.",
+  "input_schema": {
+   "$defs": {
+    "PlanEntryIn": {
+     "additionalProperties": false,
+     "description": "Exactly one of `case_id`, `feature_id`, `query` or `release_id`. A `release_id` adds one feature entry\nper feature of that release at write time; the release itself is not stored.",
+     "properties": {
+      "case_id": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Case Id"
+      },
+      "feature_id": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Feature Id"
+      },
+      "query": {
+       "anyOf": [
+        {
+         "$ref": "#/$defs/PlanQuery"
+        },
+        {
+         "type": "null"
+        }
+       ]
+      },
+      "release_id": {
+       "anyOf": [
+        {
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Release Id"
+      }
+     },
+     "title": "PlanEntryIn",
+     "type": "object"
+    },
+    "PlanQuery": {
+     "additionalProperties": false,
+     "description": "Selects cases by their fields; T3 resolves it.",
+     "properties": {
+      "automation": {
+       "default": [],
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 10,
+       "title": "Automation",
+       "type": "array"
+      },
+      "priority": {
+       "default": [],
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 10,
+       "title": "Priority",
+       "type": "array"
+      },
+      "tags": {
+       "default": [],
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 50,
+       "title": "Tags",
+       "type": "array"
+      },
+      "type": {
+       "default": [],
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 10,
+       "title": "Type",
+       "type": "array"
+      }
+     },
+     "title": "PlanQuery",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "entries": {
+     "items": {
+      "$ref": "#/$defs/PlanEntryIn"
+     },
+     "maxItems": 500,
+     "minItems": 1,
+     "type": "array"
+    },
+    "id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "entries",
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "plans_add_entries",
+  "path": "/api/v1/orgs/{org}/plans/{id}/entries",
+  "scope": "write:planning",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   },
+   "release_id": {
+    "location": "body",
+    "wire": "release_id"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Plans Create",
+  "input_schema": {
+   "$defs": {
+    "DocIn": {
+     "additionalProperties": false,
+     "properties": {
+      "doc": {
+       "additionalProperties": true,
+       "description": "A rich text doc (TipTap StarterKit node names)",
+       "title": "Doc",
+       "type": "object"
+      }
+     },
+     "required": [
+      "doc"
+     ],
+     "title": "DocIn",
+     "type": "object"
+    },
+    "MarkdownIn": {
+     "additionalProperties": false,
+     "properties": {
+      "markdown": {
+       "maxLength": 200000,
+       "title": "Markdown",
+       "type": "string"
+      }
+     },
+     "required": [
+      "markdown"
+     ],
+     "title": "MarkdownIn",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "description": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MarkdownIn"
+      },
+      {
+       "$ref": "#/$defs/DocIn"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "name": {
+     "maxLength": 200,
+     "minLength": 1,
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "type": "string"
+    },
+    "release_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "name",
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "plans_create",
+  "path": "/api/v1/orgs/{org}/products/{product}/plans",
+  "scope": "write:planning",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Plans Get",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "plans_get",
+  "path": "/api/v1/orgs/{org}/plans/{id}",
+  "scope": "read",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "include_archived": {
+    "location": "query",
+    "wire": "include_archived"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Plans List",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "include_archived": {
+     "default": false,
+     "type": "boolean"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "plans_list",
+  "path": "/api/v1/orgs/{org}/products/{product}/plans",
+  "scope": "read",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": true,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "entry_id": {
+    "location": "path",
+    "wire": "entry_id"
+   },
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Plans Remove Entry. Removes one entry; the ones after it move up, so positions stay 0..n.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "entry_id": {
+     "type": "string"
+    },
+    "id": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "entry_id",
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "DELETE",
+  "name": "plans_remove_entry",
+  "path": "/api/v1/orgs/{org}/plans/{id}/entries/{entry_id}",
+  "scope": "write:planning",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "entry_ids": {
+    "location": "body",
+    "wire": "entry_ids"
+   },
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Plans Reorder Entries. Sets the entry order. `entry_ids` must be exactly the plan's current entry ids, else 409: the client\nrefetches the plan and tries again.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "entry_ids": {
+     "items": {
+      "type": "string"
+     },
+     "maxItems": 5000,
+     "type": "array"
+    },
+    "id": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "entry_ids",
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "PUT",
+  "name": "plans_reorder_entries",
+  "path": "/api/v1/orgs/{org}/plans/{id}/entries/order",
+  "scope": "write:planning",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Plans Resolve. The plan's cases in entry order, each once (its first entry wins), at their current version. Archived\nand `deprecated` cases are left out.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "plans_resolve",
+  "path": "/api/v1/orgs/{org}/plans/{id}/resolve",
+  "scope": "read",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "release_id": {
+    "location": "body",
+    "wire": "release_id"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   },
+   "status": {
+    "location": "body",
+    "wire": "status"
+   }
+  },
+  "description": "Plans Update. `status` moves draft \u2192 active \u2192 archived, or archived \u2192 active; any other move is 409. An archived\nplan is read-only until it moves back to active.",
+  "input_schema": {
+   "$defs": {
+    "DocIn": {
+     "additionalProperties": false,
+     "properties": {
+      "doc": {
+       "additionalProperties": true,
+       "description": "A rich text doc (TipTap StarterKit node names)",
+       "title": "Doc",
+       "type": "object"
+      }
+     },
+     "required": [
+      "doc"
+     ],
+     "title": "DocIn",
+     "type": "object"
+    },
+    "MarkdownIn": {
+     "additionalProperties": false,
+     "properties": {
+      "markdown": {
+       "maxLength": 200000,
+       "title": "Markdown",
+       "type": "string"
+      }
+     },
+     "required": [
+      "markdown"
+     ],
+     "title": "MarkdownIn",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "description": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MarkdownIn"
+      },
+      {
+       "$ref": "#/$defs/DocIn"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "id": {
+     "type": "string"
+    },
+    "name": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "release_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "enum": [
+        "draft",
+        "active",
+        "archived"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "PATCH",
+  "name": "plans_update",
+  "path": "/api/v1/orgs/{org}/plans/{id}",
+  "scope": "write:planning",
+  "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": true,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Products Archive",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "products_archive",
+  "path": "/api/v1/orgs/{org}/products/{product}/archive",
+  "scope": "write:catalog",
+  "toolset": "catalog"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "key": {
+    "location": "body",
+    "wire": "key"
+   },
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Products Create",
+  "input_schema": {
+   "$defs": {
+    "DocIn": {
+     "additionalProperties": false,
+     "properties": {
+      "doc": {
+       "additionalProperties": true,
+       "description": "A rich text doc (TipTap StarterKit node names)",
+       "title": "Doc",
+       "type": "object"
+      }
+     },
+     "required": [
+      "doc"
+     ],
+     "title": "DocIn",
+     "type": "object"
+    },
+    "MarkdownIn": {
+     "additionalProperties": false,
+     "properties": {
+      "markdown": {
+       "maxLength": 200000,
+       "title": "Markdown",
+       "type": "string"
+      }
+     },
+     "required": [
+      "markdown"
+     ],
+     "title": "MarkdownIn",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "description": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MarkdownIn"
+      },
+      {
+       "$ref": "#/$defs/DocIn"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "key": {
+     "description": "Short key, e.g. PAY; can't change later",
+     "pattern": "^[A-Z][A-Z0-9]{1,9}$",
+     "type": "string"
+    },
+    "name": {
+     "maxLength": 200,
+     "minLength": 1,
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "key",
+    "name",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "products_create",
+  "path": "/api/v1/orgs/{org}/products",
+  "scope": "write:catalog",
+  "toolset": "catalog"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Products Get",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "products_get",
+  "path": "/api/v1/orgs/{org}/products/{product}",
+  "scope": "read",
+  "toolset": "catalog"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "include_archived": {
+    "location": "query",
+    "wire": "include_archived"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Products List",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "include_archived": {
+     "default": false,
+     "type": "boolean"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "products_list",
+  "path": "/api/v1/orgs/{org}/products",
+  "scope": "read",
+  "toolset": "catalog"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Products Update",
+  "input_schema": {
+   "$defs": {
+    "DocIn": {
+     "additionalProperties": false,
+     "properties": {
+      "doc": {
+       "additionalProperties": true,
+       "description": "A rich text doc (TipTap StarterKit node names)",
+       "title": "Doc",
+       "type": "object"
+      }
+     },
+     "required": [
+      "doc"
+     ],
+     "title": "DocIn",
+     "type": "object"
+    },
+    "MarkdownIn": {
+     "additionalProperties": false,
+     "properties": {
+      "markdown": {
+       "maxLength": 200000,
+       "title": "Markdown",
+       "type": "string"
+      }
+     },
+     "required": [
+      "markdown"
+     ],
+     "title": "MarkdownIn",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "description": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MarkdownIn"
+      },
+      {
+       "$ref": "#/$defs/DocIn"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "name": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "PATCH",
+  "name": "products_update",
+  "path": "/api/v1/orgs/{org}/products/{product}",
+  "scope": "write:catalog",
+  "toolset": "catalog"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "notes": {
+    "location": "body",
+    "wire": "notes"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   },
+   "released_at": {
+    "location": "body",
+    "wire": "released_at"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   },
+   "status": {
+    "location": "body",
+    "wire": "status"
+   },
+   "target_date": {
+    "location": "body",
+    "wire": "target_date"
+   },
+   "version": {
+    "location": "body",
+    "wire": "version"
+   }
+  },
+  "description": "Releases Create",
+  "input_schema": {
+   "$defs": {
+    "DocIn": {
+     "additionalProperties": false,
+     "properties": {
+      "doc": {
+       "additionalProperties": true,
+       "description": "A rich text doc (TipTap StarterKit node names)",
+       "title": "Doc",
+       "type": "object"
+      }
+     },
+     "required": [
+      "doc"
+     ],
+     "title": "DocIn",
+     "type": "object"
+    },
+    "MarkdownIn": {
+     "additionalProperties": false,
+     "properties": {
+      "markdown": {
+       "maxLength": 200000,
+       "title": "Markdown",
+       "type": "string"
+      }
+     },
+     "required": [
+      "markdown"
+     ],
+     "title": "MarkdownIn",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "name": {
+     "maxLength": 200,
+     "minLength": 1,
+     "type": "string"
+    },
+    "notes": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MarkdownIn"
+      },
+      {
+       "$ref": "#/$defs/DocIn"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "type": "string"
+    },
+    "released_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    },
+    "status": {
+     "default": "planned",
+     "enum": [
+      "planned",
+      "in_progress",
+      "released",
+      "cancelled"
+     ],
+     "type": "string"
+    },
+    "target_date": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "version": {
+     "maxLength": 64,
+     "minLength": 1,
+     "type": "string"
+    }
+   },
+   "required": [
+    "name",
+    "org",
+    "product",
+    "version"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "releases_create",
+  "path": "/api/v1/orgs/{org}/products/{product}/releases",
+  "scope": "write:catalog",
+  "toolset": "catalog"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Releases Get",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "releases_get",
+  "path": "/api/v1/orgs/{org}/releases/{id}",
+  "scope": "read",
+  "toolset": "catalog"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Releases List",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "releases_list",
+  "path": "/api/v1/orgs/{org}/products/{product}/releases",
+  "scope": "read",
+  "toolset": "catalog"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "feature_ids": {
+    "location": "body",
+    "wire": "feature_ids"
+   },
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Releases Set Features. Replaces the features the release affects. Each must be an active feature of the release's product.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "feature_ids": {
+     "items": {
+      "type": "string"
+     },
+     "maxItems": 2000,
+     "type": "array"
+    },
+    "id": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "feature_ids",
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "PUT",
+  "name": "releases_set_features",
+  "path": "/api/v1/orgs/{org}/releases/{id}/features",
+  "scope": "write:catalog",
+  "toolset": "catalog"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "notes": {
+    "location": "body",
+    "wire": "notes"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "released_at": {
+    "location": "body",
+    "wire": "released_at"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   },
+   "status": {
+    "location": "body",
+    "wire": "status"
+   },
+   "target_date": {
+    "location": "body",
+    "wire": "target_date"
+   },
+   "version": {
+    "location": "body",
+    "wire": "version"
+   }
+  },
+  "description": "Releases Update",
+  "input_schema": {
+   "$defs": {
+    "DocIn": {
+     "additionalProperties": false,
+     "properties": {
+      "doc": {
+       "additionalProperties": true,
+       "description": "A rich text doc (TipTap StarterKit node names)",
+       "title": "Doc",
+       "type": "object"
+      }
+     },
+     "required": [
+      "doc"
+     ],
+     "title": "DocIn",
+     "type": "object"
+    },
+    "MarkdownIn": {
+     "additionalProperties": false,
+     "properties": {
+      "markdown": {
+       "maxLength": 200000,
+       "title": "Markdown",
+       "type": "string"
+      }
+     },
+     "required": [
+      "markdown"
+     ],
+     "title": "MarkdownIn",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "name": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "notes": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MarkdownIn"
+      },
+      {
+       "$ref": "#/$defs/DocIn"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "released_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "enum": [
+        "planned",
+        "in_progress",
+        "released",
+        "cancelled"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "target_date": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "version": {
+     "anyOf": [
+      {
+       "maxLength": 64,
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "PATCH",
+  "name": "releases_update",
+  "path": "/api/v1/orgs/{org}/releases/{id}",
+  "scope": "write:catalog",
+  "toolset": "catalog"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "cycle_id": {
+    "location": "path",
+    "wire": "cycle_id"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Reports Cycle. One cycle's counts by status, as they stand (pinned versions, no stale check).",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "cycle_id": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "cycle_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "reports_cycle",
+  "path": "/api/v1/orgs/{org}/cycles/{cycle_id}/report",
+  "scope": "read",
+  "toolset": "reports"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "feature_id": {
+    "location": "path",
+    "wire": "feature_id"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "release": {
+    "location": "query",
+    "wire": "release"
+   }
+  },
+  "description": "Reports Feature. The feature subtree's cases in the release: totals, and one page of cases by case number.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "feature_id": {
+     "type": "string"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "release": {
+     "description": "A release id of the feature's product",
+     "type": "string"
+    }
+   },
+   "required": [
+    "feature_id",
+    "org",
+    "release"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "reports_feature",
+  "path": "/api/v1/orgs/{org}/features/{feature_id}/report",
+  "scope": "read",
+  "toolset": "reports"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "release_status": {
+    "location": "query",
+    "wire": "release_status"
+   }
+  },
+  "description": "Reports Org. Every product the caller can see (not archived), with its releases in the given statuses.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "release_status": {
+     "default": [],
+     "description": "Repeatable; default planned and in_progress",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "reports_org",
+  "path": "/api/v1/orgs/{org}/report",
+  "scope": "read",
+  "toolset": "reports"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   },
+   "release": {
+    "location": "query",
+    "wire": "release"
+   }
+  },
+  "description": "Reports Product",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "type": "string"
+    },
+    "release": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A release id; default every release that isn't cancelled"
+    }
+   },
+   "required": [
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "reports_product",
+  "path": "/api/v1/orgs/{org}/products/{product}/report",
+  "scope": "read",
+  "toolset": "reports"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "release_id": {
+    "location": "path",
+    "wire": "release_id"
+   }
+  },
+  "description": "Reports Release. Release readiness: the counts, `ready`, and the counts per feature (by the case's current feature).",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "release_id": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "org",
+    "release_id"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "reports_release",
+  "path": "/api/v1/orgs/{org}/releases/{release_id}/report",
+  "scope": "read",
+  "toolset": "reports"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "items": {
+    "location": "body",
+    "wire": "items"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Results Bulk Create. Many results at once, each matched to a case of this cycle by `case_key` or by the pinned version's\n`automation_ref`. Items that match nothing are listed in `unmatched`; the rest are recorded.",
+  "input_schema": {
+   "$defs": {
+    "BulkResultItem": {
+     "additionalProperties": false,
+     "description": "One result matched by `case_key` (e.g. PAY-12) or the pinned version's `automation_ref`.",
+     "properties": {
+      "automation_ref": {
+       "anyOf": [
+        {
+         "maxLength": 500,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Automation Ref"
+      },
+      "case_key": {
+       "anyOf": [
+        {
+         "maxLength": 40,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Case Key"
+      },
+      "comment": {
+       "anyOf": [
+        {
+         "maxLength": 20000,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Comment"
+      },
+      "defects": {
+       "items": {
+        "$ref": "#/$defs/Link"
+       },
+       "maxItems": 50,
+       "title": "Defects",
+       "type": "array"
+      },
+      "duration_ms": {
+       "anyOf": [
+        {
+         "minimum": 0.0,
+         "type": "integer"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Duration Ms"
+      },
+      "status": {
+       "enum": [
+        "success",
+        "fail",
+        "error",
+        "ignore",
+        "skip",
+        "cancel"
+       ],
+       "title": "Status",
+       "type": "string"
+      }
+     },
+     "required": [
+      "status"
+     ],
+     "title": "BulkResultItem",
+     "type": "object"
+    },
+    "Link": {
+     "additionalProperties": false,
+     "properties": {
+      "key": {
+       "anyOf": [
+        {
+         "maxLength": 100,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Key"
+      },
+      "url": {
+       "maxLength": 2000,
+       "pattern": "^https?://",
+       "title": "Url",
+       "type": "string"
+      }
+     },
+     "required": [
+      "url"
+     ],
+     "title": "Link",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "items": {
+     "items": {
+      "$ref": "#/$defs/BulkResultItem"
+     },
+     "maxItems": 500,
+     "minItems": 1,
+     "type": "array"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "items",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "results_bulk_create",
+  "path": "/api/v1/orgs/{org}/cycles/{id}/results/bulk",
+  "scope": "write:execution",
+  "toolset": "execution"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "attachment_ids": {
+    "location": "body",
+    "wire": "attachment_ids"
+   },
+   "comment": {
+    "location": "body",
+    "wire": "comment"
+   },
+   "defects": {
+    "location": "body",
+    "wire": "defects"
+   },
+   "duration_ms": {
+    "location": "body",
+    "wire": "duration_ms"
+   },
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   },
+   "status": {
+    "location": "body",
+    "wire": "status"
+   },
+   "steps": {
+    "location": "body",
+    "wire": "steps"
+   }
+  },
+  "description": "Results Create. Records the next attempt for the case. Step ids come from the version the cycle pinned, each once.\nA `skip` needs a reason in `comment`. Results are never edited: a retest is the next attempt.",
+  "input_schema": {
+   "$defs": {
+    "DocIn": {
+     "additionalProperties": false,
+     "properties": {
+      "doc": {
+       "additionalProperties": true,
+       "description": "A rich text doc (TipTap StarterKit node names)",
+       "title": "Doc",
+       "type": "object"
+      }
+     },
+     "required": [
+      "doc"
+     ],
+     "title": "DocIn",
+     "type": "object"
+    },
+    "Link": {
+     "additionalProperties": false,
+     "properties": {
+      "key": {
+       "anyOf": [
+        {
+         "maxLength": 100,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Key"
+      },
+      "url": {
+       "maxLength": 2000,
+       "pattern": "^https?://",
+       "title": "Url",
+       "type": "string"
+      }
+     },
+     "required": [
+      "url"
+     ],
+     "title": "Link",
+     "type": "object"
+    },
+    "MarkdownIn": {
+     "additionalProperties": false,
+     "properties": {
+      "markdown": {
+       "maxLength": 200000,
+       "title": "Markdown",
+       "type": "string"
+      }
+     },
+     "required": [
+      "markdown"
+     ],
+     "title": "MarkdownIn",
+     "type": "object"
+    },
+    "StepResultIn": {
+     "additionalProperties": false,
+     "properties": {
+      "actual": {
+       "anyOf": [
+        {
+         "$ref": "#/$defs/MarkdownIn"
+        },
+        {
+         "$ref": "#/$defs/DocIn"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Actual"
+      },
+      "attachment_ids": {
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 50,
+       "title": "Attachment Ids",
+       "type": "array"
+      },
+      "status": {
+       "enum": [
+        "untested",
+        "success",
+        "fail",
+        "error",
+        "skip"
+       ],
+       "title": "Status",
+       "type": "string"
+      },
+      "step_id": {
+       "title": "Step Id",
+       "type": "string"
+      }
+     },
+     "required": [
+      "step_id",
+      "status"
+     ],
+     "title": "StepResultIn",
+     "type": "object"
+    }
+   },
+   "additionalProperties": false,
+   "properties": {
+    "attachment_ids": {
+     "items": {
+      "type": "string"
+     },
+     "maxItems": 50,
+     "type": "array"
+    },
+    "comment": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MarkdownIn"
+      },
+      {
+       "$ref": "#/$defs/DocIn"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "defects": {
+     "items": {
+      "$ref": "#/$defs/Link"
+     },
+     "maxItems": 50,
+     "type": "array"
+    },
+    "duration_ms": {
+     "anyOf": [
+      {
+       "minimum": 0.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    },
+    "status": {
+     "enum": [
+      "success",
+      "fail",
+      "error",
+      "ignore",
+      "skip",
+      "cancel"
+     ],
+     "type": "string"
+    },
+    "steps": {
+     "items": {
+      "$ref": "#/$defs/StepResultIn"
+     },
+     "maxItems": 200,
+     "type": "array"
+    }
+   },
+   "required": [
+    "id",
+    "org",
+    "status"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "results_create",
+  "path": "/api/v1/orgs/{org}/cycle-cases/{id}/results",
+  "scope": "write:execution",
+  "toolset": "execution"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Results List. Every attempt for the cycle case, oldest first.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "id": {
+     "type": "string"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "results_list",
+  "path": "/api/v1/orgs/{org}/cycle-cases/{id}/results",
+  "scope": "read",
+  "toolset": "execution"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "feature": {
+    "location": "query",
+    "wire": "feature"
+   },
+   "include_archived": {
+    "location": "query",
+    "wire": "include_archived"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "query",
+    "wire": "product"
+   },
+   "q": {
+    "location": "query",
+    "wire": "q"
+   },
+   "tag": {
+    "location": "query",
+    "wire": "tag"
+   }
+  },
+  "description": "Search. Cases whose current version matches `q` and has every `tag`. Needs `q` or `tag`.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "feature": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A feature id; its subtree is searched"
+    },
+    "include_archived": {
+     "default": false,
+     "type": "boolean"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A product id or key"
+    },
+    "q": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Case-insensitive text in the title, preconditions or steps"
+    },
+    "tag": {
+     "default": [],
+     "description": "Repeatable; a case must have every tag",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "search",
+  "path": "/api/v1/orgs/{org}/search",
+  "scope": "read",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product": {
+    "location": "path",
+    "wire": "product"
+   }
+  },
+  "description": "Tags List. Every tag of the product, by name, with how many live cases carry it now.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "org",
+    "product"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "tags_list",
+  "path": "/api/v1/orgs/{org}/products/{product}/tags",
+  "scope": "read",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "actor_id": {
+    "location": "body",
+    "wire": "actor_id"
+   },
+   "expires_at": {
+    "location": "body",
+    "wire": "expires_at"
+   },
+   "name": {
+    "location": "body",
+    "wire": "name"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "product_ids": {
+    "location": "body",
+    "wire": "product_ids"
+   },
+   "scopes": {
+    "location": "body",
+    "wire": "scopes"
+   }
+  },
+  "description": "Tokens Create",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "actor_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "expires_at": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "name": {
+     "maxLength": 200,
+     "minLength": 1,
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "product_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "scopes": {
+     "items": {
+      "type": "string"
+     },
+     "minItems": 1,
+     "type": "array"
+    }
+   },
+   "required": [
+    "name",
+    "org",
+    "scopes"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "tokens_create",
+  "path": "/api/v1/orgs/{org}/tokens",
+  "scope": "tokens:self",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Tokens List",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "tokens_list",
+  "path": "/api/v1/orgs/{org}/tokens",
+  "scope": "tokens:self",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": true,
+   "idempotent_hint": false,
+   "read_only_hint": false
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "token_id": {
+    "location": "path",
+    "wire": "token_id"
+   }
+  },
+  "description": "Tokens Revoke",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "token_id": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "org",
+    "token_id"
+   ],
+   "type": "object"
+  },
+  "method": "DELETE",
+  "name": "tokens_revoke",
+  "path": "/api/v1/orgs/{org}/tokens/{token_id}",
+  "scope": "tokens:self",
+  "toolset": "admin"
+ }
+]

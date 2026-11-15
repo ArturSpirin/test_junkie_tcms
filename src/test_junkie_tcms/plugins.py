@@ -25,7 +25,12 @@ class PluginContext:
         self.plugin = plugin
 
     def add_router(self, router: APIRouter, prefix: str = "") -> None:
-        """Mount plugin routes under `/api/v1/ext/<plugin><prefix>`."""
+        """Mount plugin routes under `/api/v1/ext/<plugin><prefix>`.
+
+        Every route needs the same marker as the core API, `**operation(id, scope, toolset, mcp=...)` from
+        `test_junkie_tcms.api.operations`; the app refuses to start the MCP server, and the drift guard
+        fails, on an unmarked one. Marked routes become MCP tools like any other.
+        """
         self.app.include_router(router, prefix=f"/api/v1/ext/{self.plugin}{prefix}")
 
     def set_audit_retention(self, policy: RetentionPolicy) -> None:

@@ -43,10 +43,8 @@ router = APIRouter(tags=["execution"])
 
 
 def result_via(request: Request, ctx: OrgContext) -> str:
-    # X-TCMS-Via is set by the client, so any bearer caller can claim it: it labels the result for
-    # reports, it is not a trust signal and grants nothing.
-    if ctx.principal.token is not None and request.headers.get("X-TCMS-Via", "").lower() == "mcp":
-        return "mcp"
+    # "mcp" comes from the ASGI scope marker the MCP dispatcher sets (auth/deps.py), never from a client
+    # header, so the label can't be claimed by a plain API call.
     return ctx.principal.via
 
 

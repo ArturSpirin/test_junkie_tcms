@@ -55,14 +55,14 @@ def admin_token(owner):
 # Listing
 
 
-def test_default_toolsets_list_21_tools_and_all_lists_76(app, mcp, owner, admin_token):
+def test_default_toolsets_list_21_tools_and_all_lists_79(app, mcp, owner, admin_token):
     assert len(tool_names(mcp, admin_token)) == 21
-    assert len(tool_names(mcp, admin_token, "?toolsets=all")) == 76
+    assert len(tool_names(mcp, admin_token, "?toolsets=all")) == 79
     all_but_admin = ",".join(t for t in TOOLSETS if t != "admin")
     assert len(tool_names(mcp, admin_token, f"?toolsets={all_but_admin}")) == 60
     assert tool_names(mcp, admin_token, "?toolsets=cases") <= tool_names(mcp, admin_token)
     app.state.settings.mcp_default_toolsets = "all"
-    assert len(tool_names(mcp, admin_token)) == 76
+    assert len(tool_names(mcp, admin_token)) == 79
 
 
 def test_an_unknown_toolset_is_a_400(mcp, admin_token):

@@ -3,6 +3,7 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     Date,
@@ -612,3 +613,23 @@ class ResultAttachment(TenantMixin, Base):
 
     result_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
     attachment_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+
+
+class McpToolStat(TenantMixin, Base):
+    """Calls, errors and response sizes per org, tool, actor and UTC hour (PLAN-27 §3, PLAN-100)."""
+
+    __tablename__ = "mcp_tool_stat"
+    __table_args__ = tenant_args(
+        UniqueConstraint("org_id", "tool", "actor_id", "hour"),
+        ForeignKeyConstraint(["org_id", "actor_id"], ["actor.org_id", "actor.id"]),
+        Index("ix_mcp_tool_stat_org_id_hour", "org_id", "hour"),
+    )
+
+    tool: Mapped[str] = mapped_column(String(100), nullable=False)
+    actor_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    hour: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    calls: Mapped[int] = mapped_column(Integer, nullable=False)
+    errors: Mapped[int] = mapped_column(Integer, nullable=False)
+    resp_bytes_sum: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    # 24 counts; bucket i holds sizes in [2^i, 2^(i+1)) bytes (0 also holds 0-1 B, 23 everything above)
+    resp_bytes_hist: Mapped[list[int]] = mapped_column(JSON, nullable=False)

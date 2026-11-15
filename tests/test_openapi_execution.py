@@ -1,7 +1,9 @@
 """T4's contract: every cycle, result and attachment operation carries its scope, toolset and MCP flag."""
 
-import pytest
-from test_openapi_cases import ops
+from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
+
+from tests import support
+from tests.test_openapi_cases import ops
 
 EXECUTION_OPS = {
     "cycles_list": ("read", "execution", True),
@@ -26,19 +28,35 @@ EXECUTION_OPS = {
 }
 
 
-@pytest.fixture
-def spec(client_factory):
-    response = client_factory().get("/api/v1/openapi.json")
+def spec(env):
+    response = env.client().get("/api/v1/openapi.json")
     assert response.status_code == 200
     return response.json()["paths"]
 
 
-@pytest.mark.parametrize("name", sorted(EXECUTION_OPS))
-def test_execution_operation_is_marked(spec, name):
-    op = ops(spec)[name]
-    assert (op["x-scope"], op["x-toolset"], op["x-mcp"]) == EXECUTION_OPS[name]
+@Suite(parameters=support.DATABASES)
+class OpenapiExecution:
+    @beforeTest()
+    def open_env(self, suite_parameter):
+        self.env = support.Env(suite_parameter)
 
+    @afterTest()
+    def close_env(self):
+        self.env.close()
 
-def test_results_have_no_edit_or_delete(spec):
-    names = set(ops(spec))
-    assert not {n for n in names if n.startswith("results_") and n.split("_", 1)[1] in ("update", "delete")}
+    @afterClass()
+    def sweep(self):
+        support.close_all()
+
+    @test(parameters=sorted(EXECUTION_OPS))
+    def test_execution_operation_is_marked(self, suite_parameter, parameter):
+        name = parameter
+        op = ops(spec(self.env))[name]
+        assert (op["x-scope"], op["x-toolset"], op["x-mcp"]) == EXECUTION_OPS[name]
+
+    @test()
+    def test_results_have_no_edit_or_delete(self, suite_parameter):
+        names = set(ops(spec(self.env)))
+        assert not {
+            n for n in names if n.startswith("results_") and n.split("_", 1)[1] in ("update", "delete")
+        }

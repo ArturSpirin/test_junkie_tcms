@@ -67,7 +67,9 @@ def rosters(db: Session, consumer_ids: list[str]) -> dict[str, dict[str, set[str
 
 
 def check_consumers(db: Session, org_id: str, product_id: str, ids: list[str], now) -> list[Consumer]:
-    """The chosen consumers in the given order: 404 not in the org, 422 not serving the product, 409 offline."""
+    """The chosen consumers in the given order.
+
+    404 not in the org, 422 not serving the product, 409 offline."""
     found = []
     for consumer_id in dict.fromkeys(ids):
         row = db.scalar(select(Consumer).where(Consumer.org_id == org_id, Consumer.id == consumer_id))
@@ -94,7 +96,8 @@ class Split:
 def split_by_runner(db: Session, consumers: list[Consumer], items: list[tuple[object, CaseVersion]]) -> Split:
     """An item goes to a consumer when its pinned version is automated and its automation_ref is in that
     consumer's inventory; ties go to the consumer with the fewest cases so far, then the given order. One
-    share per (consumer, project). An automated case no consumer lists counts as unmatched and goes to people."""
+    share per (consumer, project). An automated case no consumer lists counts as unmatched and goes to
+    people."""
     out = Split()
     inventory = rosters(db, [c.id for c in consumers])
     load = {c.id: 0 for c in consumers}

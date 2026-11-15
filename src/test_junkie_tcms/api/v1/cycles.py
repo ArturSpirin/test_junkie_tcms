@@ -345,7 +345,11 @@ def cycles_preview(
         per[c.feature_id] = per.get(c.feature_id, 0) + 1
     names = dict(db.execute(select(Feature.id, Feature.name).where(Feature.id.in_(per))).all()) if per else {}
     features = [PreviewFeature(feature_id=f, name=names.get(f, ""), cases=n) for f, n in per.items()]
-    plan = split_by_runner(db, consumers, [(c, db_current(db, c)) for c in live]) if consumers else Split(person=live)
+    plan = (
+        split_by_runner(db, consumers, [(c, db_current(db, c)) for c in live])
+        if consumers
+        else Split(person=live)
+    )
     by_consumer = [
         PreviewConsumer(
             consumer_id=c.id,

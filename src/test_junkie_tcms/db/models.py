@@ -248,7 +248,6 @@ class ReleaseFeature(TenantMixin, Base):
 
 
 class TestPlan(TenantMixin, UpdatedMixin, Base):
-    __test__ = False  # not a pytest class
     __tablename__ = "test_plan"
     __table_args__ = tenant_args(
         ForeignKeyConstraint(["org_id", "product_id"], ["product.org_id", "product.id"]),
@@ -292,7 +291,6 @@ IDEMPOTENCY_STATES = ("pending", "done")
 
 
 class TestCase(TenantMixin, UpdatedMixin, Base):
-    __test__ = False  # not a pytest class
     __tablename__ = "test_case"
     __table_args__ = tenant_args(
         UniqueConstraint("org_id", "product_id", "number"),

@@ -1,8 +1,9 @@
 """Rich text: the node set, and JSON -> Markdown -> JSON without losing content."""
 
-import pytest
+from test_junkie.decorators import Suite, test
 
 from test_junkie_tcms.richtext import RichTextError, doc_to_md, doc_to_text, md_to_doc, validate
+from tests import support
 
 IMG = "attachment:01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
@@ -173,125 +174,127 @@ CORPUS = {
 }
 
 
-@pytest.mark.parametrize("name", sorted(CORPUS))
-def test_json_to_markdown_to_json_keeps_everything(name):
-    original = CORPUS[name]
-    assert validate(original) == original, "corpus entries are written in normalized form"
-    markdown = doc_to_md(original)
-    assert md_to_doc(markdown) == original, markdown
-    assert doc_to_md(md_to_doc(markdown)) == markdown
+@Suite()
+class RichText:
+    @test(parameters=sorted(CORPUS))
+    def test_json_to_markdown_to_json_keeps_everything(self, parameter):
+        name = parameter
+        original = CORPUS[name]
+        assert validate(original) == original, "corpus entries are written in normalized form"
+        markdown = doc_to_md(original)
+        assert md_to_doc(markdown) == original, markdown
+        assert doc_to_md(md_to_doc(markdown)) == markdown
 
-
-def test_markdown_reads_common_syntax():
-    got = md_to_doc(
-        "Intro *em* __strong__ ~~gone~~ `code` <https://example.com>\nnext line\n\n"
-        "* a\n* b\n\n- [x] done\n- [ ] open\n\n##### deep\n\n    indented code\n\n***\n"
-    )
-    assert got == doc(
-        p(
-            t("Intro "),
-            t("em", "italic"),
-            t(" "),
-            t("strong", "bold"),
-            t(" "),
-            t("gone", "strike"),
-            t(" "),
-            t("code", "code"),
-            t(" "),
-            t("https://example.com", "link", href="https://example.com"),
-            BR,
-            t("next line"),
-        ),
-        bullets(li(p(t("a"))), li(p(t("b")))),
-        tasks(task(True, p(t("done"))), task(False, p(t("open")))),
-        h(3, t("deep")),
-        code("indented code"),
-        HR,
-    )
-
-
-def test_mixed_task_and_plain_items_keep_the_box_as_text():
-    assert md_to_doc("- [x] done\n- plain\n") == doc(bullets(li(p(t("[x] done"))), li(p(t("plain")))))
-
-
-def test_raw_html_is_text_not_markup():
-    assert md_to_doc("<script>alert(1)</script>\n\nx <b>y</b>") == doc(
-        p(t("<script>alert(1)</script>")), p(t("x <b>y</b>"))
-    )
-
-
-def test_unsafe_links_never_become_links():
-    assert md_to_doc("[x](javascript:alert(1))") == doc(p(t("[x](javascript:alert(1))")))
-    with pytest.raises(RichTextError, match="http, https or mailto"):
-        md_to_doc("[x](ftp://example.com)")
-
-
-def test_images_must_be_attachments():
-    with pytest.raises(RichTextError, match="attachment"):
-        md_to_doc("![x](https://example.com/a.png)")
-
-
-@pytest.mark.parametrize(
-    ("bad", "message"),
-    [
-        ({"type": "paragraph"}, "root must be a doc"),
-        (doc({"type": "video"}), "unknown node"),
-        (doc(p(t("x", "underline"))), "unknown mark"),
-        (doc(p(t("a\nb"))), "hardBreak"),
-        (doc(h(4, t("x"))), "level"),
-        (doc(h(1, t("a"), BR, t("b"))), "can't be inside heading"),
-        (doc(p({"type": "text", "text": "x", "marks": [{"type": "bold"}, {"type": "bold"}]})), "twice"),
-        (doc(p(t("x", "link", href="javascript:alert(1)"))), "http, https or mailto"),
-        (doc(p({"type": "image", "attrs": {"src": "https://example.com/x.png"}})), "attachment"),
-        (doc(code("x", "no spaces allowed")), "language"),
-        (doc(bullets()), "at least one"),
-        (doc(bullets(p(t("x")))), "can't be inside bulletList"),
-        (doc({"type": "paragraph", "attrs": {"align": "left"}}), "unknown attrs"),
-        (doc(table([[t("a")], [t("b")]], [[t("c")]])), "same number"),
-        (doc({"type": "table", "content": [{"type": "tableRow", "content": [CELL]}]}), "tableHeader"),
-        (doc(table([[t("a"), BR, t("b")]])), "line break"),
-    ],
-)
-def test_invalid_docs_are_refused(bad, message):
-    with pytest.raises(RichTextError, match=message):
-        validate(bad)
-
-
-def test_normalize_merges_and_drops():
-    messy = doc(
-        p(t("a"), t(""), t("b"), BR),
-        p(),
-        p(t("x", "italic", "bold"), t("y", "bold", "italic")),
-        bullets({"type": "listItem"}),
-        {"type": "codeBlock", "content": [t("a"), t("b")]},
-        p(t("l", "link", href="https://example.com/a b")),
-    )
-    assert validate(messy) == doc(
-        p(t("ab")),
-        p(t("xy", "bold", "italic")),
-        bullets(li(p())),
-        code("ab"),
-        p(t("l", "link", href="https://example.com/a%20b")),
-    )
-
-
-def test_tiptap_link_attrs_are_dropped():
-    tiptap = doc(
-        p(
-            {
-                "type": "text",
-                "text": "x",
-                "marks": [
-                    {"type": "link", "attrs": {"href": "https://e.com", "target": "_blank", "rel": "x"}}
-                ],
-            }
+    @test()
+    def test_markdown_reads_common_syntax(self):
+        got = md_to_doc(
+            "Intro *em* __strong__ ~~gone~~ `code` <https://example.com>\nnext line\n\n"
+            "* a\n* b\n\n- [x] done\n- [ ] open\n\n##### deep\n\n    indented code\n\n***\n"
         )
-    )
-    assert validate(tiptap) == doc(p(t("x", "link", href="https://e.com")))
+        assert got == doc(
+            p(
+                t("Intro "),
+                t("em", "italic"),
+                t(" "),
+                t("strong", "bold"),
+                t(" "),
+                t("gone", "strike"),
+                t(" "),
+                t("code", "code"),
+                t(" "),
+                t("https://example.com", "link", href="https://example.com"),
+                BR,
+                t("next line"),
+            ),
+            bullets(li(p(t("a"))), li(p(t("b")))),
+            tasks(task(True, p(t("done"))), task(False, p(t("open")))),
+            h(3, t("deep")),
+            code("indented code"),
+            HR,
+        )
 
+    @test()
+    def test_mixed_task_and_plain_items_keep_the_box_as_text(self):
+        assert md_to_doc("- [x] done\n- plain\n") == doc(bullets(li(p(t("[x] done"))), li(p(t("plain")))))
 
-def test_plain_text_for_search():
-    assert doc_to_text(CORPUS["mixed"]) == (
-        "Login\nSteps for SSO:\nOpen /login\nClick Sign in\ncheck logs\n"
-        "Field Value\nuser admin@example.com\ncurl -X POST"
+    @test()
+    def test_raw_html_is_text_not_markup(self):
+        assert md_to_doc("<script>alert(1)</script>\n\nx <b>y</b>") == doc(
+            p(t("<script>alert(1)</script>")), p(t("x <b>y</b>"))
+        )
+
+    @test()
+    def test_unsafe_links_never_become_links(self):
+        assert md_to_doc("[x](javascript:alert(1))") == doc(p(t("[x](javascript:alert(1))")))
+        with support.raises(RichTextError, match="http, https or mailto"):
+            md_to_doc("[x](ftp://example.com)")
+
+    @test()
+    def test_images_must_be_attachments(self):
+        with support.raises(RichTextError, match="attachment"):
+            md_to_doc("![x](https://example.com/a.png)")
+
+    @test(
+        parameters=[
+            ({"type": "paragraph"}, "root must be a doc"),
+            (doc({"type": "video"}), "unknown node"),
+            (doc(p(t("x", "underline"))), "unknown mark"),
+            (doc(p(t("a\nb"))), "hardBreak"),
+            (doc(h(4, t("x"))), "level"),
+            (doc(h(1, t("a"), BR, t("b"))), "can't be inside heading"),
+            (doc(p({"type": "text", "text": "x", "marks": [{"type": "bold"}, {"type": "bold"}]})), "twice"),
+            (doc(p(t("x", "link", href="javascript:alert(1)"))), "http, https or mailto"),
+            (doc(p({"type": "image", "attrs": {"src": "https://example.com/x.png"}})), "attachment"),
+            (doc(code("x", "no spaces allowed")), "language"),
+            (doc(bullets()), "at least one"),
+            (doc(bullets(p(t("x")))), "can't be inside bulletList"),
+            (doc({"type": "paragraph", "attrs": {"align": "left"}}), "unknown attrs"),
+            (doc(table([[t("a")], [t("b")]], [[t("c")]])), "same number"),
+            (doc({"type": "table", "content": [{"type": "tableRow", "content": [CELL]}]}), "tableHeader"),
+            (doc(table([[t("a"), BR, t("b")]])), "line break"),
+        ]
     )
+    def test_invalid_docs_are_refused(self, parameter):
+        bad, message = parameter
+        with support.raises(RichTextError, match=message):
+            validate(bad)
+
+    @test()
+    def test_normalize_merges_and_drops(self):
+        messy = doc(
+            p(t("a"), t(""), t("b"), BR),
+            p(),
+            p(t("x", "italic", "bold"), t("y", "bold", "italic")),
+            bullets({"type": "listItem"}),
+            {"type": "codeBlock", "content": [t("a"), t("b")]},
+            p(t("l", "link", href="https://example.com/a b")),
+        )
+        assert validate(messy) == doc(
+            p(t("ab")),
+            p(t("xy", "bold", "italic")),
+            bullets(li(p())),
+            code("ab"),
+            p(t("l", "link", href="https://example.com/a%20b")),
+        )
+
+    @test()
+    def test_tiptap_link_attrs_are_dropped(self):
+        tiptap = doc(
+            p(
+                {
+                    "type": "text",
+                    "text": "x",
+                    "marks": [
+                        {"type": "link", "attrs": {"href": "https://e.com", "target": "_blank", "rel": "x"}}
+                    ],
+                }
+            )
+        )
+        assert validate(tiptap) == doc(p(t("x", "link", href="https://e.com")))
+
+    @test()
+    def test_plain_text_for_search(self):
+        assert doc_to_text(CORPUS["mixed"]) == (
+            "Login\nSteps for SSO:\nOpen /login\nClick Sign in\ncheck logs\n"
+            "Field Value\nuser admin@example.com\ncurl -X POST"
+        )

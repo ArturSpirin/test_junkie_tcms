@@ -6,7 +6,6 @@ API and its tests stay on `httpx`.
 """
 
 import json
-import time
 from urllib.parse import quote
 
 import httpx2
@@ -26,10 +25,6 @@ class _Marked:
     async def __call__(self, scope, receive, send) -> None:
         scope = {**scope, MCP_VIA_KEY: True}
         await self.app(scope, receive, send)
-
-
-def on_call(tool: ToolSpec, status: int, ms: float) -> None:
-    """Hook for per-tool usage counts (T5b); does nothing yet."""
 
 
 def _error(status: int, title: str, detail: str) -> dict:
@@ -102,10 +97,7 @@ async def dispatch(app, tool: ToolSpec, arguments: dict, token: str) -> dict:
     if bad is not None:
         return bad
     request = build_request(tool, arguments, token)
-    started = time.perf_counter()
     transport = httpx2.ASGITransport(app=_Marked(app), raise_app_exceptions=False)
     async with httpx2.AsyncClient(transport=transport, base_url=BASE_URL) as client:
         response = await client.request(**request)
-    result = envelope(response)
-    on_call(tool, response.status_code, (time.perf_counter() - started) * 1000)
-    return result
+    return envelope(response)

@@ -196,3 +196,12 @@ def require_scope(scope: str):
         return ctx
 
     return check
+
+
+def require_any_scope(*scopes: str):
+    def check(ctx: OrgContext = Depends(get_org_context)) -> OrgContext:
+        if not any(ctx.has(scope) for scope in scopes):
+            raise HTTPException(403, f"Needs scope {' or '.join(scopes)}")
+        return ctx
+
+    return check

@@ -21,6 +21,7 @@ NO_IDEMPOTENCY |= {"jobs_report"}  # consumer-only
 NO_IDEMPOTENCY |= {"invites_create", "invites_accept"}  # invite token never stored for replay
 NO_IDEMPOTENCY |= {"attachments_upload", "attachments_upload_base64"}  # content dedupe makes a repeat safe
 NO_IDEMPOTENCY |= {"cycles_preview"}  # writes nothing
+NO_IDEMPOTENCY |= {"exports_create"}  # a read in POST form: writes nothing
 
 
 @pytest.fixture

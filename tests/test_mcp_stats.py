@@ -147,7 +147,7 @@ def test_tools_list_gives_definition_and_response_cost(mcp, admin_token, clock):
     raw_call(mcp, admin_token, "me_get")
     listed = ok(api.get(url("/mcp/tools")))
     by_name = {item["name"]: item for item in listed["items"]}
-    assert len(by_name) == 82 and MCP_OPS <= set(by_name)
+    assert len(by_name) == 90 and MCP_OPS <= set(by_name)
     live = rpc(mcp, admin_token, "tools/list", query="?toolsets=all").json()["result"]["tools"]
     for entry in live:
         wire = json.dumps(entry, separators=(",", ":")).encode()
@@ -220,7 +220,7 @@ def test_server_get_gives_the_version_and_tool_list_hash(app, mcp, admin_token):
     api = TestClient(app)
     api.headers["Authorization"] = f"Bearer {admin_token}"
     server = ok(api.get(url("/mcp/server")))
-    assert server["version"] == __version__ and server["tool_count"] == 82
+    assert server["version"] == __version__ and server["tool_count"] == 90
     assert server["tool_list_hash"] == tool_list_hash(build_tools(app))
     over_mcp = call_all(mcp, admin_token, "mcp_server_get", org="acme")["structuredContent"]
     assert over_mcp["status"] == 200 and over_mcp["data"] == server

@@ -1,4 +1,4 @@
-"""`test-junkie-tcms mcp`: a stdio MCP server that relays to a TCMS server's `/mcp` (PLAN-88).
+"""`test-junkie-tcms mcp`: a stdio MCP server that relays to a TCMS server's `/mcp`.
 
 For MCP clients that only start local stdio servers. It holds no tools of its own: `tools/list` and
 `tools/call` go to the remote `/mcp` with the token, so the remote decides what the caller sees.

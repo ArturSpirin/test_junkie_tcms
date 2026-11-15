@@ -1,4 +1,4 @@
-"""Markdown in and out of the rich text node set (TASK-3277 plan §5).
+"""Markdown in and out of the rich text node set.
 
 `md_to_doc` parses CommonMark plus GFM tables, strikethrough and task lists, and returns a validated doc.
 `doc_to_md` writes Markdown that `md_to_doc` reads back to the same doc. Raw HTML is never rendered: it

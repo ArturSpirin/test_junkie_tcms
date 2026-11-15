@@ -1,4 +1,4 @@
-"""The tenancy rule (PLAN-27 §3), checked against table metadata.
+"""The tenancy rule, checked against table metadata.
 
 Every tenant table has a non-null `org_id` (FK to org) and UNIQUE(org_id, id); every FK from one tenant
 table to another is composite and carries `org_id`, so a row can't point into another org. The one link

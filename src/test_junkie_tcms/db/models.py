@@ -387,7 +387,7 @@ class IdempotencyRecord(TenantMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
 
 
-# Consumers (T7, PLAN-58): a machine running the test_junkie daemon, paired by device code.
+# Consumers: a machine running the test_junkie daemon, paired by device code.
 
 PAIRING_STATUSES = ("pending", "approved", "claimed")
 
@@ -569,7 +569,7 @@ class CycleCase(TenantMixin, UpdatedMixin, Base):
 
 
 class Job(TenantMixin, UpdatedMixin, Base):
-    """One consumer's share of a cycle for one project: the refs it runs (PLAN-27 §3, §6)."""
+    """One consumer's share of a cycle for one project: the refs it runs."""
 
     __tablename__ = "job"
     __table_args__ = tenant_args(
@@ -651,7 +651,7 @@ class ResultAttachment(TenantMixin, Base):
 
 
 class McpToolStat(TenantMixin, Base):
-    """Calls, errors and response sizes per org, tool, actor and UTC hour (PLAN-27 §3, PLAN-100)."""
+    """Calls, errors and response sizes per org, tool, actor and UTC hour."""
 
     __tablename__ = "mcp_tool_stat"
     __table_args__ = tenant_args(

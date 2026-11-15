@@ -1,4 +1,4 @@
-"""Consumers: machines that run tests for an org (PLAN-27 §4, PLAN-58). Status is derived, never stored."""
+"""Consumers: machines that run tests for an org. Status is derived, never stored."""
 
 import hashlib
 import json

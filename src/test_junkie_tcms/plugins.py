@@ -1,4 +1,4 @@
-"""Plugin seams (PLAN-27 §5).
+"""Plugin seams.
 
 A plugin is an entry point in the `test_junkie_tcms.plugins` group pointing at `register(ctx)`. T1 wires
 `add_router` and `set_audit_retention`; the other seams are declared and arrive with later tasks.

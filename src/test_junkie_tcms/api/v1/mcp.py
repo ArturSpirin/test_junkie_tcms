@@ -1,4 +1,4 @@
-"""The MCP page's numbers: per-tool token cost and usage, and the server's version (PLAN-100).
+"""The MCP page's numbers: per-tool token cost and usage, and the server's version.
 
 Token figures are bytes ÷ 4. Response p50/p95 come from each row's log2 histogram, so they are bucket upper
 bounds, at most 2x the true size. Read-only and not audited, like `audit_list`; the UI polls them.

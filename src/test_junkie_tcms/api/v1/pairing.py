@@ -1,4 +1,4 @@
-"""Consumer pairing by device code (RFC 8628, PLAN-27 §6). Only hashes of the device code and token
+"""Consumer pairing by device code (RFC 8628). Only hashes of the device code and token
 are stored; the token is shown once."""
 
 import hashlib

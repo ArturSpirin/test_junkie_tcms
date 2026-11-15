@@ -1,4 +1,4 @@
-"""The `/mcp` endpoint: a stateless streamable-HTTP MCP server over the generated tools (PLAN-88).
+"""The `/mcp` endpoint: a stateless streamable-HTTP MCP server over the generated tools.
 
 `McpEndpoint` is mounted at `/mcp` when the app is made. It authenticates the bearer token itself (401, or
 403 for a consumer token, as `get_principal` does), works out the caller's effective scopes and toolsets,

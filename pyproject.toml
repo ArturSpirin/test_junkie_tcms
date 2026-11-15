@@ -9,7 +9,7 @@ description = "AI-native, open-source test case management for Test Junkie"
 readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
-# Exact pins (Sergei, PLAN-27 condition 1). Change one only with a reason in the changelog.
+# Exact pins. Change one only with a reason in the changelog.
 dependencies = [
     "fastapi==0.162.7",
     "starlette==1.10.0",

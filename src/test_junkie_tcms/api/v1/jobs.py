@@ -1,4 +1,4 @@
-"""Jobs (T8, PLAN-27 §6): a consumer claims the automated part of a cycle and reports its results; people
+"""Jobs: a consumer claims the automated part of a cycle and reports its results; people
 cancel or reassign it. A job with no heartbeat for 2 min is requeued once, then failed (see job_queue)."""
 
 import time

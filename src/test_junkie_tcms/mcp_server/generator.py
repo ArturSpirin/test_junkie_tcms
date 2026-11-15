@@ -1,4 +1,4 @@
-"""Build one MCP tool per `op()`-marked API operation from the app's OpenAPI document (PLAN-27 §4, PLAN-88).
+"""Build one MCP tool per `op()`-marked API operation from the app's OpenAPI document.
 
 Tool args are the operation's path and query params, its declared headers (`If-Match` → `expected_version`,
 `Idempotency-Key` → `idempotency_key`) and the fields of its JSON body, flattened to the top level. A
@@ -256,7 +256,7 @@ def definition(tool: ToolSpec) -> dict:
 
 
 def def_tokens(tool: ToolSpec) -> int:
-    """≈ tokens the tool's definition costs an agent: compact JSON bytes ÷ 4, rounded up (PLAN-100)."""
+    """≈ tokens the tool's definition costs an agent: compact JSON bytes ÷ 4, rounded up."""
     return math.ceil(len(json.dumps(definition(tool), separators=(",", ":")).encode()) / 4)
 
 

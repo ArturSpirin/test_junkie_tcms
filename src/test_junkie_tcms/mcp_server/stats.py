@@ -1,4 +1,4 @@
-"""Per-tool MCP usage: one `mcp_tool_stat` row per org, tool, actor and UTC hour (PLAN-27 §3, PLAN-100).
+"""Per-tool MCP usage: one `mcp_tool_stat` row per org, tool, actor and UTC hour.
 
 `call_tool` records each call after its result is built, in a worker thread with its own session, outside
 the API call's transaction. Response sizes go into a fixed log2 histogram, so p50/p95 are bucket upper

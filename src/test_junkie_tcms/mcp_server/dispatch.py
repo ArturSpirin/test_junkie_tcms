@@ -1,4 +1,4 @@
-"""Run one tool call as an in-process request through the real API (PLAN-88).
+"""Run one tool call as an in-process request through the real API.
 
 Auth, scopes, If-Match, idempotency and the audit all stay in the API: the dispatcher only turns tool args
 back into a request. It is the one server module that imports `httpx2`, which `mcp` itself requires; the

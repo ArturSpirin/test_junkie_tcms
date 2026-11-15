@@ -1,4 +1,4 @@
-"""The job queue (T8, PLAN-27 §6): split a cycle's automated cases between consumers, and requeue or fail
+"""The job queue: split a cycle's automated cases between consumers, and requeue or fail
 a job whose consumer stopped beating. Cycles, jobs and consumers all use it, so it imports none of them."""
 
 from dataclasses import dataclass, field

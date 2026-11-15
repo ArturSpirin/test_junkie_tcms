@@ -1,4 +1,4 @@
-"""Roles and the scopes they grant (PLAN-27 §4, T1 plan v2)."""
+"""Roles and the scopes they grant."""
 
 from test_junkie_tcms.db.models import ROLES
 
@@ -11,7 +11,7 @@ AUDIT_READ = "audit:read"
 ADMIN = "admin"
 TOKENS_SELF = "tokens:self"
 
-# Only pairing issues it, so it stays out of ALL_SCOPES and tokens_create refuses it (PLAN-27 §4).
+# Only pairing issues it, so it stays out of ALL_SCOPES and tokens_create refuses it.
 CONSUMER = "consumer"
 
 ALL_SCOPES = frozenset(

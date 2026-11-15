@@ -1,4 +1,4 @@
-"""The tenancy rule (PLAN-27 §3) holds for every table, and the check catches a table that breaks it."""
+"""The tenancy rule holds for every table, and the check catches a table that breaks it."""
 
 from sqlalchemy import Column, ForeignKey, ForeignKeyConstraint, MetaData, String, Table, UniqueConstraint
 from test_junkie.decorators import Suite, test

@@ -1,4 +1,4 @@
-"""T5b: per-tool MCP stats recorded on each `/mcp` call, and the three MCP page operations (PLAN-100)."""
+"""Per-tool MCP stats recorded on each `/mcp` call, and the three MCP page operations."""
 
 import json
 import math

@@ -1,4 +1,4 @@
-"""The rich text node set (PLAN-27 §3, TASK-3277 plan §5): validate and normalize a ProseMirror JSON doc.
+"""The rich text node set: validate and normalize a ProseMirror JSON doc.
 
 Names match TipTap's StarterKit so the web UI needs no mapping. Everything a doc can hold also has a
 Markdown form, so `doc_to_md` and `md_to_doc` round-trip a normalized doc.

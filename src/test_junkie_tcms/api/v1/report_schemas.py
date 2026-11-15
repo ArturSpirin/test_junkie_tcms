@@ -1,6 +1,6 @@
 """Request and response bodies for reports, search and CSV import/export (T6)."""
 
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -108,14 +108,20 @@ class ExportIn(BaseModel):
 
 
 class ImportIn(BaseModel):
-    """`csv` must have the header `exports_create` writes. `mapping` is reserved for column mapping and
-    is refused for now."""
+    """`format: csv` takes `csv`, with the header `exports_create` writes unless `mapping` renames it.
+    `format: md-bundle` takes `bundle`, the export's zip as base64."""
 
     model_config = ConfigDict(extra="forbid")
-    csv: str
+    format: Literal["csv", "md-bundle"] = "csv"
+    csv: str | None = None
+    bundle: str | None = Field(None, description="An md-bundle zip, base64 (format md-bundle)")
     create_features: bool = Field(False, description="Create missing features named in the `feature` path")
     dry_run: bool = Field(False, description="Check every row and report the counts, but write nothing")
-    mapping: dict[str, Any] | None = Field(None, description="Not supported yet")
+    mapping: dict[str, str | None] | None = Field(
+        None,
+        description="Their column name -> ours (or step_action, step_expected), or null to skip it. Every "
+        "column must be mapped, skipped or already one of ours; with a mapping, tags may be comma-separated",
+    )
 
 
 class ImportOut(BaseModel):

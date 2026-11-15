@@ -5,6 +5,7 @@ back into a request. It is the one server module that imports `httpx2`, which `m
 API and its tests stay on `httpx`.
 """
 
+import base64
 import json
 from urllib.parse import quote
 
@@ -73,11 +74,21 @@ def build_request(tool: ToolSpec, arguments: dict, token: str) -> dict:
 
 
 def envelope(response) -> dict:
-    """`{status, data|error, etag?, replayed?}` from the API response."""
-    try:
-        payload = response.json() if response.content else None
-    except ValueError:
-        payload = response.text
+    """`{status, data|error, etag?, replayed?}` from the API response. A body that is neither JSON nor
+    text (an md-bundle zip) arrives as `{content_type, base64}`."""
+    content_type = response.headers.get("content-type", "").split(";")[0].strip()
+    if (
+        response.content
+        and content_type
+        and not content_type.startswith("text/")
+        and "json" not in content_type
+    ):
+        payload = {"content_type": content_type, "base64": base64.b64encode(response.content).decode()}
+    else:
+        try:
+            payload = response.json() if response.content else None
+        except ValueError:
+            payload = response.text
     result: dict = {"status": response.status_code}
     if response.status_code >= 400:
         result["error"] = payload

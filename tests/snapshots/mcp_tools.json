@@ -3703,7 +3703,7 @@
     "wire": "product"
    }
   },
-  "description": "Exports Create. The product's cases (or a feature subtree's) at their current version, by case number.",
+  "description": "Exports Create. The product's cases (or a feature subtree's) at their current version, by case number. `md-bundle`\nis a zip with `<KEY>.md` per case; over MCP it arrives as `{content_type, base64}`. Both import back\nthrough `imports_create`.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
@@ -4330,6 +4330,10 @@
    "read_only_hint": false
   },
   "args": {
+   "bundle": {
+    "location": "body",
+    "wire": "bundle"
+   },
    "create_features": {
     "location": "body",
     "wire": "create_features"
@@ -4341,6 +4345,10 @@
    "dry_run": {
     "location": "body",
     "wire": "dry_run"
+   },
+   "format": {
+    "location": "body",
+    "wire": "format"
    },
    "idempotency_key": {
     "location": "header",
@@ -4359,22 +4367,48 @@
     "wire": "product"
    }
   },
-  "description": "Imports Create. Import a CSV in the export's format. A row with `key` edits that case and must carry the\n`version` it was exported at; a row without one creates a case in `feature`. All or nothing: any\nbad row gives 422 with `errors: [{row, column, detail}]` (row 1 is the first after the header) and\nwrites nothing. `dry_run` checks every row and returns the counts without writing; that answer is\nnot kept for an `Idempotency-Key` replay.",
+  "description": "Imports Create. Import a CSV in the export's format, a CSV with other column names through `mapping`, or an\n`md-bundle` zip (base64 in `bundle`). A row with `key` edits that case and must carry the `version`\nit was exported at; a row without one creates a case in `feature`. All or nothing: any bad row gives\n422 with `errors: [{row, column, detail}]` (row 1 is the first after the header, or the first `.md`\nfile by name) and writes nothing. `dry_run` checks every row and returns the counts without writing;\nthat answer is not kept for an `Idempotency-Key` replay.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
+    "bundle": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "An md-bundle zip, base64 (format md-bundle)"
+    },
     "create_features": {
      "default": false,
      "description": "Create missing features named in the `feature` path",
      "type": "boolean"
     },
     "csv": {
-     "type": "string"
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
     },
     "dry_run": {
      "default": false,
      "description": "Check every row and report the counts, but write nothing",
      "type": "boolean"
+    },
+    "format": {
+     "default": "csv",
+     "enum": [
+      "csv",
+      "md-bundle"
+     ],
+     "type": "string"
     },
     "idempotency_key": {
      "anyOf": [
@@ -4391,14 +4425,23 @@
     "mapping": {
      "anyOf": [
       {
-       "additionalProperties": true,
+       "additionalProperties": {
+        "anyOf": [
+         {
+          "type": "string"
+         },
+         {
+          "type": "null"
+         }
+        ]
+       },
        "type": "object"
       },
       {
        "type": "null"
       }
      ],
-     "description": "Not supported yet"
+     "description": "Their column name -> ours (or step_action, step_expected), or null to skip it. Every column must be mapped, skipped or already one of ours; with a mapping, tags may be comma-separated"
     },
     "org": {
      "description": "Org slug",
@@ -4409,7 +4452,6 @@
     }
    },
    "required": [
-    "csv",
     "org",
     "product"
    ],

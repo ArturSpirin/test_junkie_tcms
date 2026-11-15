@@ -207,4 +207,121 @@ class CsvIo:
         assert do_import(owner, p, "title,steps\nx,[]\n").status_code == 422
         assert do_import(owner, p, text.splitlines()[0] + "\n").status_code == 422
         assert do_import(owner, p, "x" * (5 * 1024 * 1024 + 1)).status_code == 413
-        assert owner.post(url(f"/products/{p}/exports"), json={"format": "md-bundle"}).status_code == 422
+        bundle = owner.post(url(f"/products/{p}/exports"), json={"format": "md-bundle"})
+        assert (bundle.status_code, bundle.headers["content-type"]) == (200, "application/zip")
+        assert do_import(owner, p, text, bundle="").status_code == 422
+        assert owner.post(url(f"/products/{p}/imports"), json={}).status_code == 422
+
+    @test()
+    def test_mapping_imports_a_foreign_csv(self, suite_parameter):
+        owner = self.env.owner
+        target = make_product(owner, "NEW")
+        out = ok(do_import(owner, target["id"], FOREIGN, mapping=MAPPING, create_features=True))
+        assert (out["created"], out["keys"]) == (2, ["NEW-1", "NEW-2"])
+        got = rows(export(owner, target["id"]))
+        first = got[0]
+        assert (first["feature"], first["title"], first["priority"]) == (
+            "Checkout > Card",
+            "Pay by card",
+            "high",
+        )
+        assert json.loads(first["tags"]) == ["payments", "smoke"]
+        assert [(s["action"], s["expected"]) for s in json.loads(first["steps"])] == [
+            ("Open the cart", "The total shows")
+        ]
+        second = got[1]
+        assert (second["title"], json.loads(second["steps"]), json.loads(second["tags"])) == (
+            "Refund",
+            [],
+            [],
+        )
+        assert second["priority"] == "medium"  # blank means the case default
+
+    @test()
+    def test_mapping_with_our_column_names_needs_no_entry(self, suite_parameter):
+        owner = self.env.owner
+        target = make_product(owner, "NEW")
+        text = "title,Section\nPlain,Checkout\n"
+        out = ok(do_import(owner, target["id"], text, mapping={"Section": "feature"}, create_features=True))
+        assert out["created"] == 1
+
+    @test()
+    def test_bad_mappings_write_nothing(self, suite_parameter):
+        owner = self.env.owner
+        target = make_product(owner, "NEW")
+        bad = [
+            ({**MAPPING, "Titel": "title"}, "doesn't have"),
+            ({**MAPPING, "Priority": "urgency"}, "urgency"),
+            ({**MAPPING, "Labels": "title"}, "More than one column maps to: title"),
+            ({k: v for k, v in MAPPING.items() if k != "Notes"}, "Notes"),
+            ({**MAPPING, "Title": None}, "Nothing maps to title"),
+            ({**MAPPING, "Labels": "steps"}, "steps can't be used"),
+        ]
+        for mapping, detail in bad:
+            r = do_import(owner, target["id"], FOREIGN, mapping=mapping, create_features=True)
+            assert r.status_code == 422, (mapping, r.text)
+            assert detail in r.json()["detail"], (detail, r.text)
+        assert cases_count(owner, target["id"]) == 0
+        assert ok(owner.get(url(f"/products/{target['id']}/features")))["items"] == []
+
+    @test()
+    def test_mapped_row_error_names_the_callers_column(self, suite_parameter):
+        owner = self.env.owner
+        target = make_product(owner, "NEW")
+        text = FOREIGN.replace(",high,", ",urgent,")
+        r = do_import(owner, target["id"], text, mapping=MAPPING, create_features=True)
+        assert r.status_code == 422, r.text
+        assert [(e["row"], e["column"]) for e in r.json()["errors"]] == [(1, "Priority")]
+        assert cases_count(owner, target["id"]) == 0
+
+    @test()
+    def test_mapped_key_and_version_edit_a_case(self, suite_parameter):
+        owner = self.env.owner
+        s = source(owner)
+        p = s["product"]["id"]
+        mapping = {"ID": "key", "Rev": "version", "Section": "feature", "Name": "title"}
+        out = ok(do_import(owner, p, "ID,Rev,Section,Name\nPAY-2,1,Checkout,Renamed\n", mapping=mapping))
+        assert (out["created"], out["updated"]) == (0, 1)
+        case = ok(owner.get(url("/cases/PAY-2")))
+        assert (case["title"], case["current_version"]) == ("Renamed", 2)
+        r = do_import(owner, p, "ID,Rev,Section,Name\nPAY-2,1,Checkout,Stale\n", mapping=mapping)
+        assert r.status_code == 422, r.text
+        assert [(e["row"], e["column"]) for e in r.json()["errors"]] == [(1, "Rev")]
+        assert ok(owner.get(url("/cases/PAY-2")))["title"] == "Renamed"
+
+    @test()
+    def test_mapped_edit_keeps_the_columns_it_doesnt_map(self, suite_parameter):
+        owner = self.env.owner
+        s = source(owner)
+        p = s["product"]["id"]
+        before = rows(export(owner, p))[0]
+        mapping = {"ID": "key", "Rev": "version", "Section": "feature", "Name": "title"}
+        text = "ID,Rev,Section,Name\nPAY-1,1,Checkout > Card,Pay by saved card\n"
+        out = ok(do_import(owner, p, text, mapping=mapping))
+        assert (out["created"], out["updated"]) == (0, 1)
+        keep = ("feature", "preconditions", "steps", "automation_ref", "tags", "links", "custom")
+        edited = rows(export(owner, p))[0]
+        assert {c: edited[c] for c in keep} == {c: before[c] for c in keep}
+        text = "ID,Rev,Name\nPAY-1,2,Pay by stored card\n"
+        out = ok(do_import(owner, p, text, mapping={"ID": "key", "Rev": "version", "Name": "title"}))
+        assert (out["created"], out["updated"]) == (0, 1)
+        after = rows(export(owner, p))[0]
+        assert (after["title"], after["version"]) == ("Pay by stored card", "3")
+        assert {c: after[c] for c in keep} == {c: before[c] for c in keep}
+        assert len(json.loads(after["steps"])) == 2
+
+
+FOREIGN = (
+    "Title,Section,Steps,Expected Result,Labels,Priority,Notes\n"
+    'Pay by card,Checkout > Card,Open the cart,The total shows,"smoke, payments",high,ignore me\n'
+    "Refund,Checkout,,,,,\n"
+)
+MAPPING = {
+    "Title": "title",
+    "Section": "feature",
+    "Steps": "step_action",
+    "Expected Result": "step_expected",
+    "Labels": "tags",
+    "Priority": "priority",
+    "Notes": None,
+}

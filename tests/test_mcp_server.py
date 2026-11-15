@@ -1,15 +1,20 @@
 """T5 `/mcp`: tools listed by toolset and effective scope, called in-process through the real API."""
 
+import base64
+
+import httpx
 from fastapi.testclient import TestClient
 from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
 
 from test_junkie_tcms.api.operations import TOOLSETS
 from test_junkie_tcms.auth.scopes import ALL_SCOPES
+from test_junkie_tcms.mcp_server.dispatch import envelope
 from test_junkie_tcms.plugins import PluginContext
 from tests import support
 from tests.catalog_seed import events, make_product, ok, url
 from tests.execution_seed import run_seed
 from tests.support import add_member, login
+from tests.test_csv_io import source
 from tests.test_mcp_drift import demo_router
 
 ACCEPT = "application/json, text/event-stream"
@@ -246,3 +251,44 @@ class McpServer:
             assert "demo_greet" in tool_names(mcp, value)
             greeted = call(mcp, value, "demo_greet", name="Ada")
         assert greeted == {"status": 200, "data": {"hello": "Ada", "via": "mcp"}}
+
+    # Envelope
+
+    @test()
+    def test_envelope_keeps_json_text_and_empty_and_wraps_binary(self, suite_parameter):
+        assert envelope(httpx.Response(204)) == {"status": 204, "data": None}
+        assert envelope(httpx.Response(200, json={"a": 1})) == {"status": 200, "data": {"a": 1}}
+        csv_body = httpx.Response(
+            200, content=b"key\nPAY-1\n", headers={"content-type": "text/csv; charset=utf-8"}
+        )
+        assert envelope(csv_body) == {"status": 200, "data": "key\nPAY-1\n"}
+        zipped = httpx.Response(200, content=b"PK\x03\x04\xff", headers={"content-type": "application/zip"})
+        assert envelope(zipped) == {
+            "status": 200,
+            "data": {
+                "content_type": "application/zip",
+                "base64": base64.b64encode(b"PK\x03\x04\xff").decode(),
+            },
+        }
+
+    @test()
+    def test_exports_over_mcp_and_a_bundle_imports_back(self, suite_parameter):
+        with mcp_client(self.env.app) as mcp:
+            owner = self.env.owner
+            admin_token = make_admin_token(owner)
+            p = source(owner)["product"]["id"]
+            text = call(mcp, admin_token, "exports_create", org="acme", product=p, format="csv")
+            assert text["status"] == 200 and text["data"].startswith("key,version,feature,title,")
+            zipped = call(mcp, admin_token, "exports_create", org="acme", product=p, format="md-bundle")
+            assert zipped["status"] == 200 and zipped["data"]["content_type"] == "application/zip"
+            back = call(
+                mcp,
+                admin_token,
+                "imports_create",
+                org="acme",
+                product=p,
+                format="md-bundle",
+                bundle=zipped["data"]["base64"],
+            )
+            assert back["status"] == 200, back
+            assert (back["data"]["created"], back["data"]["unchanged"]) == (0, 2)

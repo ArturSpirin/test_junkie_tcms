@@ -24,6 +24,7 @@ from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.v1.cases import CASE_KEY, case_key, content_of, subtree, upsert_item, version_tags
 from test_junkie_tcms.api.v1.catalog import get_feature, get_product, require_active_product
+from test_junkie_tcms.api.v1.md_bundle import FileError, md_to_row, read_bundle, write_bundle
 from test_junkie_tcms.api.v1.report_schemas import ExportIn, ImportIn, ImportOut
 from test_junkie_tcms.api.v1.schemas import CaseBulkItem
 from test_junkie_tcms.auth.deps import OrgContext, get_db, require_scope
@@ -51,8 +52,9 @@ COLUMNS = (
     "links",
     "custom",
 )
+TARGETS = {*COLUMNS, "step_action", "step_expected"}
 SEP = " > "
-MAX_CSV = 5 * 1024 * 1024
+MAX_IMPORT = 5 * 1024 * 1024
 JSON_COLUMNS = {"steps": list, "tags": list, "links": list, "custom": dict}
 
 
@@ -85,7 +87,12 @@ def feature_paths(db: Session, org_id: str, product_id: str) -> dict[str, str]:
 @router.post(
     PRODUCT + "/exports",
     response_class=Response,
-    responses={200: {"content": {"text/csv": {}}, "description": "The cases as CSV"}},
+    responses={
+        200: {
+            "content": {"text/csv": {}, "application/zip": {}},
+            "description": "The cases as CSV, or as an md-bundle zip of one Markdown file per case",
+        }
+    },
     **op("exports_create", READ, "cases"),
 )
 def exports_create(
@@ -94,10 +101,41 @@ def exports_create(
     ctx: OrgContext = Depends(require_scope(READ)),
     db: Session = Depends(get_db),
 ):
-    """The product's cases (or a feature subtree's) at their current version, by case number."""
+    """The product's cases (or a feature subtree's) at their current version, by case number. `md-bundle`
+    is a zip with `<KEY>.md` per case; over MCP it arrives as `{content_type, base64}`. Both import back
+    through `imports_create`."""
     p = get_product(db, ctx, product)
-    if body.format != "csv":
-        raise HTTPException(422, "md-bundle export is not supported yet")
+    cases = _export_cases(db, ctx, p, body)
+    if body.format == "md-bundle":
+        broken = [c["key"] for c in cases if "\n" in c["title"] or "\r" in c["title"]]
+        if broken:
+            raise HTTPException(
+                422, f"md-bundle can't hold a title with a line break ({', '.join(broken)}); use csv"
+            )
+        return Response(
+            write_bundle(cases),
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{p.key}-cases.zip"'},
+        )
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow(COLUMNS)
+    for c in cases:
+        writer.writerow(
+            [
+                *(c[name] for name in COLUMNS[:5]),
+                json.dumps(c["steps"], ensure_ascii=False),
+                *(c[name] for name in COLUMNS[6:11]),
+                json.dumps(c["tags"], ensure_ascii=False),
+                json.dumps(c["links"], ensure_ascii=False),
+                json.dumps(c["custom"], ensure_ascii=False, sort_keys=True),
+            ]
+        )
+    return Response(out.getvalue(), media_type="text/csv")
+
+
+def _export_cases(db: Session, ctx: OrgContext, p: Product, body: ExportIn) -> list[dict[str, Any]]:
+    """Each case as the export's columns, with `steps`, `tags`, `links` and `custom` as values."""
     query = (
         select(TestCase, CaseVersion)
         .join(
@@ -118,34 +156,31 @@ def exports_create(
     rows = list(db.execute(query.order_by(TestCase.number)))
     tags = version_tags(db, [v.id for _, v in rows])
     paths = feature_paths(db, ctx.org.id, p.id)
-    out = io.StringIO()
-    writer = csv.writer(out, lineterminator="\n")
-    writer.writerow(COLUMNS)
+    out = []
     for case, v in rows:
         c = content_of(v, tags[v.id])
-        steps = [
-            {"id": s["id"], "action": doc_to_md(s["action"]), "expected": doc_to_md(s["expected"])}
-            for s in c["steps"]
-        ]
-        writer.writerow(
-            [
-                case_key(p, case),
-                case.current_version,
-                paths[case.feature_id],
-                c["title"],
-                doc_to_md(c["preconditions"]),
-                json.dumps(steps, ensure_ascii=False),
-                c["priority"],
-                c["type"],
-                c["status"],
-                c["automation"],
-                c["automation_ref"] or "",
-                json.dumps(c["tags"], ensure_ascii=False),
-                json.dumps(c["links"], ensure_ascii=False),
-                json.dumps(c["custom"], ensure_ascii=False, sort_keys=True),
-            ]
+        out.append(
+            {
+                "key": case_key(p, case),
+                "version": case.current_version,
+                "feature": paths[case.feature_id],
+                "title": c["title"],
+                "preconditions": doc_to_md(c["preconditions"]),
+                "steps": [
+                    {"id": s["id"], "action": doc_to_md(s["action"]), "expected": doc_to_md(s["expected"])}
+                    for s in c["steps"]
+                ],
+                "priority": c["priority"],
+                "type": c["type"],
+                "status": c["status"],
+                "automation": c["automation"],
+                "automation_ref": c["automation_ref"] or "",
+                "tags": c["tags"],
+                "links": c["links"],
+                "custom": c["custom"],
+            }
         )
-    return Response(out.getvalue(), media_type="text/csv")
+    return out
 
 
 ## Import
@@ -220,7 +255,11 @@ def _create_path(db: Session, ctx: OrgContext, p: Product, path: str, paths: dic
 def _item(
     db: Session, ctx: OrgContext, p: Product, row: dict[str, str], paths: dict[str, str], create: bool
 ) -> CaseBulkItem:
-    """The row as a bulk item, after the checks only an import needs (version, feature, path)."""
+    """The row as a bulk item, after the checks only an import needs (version, feature, path). A column
+    the row doesn't have (a mapped CSV that maps nothing to it) is empty on a new case and keeps the
+    case's value on an edit."""
+    given = set(row)
+    row = {c: "" for c in COLUMNS} | row
     key = row["key"].strip() or None
     path = row["feature"].strip()
     by_path = {v: k for k, v in reversed(list(paths.items()))}
@@ -245,7 +284,7 @@ def _item(
             raise RowError(
                 "version", f"{key} is at version {case.current_version}, not {version}; export it again"
             )
-        if feature_id != case.feature_id:
+        if "feature" in given and feature_id != case.feature_id:
             raise RowError("feature", f"{key} is in another feature; use cases_move to move it")
         feature_id = None
     elif feature_id is None:
@@ -280,12 +319,107 @@ def _item(
     for column in ("priority", "type", "status", "automation"):
         if row[column].strip():
             data[column] = row[column].strip()
+    if key:
+        for column in ("preconditions", "steps", "automation_ref", "tags", "links", "custom"):
+            if column not in given:
+                del data[column]
     try:
         return CaseBulkItem.model_validate(data)
     except ValidationError as e:
         err = e.errors()[0]
         column = str(err["loc"][0]) if err["loc"] else None
         raise RowError(column, err["msg"]) from e
+
+
+def apply_mapping(header: list[str], mapping: dict[str, str | None]) -> dict[str, str]:
+    """Their column -> ours, for every column the import reads. A 422 lists every bad name: a key not in
+    the header, a target that isn't ours, two columns on one target, and a column neither mapped, set to
+    null nor already one of ours (so a typo can't drop data)."""
+
+    def refuse(what: str, names) -> None:
+        if names:
+            raise HTTPException(422, f"{what}: {', '.join(sorted(names))}")
+
+    refuse("The header repeats", {c for c in header if header.count(c) > 1})
+    refuse("mapping names columns the csv doesn't have", set(mapping) - set(header))
+    refuse("mapping targets that aren't columns", {t for t in mapping.values() if t is not None} - TARGETS)
+    refuse(
+        "Columns not in the mapping (map them, or map them to null to skip them)",
+        {c for c in header if c not in mapping and c not in TARGETS},
+    )
+    ours = {c: mapping.get(c, c) for c in header if mapping.get(c, c) is not None}
+    refuse("More than one column maps to", {t for t in ours.values() if list(ours.values()).count(t) > 1})
+    targets = set(ours.values())
+    if "title" not in targets:
+        raise HTTPException(422, "Nothing maps to title")
+    if "steps" in targets and targets & {"step_action", "step_expected"}:
+        raise HTTPException(422, "steps can't be used with step_action or step_expected")
+    return ours
+
+
+def _tags(raw: str) -> str:
+    """Mapped tags: a JSON list, or else a comma-separated list."""
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError:
+        value = None
+    if not isinstance(value, list):
+        value = [t.strip() for t in raw.split(",") if t.strip()]
+    return json.dumps(value, ensure_ascii=False)
+
+
+def _csv_rows(text: str, mapping: dict[str, str | None] | None, errors: list) -> list[tuple]:
+    """`(n, row in the COLUMNS shape, label, our column -> theirs)` per CSV row. A row with the wrong
+    number of columns goes to `errors`."""
+    reader = csv.DictReader(io.StringIO(text))
+    header = list(reader.fieldnames or ())
+    if mapping is None:
+        if tuple(header) != COLUMNS:
+            raise HTTPException(422, f"The header must be: {','.join(COLUMNS)}")
+        ours = {c: c for c in COLUMNS}
+    else:
+        ours = apply_mapping(header, mapping)
+    theirs = {t: c for c, t in ours.items()}
+    if "steps" not in theirs:
+        theirs["steps"] = theirs.get("step_action") or theirs.get("step_expected")
+
+    def column_of(column: str | None) -> str | None:
+        return theirs.get(column, column) if column else column
+
+    out = []
+    for n, raw in enumerate(reader, start=1):
+        if None in raw or any(v is None for v in raw.values()):
+            errors.append({"row": n, "column": None, "detail": f"must have {len(header)} columns"})
+            continue
+        if mapping is None:
+            out.append((n, raw, "", column_of))
+            continue
+        row = {c: raw[theirs[c]] for c in COLUMNS if theirs.get(c)}
+        if "step_action" in theirs or "step_expected" in theirs:
+            action = raw[theirs["step_action"]] if "step_action" in theirs else ""
+            expected = raw[theirs["step_expected"]] if "step_expected" in theirs else ""
+            step = [{"action": action, "expected": expected}] if action.strip() or expected.strip() else []
+            row["steps"] = json.dumps(step, ensure_ascii=False)
+        if row.get("tags", "").strip():
+            row["tags"] = _tags(row["tags"])
+        out.append((n, row, "", column_of))
+    return out
+
+
+def _bundle_rows(files: list[tuple[str, bytes]], errors: list) -> list[tuple]:
+    """`(n, row, label, column_of)` per `.md` file, by name; a file that doesn't parse goes to `errors`."""
+    out = []
+    for n, (name, data) in enumerate(files, start=1):
+        try:
+            row = md_to_row(data.decode("utf-8"))
+        except UnicodeDecodeError:
+            errors.append({"row": n, "column": None, "detail": f"{name}: not UTF-8"})
+            continue
+        except FileError as e:
+            errors.append({"row": n, "column": e.column, "detail": f"{name}: {e.detail}"})
+            continue
+        out.append((n, row, f"{name}: ", lambda c: c))
+    return out
 
 
 @router.post(PRODUCT + "/imports", response_model=ImportOut, **op("imports_create", WRITE_CASES, "cases"))
@@ -296,42 +430,47 @@ def imports_create(
     idem: Idem = Depends(idempotency),
     db: Session = Depends(get_db),
 ):
-    """Import a CSV in the export's format. A row with `key` edits that case and must carry the
-    `version` it was exported at; a row without one creates a case in `feature`. All or nothing: any
-    bad row gives 422 with `errors: [{row, column, detail}]` (row 1 is the first after the header) and
-    writes nothing. `dry_run` checks every row and returns the counts without writing; that answer is
-    not kept for an `Idempotency-Key` replay."""
-    if body.mapping is not None:
-        raise HTTPException(422, "mapping is not supported yet; use the export's columns")
-    if len(body.csv.encode()) > MAX_CSV:
-        raise HTTPException(413, "csv is over 5 MB")
+    """Import a CSV in the export's format, a CSV with other column names through `mapping`, or an
+    `md-bundle` zip (base64 in `bundle`). A row with `key` edits that case and must carry the `version`
+    it was exported at; a row without one creates a case in `feature`. All or nothing: any bad row gives
+    422 with `errors: [{row, column, detail}]` (row 1 is the first after the header, or the first `.md`
+    file by name) and writes nothing. `dry_run` checks every row and returns the counts without writing;
+    that answer is not kept for an `Idempotency-Key` replay."""
+    if body.format == "csv":
+        if body.csv is None or body.bundle is not None:
+            raise HTTPException(422, "format csv takes `csv`, not `bundle`")
+        if len(body.csv.encode()) > MAX_IMPORT:
+            raise HTTPException(413, "csv is over 5 MB")
+    else:
+        if body.bundle is None or body.csv is not None:
+            raise HTTPException(422, "format md-bundle takes `bundle`, not `csv`")
+        if body.mapping is not None:
+            raise HTTPException(422, "mapping is for csv only")
     p = get_product(db, ctx, product)
     require_active_product(db, p.id)
-    reader = csv.DictReader(io.StringIO(body.csv))
-    if tuple(reader.fieldnames or ()) != COLUMNS:
-        raise HTTPException(422, f"The header must be: {','.join(COLUMNS)}")
-    paths = feature_paths(db, ctx.org.id, p.id)
     errors: list[dict[str, Any]] = []
+    if body.format == "csv":
+        source = _csv_rows(body.csv, body.mapping, errors)
+    else:
+        source = _bundle_rows(read_bundle(body.bundle, MAX_IMPORT), errors)
+    paths = feature_paths(db, ctx.org.id, p.id)
     counts = {"created": 0, "updated": 0, "unchanged": 0}
     keys: list[str] = []
     seen: set[str] = set()
-    for n, row in enumerate(reader, start=1):
-        if None in row or any(v is None for v in row.values()):
-            errors.append({"row": n, "column": None, "detail": f"must have {len(COLUMNS)} columns"})
-            continue
-        key = row["key"].strip()
+    for n, row, label, column_of in source:
+        key = row.get("key", "").strip()
         if key and key in seen:
-            errors.append({"row": n, "column": "key", "detail": f"{key} appears twice"})
+            errors.append({"row": n, "column": column_of("key"), "detail": label + f"{key} appears twice"})
             continue
         seen.add(key)
         try:
             item = _item(db, ctx, p, row, paths, body.create_features)
             case, _, result = upsert_item(db, ctx, p, item, f"row {n}", action="case.import")
         except RowError as e:
-            errors.append({"row": n, "column": e.column, "detail": e.detail})
+            errors.append({"row": n, "column": column_of(e.column), "detail": label + e.detail})
             continue
         except HTTPException as e:
-            errors.append({"row": n, "column": None, "detail": str(e.detail)})
+            errors.append({"row": n, "column": None, "detail": label + str(e.detail)})
             continue
         counts[result] += 1
         keys.append(case_key(p, case))
@@ -340,7 +479,7 @@ def imports_create(
         raise ProblemError(422, f"{len(errors)} row(s) can't be imported; nothing was written", errors=errors)
     if not keys:
         db.rollback()
-        raise HTTPException(422, "The csv has no rows")
+        raise HTTPException(422, f"The {'csv' if body.format == 'csv' else 'bundle'} has no rows")
     if body.dry_run:
         db.rollback()
         return ImportOut(**counts, keys=keys, dry_run=True)

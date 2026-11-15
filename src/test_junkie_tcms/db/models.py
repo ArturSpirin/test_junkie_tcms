@@ -410,7 +410,7 @@ class Consumer(TenantMixin, Base):
     token_id: Mapped[str | None] = mapped_column(String(26))
     approved_by_actor_id: Mapped[str] = mapped_column(String(26), nullable=False)
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # The job the consumer last said it holds; a plain id until T8 adds the job table.
+    # The job the consumer holds, set and cleared by the server (T8). A plain id, no FK: job points here.
     busy_job_id: Mapped[str | None] = mapped_column(String(26))
     tj_version: Mapped[str | None] = mapped_column(String(64))
     python: Mapped[str | None] = mapped_column(String(64))
@@ -487,7 +487,10 @@ RESULT_STATUSES = CYCLE_CASE_STATUSES[1:]
 STEP_STATUSES = ("untested", "success", "fail", "error", "skip")
 CYCLE_STATUSES = ("open", "closed")
 BATCH_MODES = ("features", "plans")
-RESULT_VIAS = ("ui", "api", "mcp")
+RESULT_VIAS = ("ui", "api", "mcp", "consumer")
+CYCLE_MODES = ("manual", "automated", "both")
+RUNNERS = ("person", "consumer")
+JOB_STATUSES = ("queued", "claimed", "running", "done", "failed", "cancelled", "rejected")
 
 
 class CycleBatch(TenantMixin, Base):
@@ -518,6 +521,7 @@ class Cycle(TenantMixin, UpdatedMixin, Base):
         ForeignKeyConstraint(["org_id", "default_assignee_actor_id"], ["actor.org_id", "actor.id"]),
         ForeignKeyConstraint(["org_id", "created_by_actor_id"], ["actor.org_id", "actor.id"]),
         CheckConstraint(f"status IN {CYCLE_STATUSES}", name="status"),
+        CheckConstraint(f"mode IN {CYCLE_MODES}", name="mode"),
         Index("ix_cycle_org_id_batch_id", "org_id", "batch_id"),
     )
 
@@ -530,6 +534,8 @@ class Cycle(TenantMixin, UpdatedMixin, Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     environment: Mapped[str | None] = mapped_column(String(64))
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="open")
+    # automated and both send cases with a known automation_ref to consumers as jobs (T8).
+    mode: Mapped[str] = mapped_column(String(10), nullable=False, default="manual", server_default="manual")
     default_assignee_actor_id: Mapped[str | None] = mapped_column(String(26))
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -544,7 +550,10 @@ class CycleCase(TenantMixin, UpdatedMixin, Base):
         ForeignKeyConstraint(["org_id", "case_id"], ["test_case.org_id", "test_case.id"]),
         ForeignKeyConstraint(["org_id", "case_version_id"], ["case_version.org_id", "case_version.id"]),
         ForeignKeyConstraint(["org_id", "assignee_actor_id"], ["actor.org_id", "actor.id"]),
+        ForeignKeyConstraint(["org_id", "consumer_id"], ["consumer.org_id", "consumer.id"]),
+        ForeignKeyConstraint(["org_id", "job_id"], ["job.org_id", "job.id"]),
         CheckConstraint(f"status IN {CYCLE_CASE_STATUSES}", name="status"),
+        CheckConstraint(f"runner IN {RUNNERS}", name="runner"),
     )
 
     cycle_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
@@ -556,6 +565,34 @@ class CycleCase(TenantMixin, UpdatedMixin, Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="untested")
     position: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_result_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    runner: Mapped[str] = mapped_column(String(8), nullable=False, default="person", server_default="person")
+    consumer_id: Mapped[str | None] = mapped_column(String(26))
+    job_id: Mapped[str | None] = mapped_column(String(26), index=True)
+
+
+class Job(TenantMixin, UpdatedMixin, Base):
+    """One consumer's share of a cycle for one project: the refs it runs (PLAN-27 §3, §6)."""
+
+    __tablename__ = "job"
+    __table_args__ = tenant_args(
+        ForeignKeyConstraint(["org_id", "cycle_id"], ["cycle.org_id", "cycle.id"]),
+        ForeignKeyConstraint(["org_id", "consumer_id"], ["consumer.org_id", "consumer.id"]),
+        CheckConstraint(f"status IN {JOB_STATUSES}", name="status"),
+        Index("ix_job_consumer_id_status", "consumer_id", "status"),
+    )
+
+    cycle_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
+    consumer_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    project: Mapped[str] = mapped_column(String(200), nullable=False)
+    refs: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(String(10), nullable=False, default="queued")
+    timeout_s: Mapped[int] = mapped_column(Integer, nullable=False, default=3600)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_beat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Cancelled while claimed: the id goes in the consumer's next heartbeat reply, then this is set.
+    cancel_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Result(TenantMixin, Base):

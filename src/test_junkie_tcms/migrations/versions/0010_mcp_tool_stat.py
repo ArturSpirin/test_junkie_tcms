@@ -1,15 +1,15 @@
 """mcp_tool_stat: MCP calls, errors and response sizes per org, tool, actor and hour
 
-Revision ID: 0009
-Revises: 0008
+Revision ID: 0010
+Revises: 0009
 Create Date: 2026-11-14 16:30:00.000000
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0009"
-down_revision = "0008"
+revision = "0010"
+down_revision = "0009"
 branch_labels = None
 depends_on = None
 

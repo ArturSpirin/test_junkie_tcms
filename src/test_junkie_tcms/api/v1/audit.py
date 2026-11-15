@@ -8,8 +8,8 @@ from sqlalchemy.orm import Session
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
 from test_junkie_tcms.api.v1.schemas import AuditOut, Page
-from test_junkie_tcms.auth.deps import OrgContext, get_db, require_scope
-from test_junkie_tcms.auth.scopes import AUDIT_READ
+from test_junkie_tcms.auth.deps import OrgContext, get_db, require_any_scope
+from test_junkie_tcms.auth.scopes import ADMIN, AUDIT_READ
 from test_junkie_tcms.db.models import AuditEvent
 
 router = APIRouter(tags=["audit"])
@@ -24,7 +24,7 @@ def audit_list(
     until: datetime | None = Query(None, description="Up to this time, exclusive"),
     via: Literal["ui", "api", "mcp"] | None = Query(None),
     action: str | None = Query(None, description="Exact action, e.g. invite.create"),
-    ctx: OrgContext = Depends(require_scope(AUDIT_READ)),
+    ctx: OrgContext = Depends(require_any_scope(AUDIT_READ, ADMIN)),
     params: PageParams = Depends(page_params),
     db: Session = Depends(get_db),
 ):

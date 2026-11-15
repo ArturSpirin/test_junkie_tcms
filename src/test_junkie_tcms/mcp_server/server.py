@@ -8,7 +8,7 @@ built in the app's lifespan, after plugins have added their routers.
 
 import contextlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from urllib.parse import parse_qs
 
 import anyio.to_thread
@@ -22,9 +22,10 @@ from test_junkie_tcms import __version__
 from test_junkie_tcms.api.operations import TOOLSETS
 from test_junkie_tcms.auth import tokens
 from test_junkie_tcms.auth.deps import effective_role
-from test_junkie_tcms.auth.scopes import CONSUMER, ROLE_SCOPES
+from test_junkie_tcms.auth.scopes import ADMIN, AUDIT_READ, CONSUMER, ROLE_SCOPES
+from test_junkie_tcms.mcp_server import stats
 from test_junkie_tcms.mcp_server.dispatch import dispatch
-from test_junkie_tcms.mcp_server.generator import ToolSpec, build_tools
+from test_junkie_tcms.mcp_server.generator import ToolSpec, build_tools, mcp_tool, tool_list_hash
 
 CALLER_KEY = "tcms.mcp"
 ALWAYS_ON = "core"
@@ -35,6 +36,8 @@ class Caller:
     token: str
     scopes: frozenset[str]
     toolsets: frozenset[str]
+    org_id: str
+    actor_id: str
 
 
 class ToolsetError(ValueError):
@@ -53,7 +56,14 @@ def parse_toolsets(value: str) -> frozenset[str]:
 
 
 def visible(tool: ToolSpec, caller: Caller) -> bool:
-    return tool.toolset in caller.toolsets and (tool.scope is None or tool.scope in caller.scopes)
+    if tool.toolset not in caller.toolsets:
+        return False
+    # The MCP stats tools are marked audit:read and take admin too (require_any_scope), so admin sees them.
+    return (
+        tool.scope is None
+        or tool.scope in caller.scopes
+        or (tool.scope == AUDIT_READ and ADMIN in caller.scopes)
+    )
 
 
 def _problem(status: int, title: str, detail: str, headers: dict | None = None) -> JSONResponse:
@@ -65,8 +75,10 @@ def _problem(status: int, title: str, detail: str, headers: dict | None = None) 
     )
 
 
-def _resolve(app: FastAPI, value: str) -> tuple[int, str] | frozenset[str]:
-    """The token's effective scopes (role ∩ token scopes), or (status, detail) when it is refused."""
+def _resolve(app: FastAPI, value: str) -> tuple[int, str] | Caller:
+    """The caller with its effective scopes (role ∩ token scopes), or (status, detail) when it is refused.
+
+    Its toolsets are filled in from the query string afterwards."""
     db = app.state.sessionmaker()
     try:
         found = tokens.authenticate_token(db, value)
@@ -76,9 +88,10 @@ def _resolve(app: FastAPI, value: str) -> tuple[int, str] | frozenset[str]:
         if CONSUMER in token.scopes:
             return 403, "A consumer token reaches only the consumer routes"
         role = effective_role(db, actor)
-        if role is None:
-            return frozenset()
-        return ROLE_SCOPES[role] & frozenset(token.scopes)
+        scopes = frozenset() if role is None else ROLE_SCOPES[role] & frozenset(token.scopes)
+        return Caller(
+            token=value, scopes=scopes, toolsets=frozenset(), org_id=actor.org_id, actor_id=actor.id
+        )
     finally:
         db.close()  # closed before the call dispatches, so the inner request never waits on it
 
@@ -119,7 +132,7 @@ class McpEndpoint:
             toolsets = parse_toolsets(wanted)
         except ToolsetError as exc:
             return _problem(400, "Bad Request", str(exc))
-        scope[CALLER_KEY] = Caller(token=value, scopes=resolved, toolsets=toolsets)
+        scope[CALLER_KEY] = replace(resolved, toolsets=toolsets)
         return None
 
 
@@ -136,18 +149,7 @@ def make_server(app: FastAPI, tools: list[ToolSpec]) -> Server:
 
     async def list_tools(ctx, params) -> types.ListToolsResult:
         caller: Caller = ctx.request.scope[CALLER_KEY]
-        return types.ListToolsResult(
-            tools=[
-                types.Tool(
-                    name=tool.name,
-                    description=tool.description,
-                    input_schema=tool.input_schema,
-                    annotations=types.ToolAnnotations(**tool.annotations),
-                )
-                for tool in tools
-                if visible(tool, caller)
-            ]
-        )
+        return types.ListToolsResult(tools=[mcp_tool(tool) for tool in tools if visible(tool, caller)])
 
     async def call_tool(ctx, params) -> types.CallToolResult:
         caller: Caller = ctx.request.scope[CALLER_KEY]
@@ -164,7 +166,18 @@ def make_server(app: FastAPI, tools: list[ToolSpec]) -> Server:
                     },
                 }
             )
-        return _result(await dispatch(app, tool, params.arguments or {}, caller.token))
+        result = _result(await dispatch(app, tool, params.arguments or {}, caller.token))
+        size = len(result.content[0].text.encode())
+        await anyio.to_thread.run_sync(
+            stats.safe_record,
+            app.state.sessionmaker,
+            caller.org_id,
+            caller.actor_id,
+            tool.name,
+            result.is_error,
+            size,
+        )
+        return result
 
     return Server("test-junkie-tcms", version=__version__, on_list_tools=list_tools, on_call_tool=call_tool)
 
@@ -197,6 +210,7 @@ async def lifespan(app: FastAPI):
         transport_security=_transport_security(app.state.settings.mcp_allowed_hosts),
     )
     app.state.mcp_tools = tools
+    app.state.mcp_tool_hash = tool_list_hash(tools)
     try:
         async with server.session_manager.run():
             yield

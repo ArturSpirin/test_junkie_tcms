@@ -4787,6 +4787,176 @@
    "idempotent_hint": true,
    "read_only_hint": true
   },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Mcp Server Get. The MCP server's name, version, tool count and a hash of its tool list, which changes with any tool.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "mcp_server_get",
+  "path": "/api/v1/orgs/{org}/mcp/server",
+  "scope": "audit:read",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Mcp Tools List. Every MCP tool with its definition cost in \u2248 tokens (bytes \u00f7 4), its calls and errors over the last 7\nand 30 days, and its p50/p95 response cost over 30 days (an upper bound, \u22642x; null with no calls).",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "mcp_tools_list",
+  "path": "/api/v1/orgs/{org}/mcp/tools",
+  "scope": "audit:read",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "actor": {
+    "location": "query",
+    "wire": "actor"
+   },
+   "bucket": {
+    "location": "query",
+    "wire": "bucket"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "since": {
+    "location": "query",
+    "wire": "since"
+   },
+   "tool": {
+    "location": "query",
+    "wire": "tool"
+   },
+   "until": {
+    "location": "query",
+    "wire": "until"
+   }
+  },
+  "description": "Mcp Usage. MCP calls, errors and response bytes per hour or day (UTC), with p50/p95 response cost in \u2248 tokens (an\nupper bound, \u22642x). Only buckets with calls are listed. Defaults: the last 24 hours by hour, or the last 30\ndays by day; at most 90 days.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "actor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Actor id"
+    },
+    "bucket": {
+     "default": "hour",
+     "enum": [
+      "hour",
+      "day"
+     ],
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "since": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "From this time, inclusive; truncated to the bucket"
+    },
+    "tool": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Exact tool name"
+    },
+    "until": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Up to this time, exclusive; rounded up to the bucket"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "mcp_usage",
+  "path": "/api/v1/orgs/{org}/mcp/usage",
+  "scope": "audit:read",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
   "args": {},
   "description": "Me Get",
   "input_schema": {

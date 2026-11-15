@@ -49,6 +49,7 @@ def test_tenant_tables_are_the_expected_ones():
         "result_attachment",
         "attachment",
         "job",
+        "mcp_tool_stat",
     }
 
 

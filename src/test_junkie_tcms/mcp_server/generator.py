@@ -7,8 +7,12 @@ generator can't map fails here, at startup and in CI, never on a call.
 """
 
 import copy
+import hashlib
+import json
+import math
 from dataclasses import dataclass, field
 
+import mcp_types as types
 from fastapi import FastAPI, params
 from fastapi.dependencies.utils import get_flat_params
 from fastapi.routing import APIRoute, iter_route_contexts
@@ -234,6 +238,32 @@ def build_tools(app: FastAPI) -> list[ToolSpec]:
                 raise GeneratorError(f"duplicate tool name {tool.name}")
             tools[tool.name] = tool
     return [tools[name] for name in sorted(tools)]
+
+
+def mcp_tool(tool: ToolSpec) -> types.Tool:
+    """The tool as `tools/list` sends it."""
+    return types.Tool(
+        name=tool.name,
+        description=tool.description,
+        input_schema=tool.input_schema,
+        annotations=types.ToolAnnotations(**tool.annotations),
+    )
+
+
+def definition(tool: ToolSpec) -> dict:
+    """The tool's `tools/list` entry as wire JSON (camelCase keys)."""
+    return mcp_tool(tool).model_dump(mode="json", by_alias=True, exclude_none=True)
+
+
+def def_tokens(tool: ToolSpec) -> int:
+    """≈ tokens the tool's definition costs an agent: compact JSON bytes ÷ 4, rounded up (PLAN-100)."""
+    return math.ceil(len(json.dumps(definition(tool), separators=(",", ":")).encode()) / 4)
+
+
+def tool_list_hash(tools: list[ToolSpec]) -> str:
+    """sha256 of every tool definition as canonical JSON, by name: changes when any tool does."""
+    defs = [definition(tool) for tool in sorted(tools, key=lambda t: t.name)]
+    return hashlib.sha256(json.dumps(defs, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def _route_args(route) -> tuple[dict[str, ArgSpec], set[str], list[str]]:

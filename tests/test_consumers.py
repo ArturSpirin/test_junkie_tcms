@@ -244,10 +244,10 @@ def test_list_filters_by_product(owner, paired, product):
 def test_get_returns_24_hours_of_heartbeats(app, owner, paired):
     ok(paired.heartbeat())
     set_column(app, ConsumerHeartbeat, "at", utcnow() - timedelta(hours=25))
-    ok(paired.heartbeat(busy_job_id="job-1"))
+    ok(paired.heartbeat(busy_job_id="job-1"))  # the server owns busy: the client's value is ignored
     detail = ok(owner.get(f"{ACME}/consumers/{paired.consumer['id']}"))
-    assert [b["busy_job_id"] for b in detail["heartbeats"]] == ["job-1"]
-    assert detail["status"] == "busy"
+    assert [b["busy_job_id"] for b in detail["heartbeats"]] == [None]
+    assert detail["status"] == "online"
     assert count(app, ConsumerHeartbeat) == 1  # the 25 h old row was pruned
 
 

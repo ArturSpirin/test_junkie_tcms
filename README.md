@@ -26,6 +26,10 @@ docker compose exec -e TJ_TCMS_ADMIN_PASSWORD=change-me-now app \
   test-junkie-tcms create-admin --email you@example.com --name You --org-slug acme --org-name Acme
 ```
 
+Consumers long-poll for jobs (`GET /api/v1/consumers/me/jobs/next?wait=30`). Each waiting consumer holds one
+server worker thread for up to 30 s, so N consumers use N threads; size the server's thread pool to your consumer
+count plus normal traffic.
+
 ## Settings
 
 | Variable | Default | What it does |

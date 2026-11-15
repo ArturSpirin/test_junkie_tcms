@@ -3086,6 +3086,10 @@
     "location": "body",
     "wire": "case_ids"
    },
+   "consumer_ids": {
+    "location": "body",
+    "wire": "consumer_ids"
+   },
    "default_assignee_actor_id": {
     "location": "body",
     "wire": "default_assignee_actor_id"
@@ -3101,6 +3105,10 @@
    "idempotency_key": {
     "location": "header",
     "wire": "Idempotency-Key"
+   },
+   "mode": {
+    "location": "body",
+    "wire": "mode"
    },
    "name": {
     "location": "body",
@@ -3138,6 +3146,20 @@
         "type": "string"
        },
        "maxItems": 1000,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "consumer_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 50,
        "type": "array"
       },
       {
@@ -3191,6 +3213,15 @@
       }
      ],
      "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "mode": {
+     "default": "manual",
+     "enum": [
+      "manual",
+      "automated",
+      "both"
+     ],
+     "type": "string"
     },
     "name": {
      "maxLength": 200,
@@ -3379,9 +3410,17 @@
     "location": "body",
     "wire": "case_ids"
    },
+   "consumer_ids": {
+    "location": "body",
+    "wire": "consumer_ids"
+   },
    "feature_ids": {
     "location": "body",
     "wire": "feature_ids"
+   },
+   "mode": {
+    "location": "body",
+    "wire": "mode"
    },
    "org": {
     "location": "path",
@@ -3400,7 +3439,7 @@
     "wire": "product_id"
    }
   },
-  "description": "Cycles Preview. What `cycles_create` would pin for this source, per feature; writes nothing.",
+  "description": "Cycles Preview. What `cycles_create` would pin for this source, per feature and per runner; writes nothing.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
@@ -3411,6 +3450,20 @@
         "type": "string"
        },
        "maxItems": 1000,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "consumer_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 50,
        "type": "array"
       },
       {
@@ -3431,6 +3484,15 @@
        "type": "null"
       }
      ]
+    },
+    "mode": {
+     "default": "manual",
+     "enum": [
+      "manual",
+      "automated",
+      "both"
+     ],
+     "type": "string"
     },
     "org": {
      "description": "Org slug",
@@ -4533,6 +4595,191 @@
   "path": "/api/v1/orgs/{org}/invites/{invite_id}",
   "scope": "admin",
   "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Jobs Cancel. Cancel a queued or held job; its untested cases get `cancel`. A consumer holding it hears so in its\nnext heartbeat reply.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "jobs_cancel",
+  "path": "/api/v1/orgs/{org}/jobs/{id}/cancel",
+  "scope": "write:execution",
+  "toolset": "execution"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Jobs List. The cycle's jobs. Stalled jobs are requeued or failed first.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "id": {
+     "type": "string"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "jobs_list",
+  "path": "/api/v1/orgs/{org}/cycles/{id}/jobs",
+  "scope": "read",
+  "toolset": "execution"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "consumer_id": {
+    "location": "body",
+    "wire": "consumer_id"
+   },
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Jobs Reassign. Move a queued job, and its cases, to another online consumer whose inventory lists the job's project.\nA held job can't move until it stalls.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "consumer_id": {
+     "type": "string"
+    },
+    "id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "consumer_id",
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "jobs_reassign",
+  "path": "/api/v1/orgs/{org}/jobs/{id}/reassign",
+  "scope": "write:execution",
+  "toolset": "execution"
  },
  {
   "annotations": {

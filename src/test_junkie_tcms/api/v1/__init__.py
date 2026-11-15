@@ -10,6 +10,7 @@ from test_junkie_tcms.api.v1 import (
     cycles,
     features,
     invites,
+    jobs,
     orgs,
     pairing,
     plans,
@@ -40,3 +41,4 @@ router.include_router(search.router)
 router.include_router(csv_io.router)
 router.include_router(pairing.router)
 router.include_router(consumers.router)
+router.include_router(jobs.router)

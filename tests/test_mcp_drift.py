@@ -46,7 +46,7 @@ def test_every_api_route_is_marked_and_the_tools_match_the_routes(app):
     assert unmarked_routes(app) == []
     tools = build_tools(app)
     assert drift(app, tools) == []
-    assert len(tools) == 76
+    assert len(tools) == 79
 
 
 def test_tools_match_the_snapshot(app):

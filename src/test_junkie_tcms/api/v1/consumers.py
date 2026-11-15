@@ -12,6 +12,13 @@ from sqlalchemy.orm import Session
 from test_junkie_tcms import audit
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
+from test_junkie_tcms.api.v1.job_queue import (
+    HELD,
+    ONLINE_WITHIN,
+    consumer_status,
+    fail_consumer_jobs,
+    stall_check,
+)
 from test_junkie_tcms.api.v1.schemas import (
     ConsumerDetail,
     ConsumerOut,
@@ -32,7 +39,7 @@ from test_junkie_tcms.auth.deps import (
     require_scope,
 )
 from test_junkie_tcms.auth.scopes import ADMIN, CONSUMER, READ
-from test_junkie_tcms.db.base import aware, utcnow
+from test_junkie_tcms.db.base import utcnow
 from test_junkie_tcms.db.models import (
     Actor,
     ApiToken,
@@ -40,6 +47,7 @@ from test_junkie_tcms.db.models import (
     ConsumerHeartbeat,
     ConsumerInventory,
     ConsumerProduct,
+    Job,
     Product,
 )
 
@@ -47,17 +55,7 @@ router = APIRouter(tags=["consumers"])
 CONSUMERS = "/orgs/{org}/consumers"
 ME = "/consumers/me"
 
-ONLINE_WITHIN = timedelta(seconds=90)
 HISTORY = timedelta(hours=24)
-
-
-def consumer_status(consumer: Consumer, now) -> str:
-    if consumer.revoked_at is not None:
-        return "revoked"
-    seen = aware(consumer.last_heartbeat_at)
-    if seen is None or now - seen >= ONLINE_WITHIN:
-        return "offline"
-    return "busy" if consumer.busy_job_id else "online"
 
 
 def consumer_product_ids(db: Session, consumer_ids: list[str]) -> dict[str, list[str]]:
@@ -236,6 +234,7 @@ def consumers_revoke(
             token.revoked_at = token.revoked_at or now
         actor = db.get(Actor, row.actor_id)
         actor.disabled_at = actor.disabled_at or now
+        fail_consumer_jobs(db, row, now)
         audit.record(db, ctx, "consumer.revoke", "consumer", row.id, {"name": row.name})
         db.commit()
     return Response(status_code=204)
@@ -252,17 +251,29 @@ def consumers_revoke(
 def consumers_heartbeat(
     body: HeartbeatIn, cc: ConsumerContext = Depends(get_consumer_context), db: Session = Depends(get_db)
 ):
-    """Every 30 s. Not audited; keeps 24 h of history."""
+    """Every 30 s. Not audited; keeps 24 h of history. The server owns `busy_job_id`: the body's value is
+    ignored. The reply lists jobs cancelled while this consumer held them."""
     now = utcnow()
     consumer = cc.consumer
     consumer.last_heartbeat_at = now
-    consumer.busy_job_id = body.busy_job_id
     consumer.tj_version = body.tj_version
     consumer.python = body.python
     consumer.os = body.os
+    # The beat keeps the held job alive first, so a consumer back just after STALL_AFTER keeps its job.
+    for job in db.scalars(select(Job).where(Job.consumer_id == consumer.id, Job.status.in_(HELD))):
+        job.last_beat_at = now
+    db.flush()
+    stall_check(db, consumer.org_id, now)
+    cancelled = db.scalars(
+        select(Job).where(
+            Job.consumer_id == consumer.id, Job.status == "cancelled", Job.cancel_sent_at.is_(None)
+        )
+    ).all()
+    for job in cancelled:
+        job.cancel_sent_at = now
     db.add(
         ConsumerHeartbeat(
-            org_id=consumer.org_id, consumer_id=consumer.id, at=now, busy_job_id=body.busy_job_id
+            org_id=consumer.org_id, consumer_id=consumer.id, at=now, busy_job_id=consumer.busy_job_id
         )
     )
     db.execute(
@@ -279,7 +290,7 @@ def consumers_heartbeat(
     )
     wanted = sorted(p for p, h in body.inventory_hashes.items() if stored.get(p) != h)
     db.commit()
-    return HeartbeatReply(inventory_wanted=wanted, cancel_job_ids=[])
+    return HeartbeatReply(inventory_wanted=wanted, cancel_job_ids=[j.id for j in cancelled])
 
 
 def roster_hash(roster: list) -> str:

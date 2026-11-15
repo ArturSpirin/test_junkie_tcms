@@ -32,8 +32,11 @@ from test_junkie_tcms.api.v1.execution_schemas import (
     CyclePreviewOut,
     CycleSource,
     CycleUpdate,
+    PreviewConsumer,
     PreviewFeature,
+    PreviewRunners,
 )
+from test_junkie_tcms.api.v1.job_queue import Split, check_consumers, make_jobs, split_by_runner
 from test_junkie_tcms.api.v1.plans import _release_features
 from test_junkie_tcms.api.v1.schemas import Page, RichMode
 from test_junkie_tcms.auth.deps import OrgContext, effective_role, get_db, require_scope
@@ -43,6 +46,7 @@ from test_junkie_tcms.db.models import (
     CYCLE_CASE_STATUSES,
     Actor,
     CaseVersion,
+    Consumer,
     Cycle,
     CycleBatch,
     CycleCase,
@@ -166,6 +170,17 @@ def pin(db: Session, cycle: Cycle, cases: list[TestCase]) -> list[CycleCase]:
     return rows
 
 
+def chosen_consumers(db: Session, ctx: OrgContext, product_id: str, body: CycleSource) -> list[Consumer]:
+    """The consumers an automated or both cycle runs on; none for a manual one."""
+    if body.mode == "manual":
+        if body.consumer_ids:
+            raise HTTPException(422, "consumer_ids need mode automated or both")
+        return []
+    if not body.consumer_ids:
+        raise HTTPException(422, f"mode {body.mode} needs at least one consumer_id")
+    return check_consumers(db, ctx.org.id, product_id, body.consumer_ids, utcnow())
+
+
 def new_cycle(db: Session, ctx: OrgContext, product_id: str, name: str, **fields) -> Cycle:
     cycle = Cycle(
         org_id=ctx.org.id,
@@ -232,6 +247,8 @@ def cycle_cases_out(db: Session, rows: list[CycleCase], mode: RichMode) -> list[
                 current_version=case.current_version,
                 status=r.status,
                 assignee_actor_id=r.assignee_actor_id,
+                runner=r.runner,
+                consumer_id=r.consumer_id,
                 position=r.position,
                 last_result_at=r.last_result_at,
                 title=v.title,
@@ -279,6 +296,7 @@ def cycles_create(
     release_id = body.release_id or (plan.release_id if plan else None)
     check_release(db, ctx, p.id, release_id)
     check_actor(db, ctx, body.default_assignee_actor_id)
+    consumers = chosen_consumers(db, ctx, p.id, body)
     cycle = new_cycle(
         db,
         ctx,
@@ -288,14 +306,22 @@ def cycles_create(
         plan_id=plan.id if plan else None,
         environment=body.environment,
         default_assignee_actor_id=body.default_assignee_actor_id,
+        mode=body.mode,
     )
     live, skipped = split(found)
-    pin(db, cycle, live)
+    rows = pin(db, cycle, live)
+    jobs = []
+    if consumers:
+        db.flush()
+        versions = [(r, db.get(CaseVersion, r.case_version_id)) for r in rows]
+        jobs = make_jobs(db, cycle, split_by_runner(db, consumers, versions))
     changes = {
         "name": [None, cycle.name],
         "release_id": [None, release_id],
         "plan_id": [None, cycle.plan_id],
         "cases": [None, len(live)],
+        "mode": [None, cycle.mode],
+        "jobs": [None, len(jobs)],
     }
     audit.record(db, ctx, "cycle.create", "cycle", cycle.id, changes)
     db.commit()
@@ -309,16 +335,33 @@ def cycles_preview(
     ctx: OrgContext = Depends(require_scope(READ)),
     db: Session = Depends(get_db),
 ):
-    """What `cycles_create` would pin for this source, per feature; writes nothing."""
+    """What `cycles_create` would pin for this source, per feature and per runner; writes nothing."""
     p = get_product(db, ctx, product)
     found, _ = resolve_source(db, ctx, p, body)
+    consumers = chosen_consumers(db, ctx, p.id, body)
     live, skipped = split(found)
     per: dict[str, int] = {}
     for c in live:
         per[c.feature_id] = per.get(c.feature_id, 0) + 1
     names = dict(db.execute(select(Feature.id, Feature.name).where(Feature.id.in_(per))).all()) if per else {}
     features = [PreviewFeature(feature_id=f, name=names.get(f, ""), cases=n) for f, n in per.items()]
-    return CyclePreviewOut(total=len(live), features=features, skipped=skipped)
+    plan = split_by_runner(db, consumers, [(c, db_current(db, c)) for c in live]) if consumers else Split(person=live)
+    by_consumer = [
+        PreviewConsumer(
+            consumer_id=c.id,
+            name=c.name,
+            cases=sum(len(rows) for (cid, _), rows in plan.shares.items() if cid == c.id),
+            jobs=sum(1 for cid, _ in plan.shares if cid == c.id),
+        )
+        for c in consumers
+    ]
+    return CyclePreviewOut(
+        total=len(live),
+        features=features,
+        skipped=skipped,
+        runners=PreviewRunners(person=len(plan.person), consumers=by_consumer),
+        unmatched=plan.unmatched,
+    )
 
 
 @router.get(CYCLE, response_model=CycleOut, **op("cycles_get", READ, "execution"))

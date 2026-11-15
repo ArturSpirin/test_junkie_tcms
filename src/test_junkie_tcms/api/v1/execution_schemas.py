@@ -20,6 +20,9 @@ class CycleSource(BaseModel):
     plan_id: str | None = None
     feature_ids: list[str] | None = Field(None, max_length=200)
     case_ids: list[str] | None = Field(None, max_length=1000)
+    # automated and both send cases with a known automation_ref to these online consumers (T8).
+    mode: Literal["manual", "automated", "both"] = "manual"
+    consumer_ids: list[str] | None = Field(None, max_length=50)
 
 
 class CycleCreate(CycleSource):
@@ -45,6 +48,7 @@ class CycleOut(BaseModel):
     name: str
     environment: str | None
     status: str
+    mode: str
     default_assignee_actor_id: str | None
     started_at: UtcDateTime
     closed_at: UtcDateTime | None
@@ -59,10 +63,25 @@ class PreviewFeature(BaseModel):
     cases: int
 
 
+class PreviewConsumer(BaseModel):
+    consumer_id: str
+    name: str
+    cases: int
+    jobs: int
+
+
+class PreviewRunners(BaseModel):
+    person: int
+    consumers: list[PreviewConsumer]
+
+
 class CyclePreviewOut(BaseModel):
     total: int
     features: list[PreviewFeature]
     skipped: dict[str, int]
+    runners: PreviewRunners
+    # Automated cases no chosen consumer has in its inventory; they go to people.
+    unmatched: int
 
 
 class CycleCasesAdd(BaseModel):
@@ -91,6 +110,8 @@ class CycleCaseOut(BaseModel):
     assignee_actor_id: str | None
     position: int
     last_result_at: UtcDateTime | None
+    runner: str
+    consumer_id: str | None
     title: str
     steps: list[StepOut]
 
@@ -187,6 +208,49 @@ class BulkUnmatched(BaseModel):
 class BulkResultsOut(BaseModel):
     created: list[BulkResultRow]
     unmatched: list[BulkUnmatched]
+
+
+class JobOut(BaseModel):
+    id: str
+    cycle_id: str
+    consumer_id: str
+    project: str
+    refs: list[str]
+    status: str
+    timeout_s: int
+    attempts: int
+    claimed_at: UtcDateTime | None
+    last_beat_at: UtcDateTime | None
+    finished_at: UtcDateTime | None
+    created_at: UtcDateTime
+    updated_at: UtcDateTime
+
+
+class JobResultItem(BaseModel):
+    """One result for a ref of the job, matched to the case whose pinned version has that automation_ref."""
+
+    model_config = ConfigDict(extra="forbid")
+    ref: str = Field(min_length=1, max_length=500)
+    status: ResultStatus
+    duration_ms: int | None = Field(None, ge=0)
+    comment: str | None = Field(None, max_length=20_000)
+
+
+class JobReportIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    state: Literal["running", "done", "failed"]
+    results: list[JobResultItem] = Field(default_factory=list, max_length=500)
+
+
+class JobReportOut(BaseModel):
+    job: JobOut
+    recorded: int
+    unmatched: list[str]
+
+
+class JobReassign(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    consumer_id: str
 
 
 class AttachmentOut(Out):

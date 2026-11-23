@@ -2,7 +2,7 @@ import contextlib
 
 from fastapi import FastAPI
 
-from test_junkie_tcms import __version__, errors
+from test_junkie_tcms import __version__, app_shell, errors
 from test_junkie_tcms.api import idempotency
 from test_junkie_tcms.api.v1 import router as v1_router
 from test_junkie_tcms.db.session import make_engine, make_sessionmaker
@@ -42,4 +42,5 @@ def create_app(settings: Settings | None = None, load_entry_points: bool = True)
 
     mcp_server.install(app)
     app.state.plugins = load_plugins(app) if load_entry_points else []
+    app_shell.install(app)
     return app

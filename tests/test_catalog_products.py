@@ -3,7 +3,7 @@
 from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
 
 from tests import support
-from tests.catalog_seed import events, make_product, ok, url
+from tests.catalog_seed import events, make_feature, make_product, ok, url
 
 
 @Suite(parameters=support.DATABASES)
@@ -113,3 +113,27 @@ class CatalogProducts:
         second = ok(owner.get(url("/products"), params={"limit": 2, "cursor": first["next_cursor"]}))
         assert sorted(p["key"] for p in first["items"] + second["items"]) == ["AA", "BB", "CC"]
         assert second["next_cursor"] is None
+        assert {first["total"], second["total"]} == {3}
+
+    @test()
+    def test_counts_live_features_and_cases(self, suite_parameter):
+        owner = self.env.owner
+        p = make_product(owner, "PAY")["id"]
+        make_product(owner, "OPS")
+        kept = make_feature(owner, p, "Kept")["id"]
+        dropped = make_feature(owner, p, "Dropped")["id"]
+        for feature, title in (
+            (kept, "a"),
+            (kept, "b"),
+            (kept, "archived"),
+            (dropped, "in an archived feature"),
+        ):
+            ok(owner.post(url(f"/products/{p}/cases"), json={"feature_id": feature, "title": title}), 201)
+        ok(owner.post(url("/cases/PAY-3/archive")))
+        ok(owner.post(url(f"/features/{dropped}/archive")))
+        got = ok(owner.get(url("/products/PAY")))
+        assert (got["feature_count"], got["case_count"]) == (1, 2)
+        listed = {
+            x["key"]: (x["feature_count"], x["case_count"]) for x in ok(owner.get(url("/products")))["items"]
+        }
+        assert listed == {"PAY": (1, 2), "OPS": (0, 0)}

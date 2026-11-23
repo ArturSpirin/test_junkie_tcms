@@ -21,6 +21,7 @@ T = TypeVar("T")
 class Page(BaseModel, Generic[T]):  # noqa: UP046 - PEP 695 needs 3.12; we support 3.11
     items: list[T]
     next_cursor: str | None = None
+    total: int = Field(description="Rows the list matches with its filters, across all pages")
 
 
 class LoginIn(BaseModel):
@@ -202,6 +203,8 @@ class ProductOut(BaseModel):
     archived_at: UtcDateTime | None = None
     created_at: UtcDateTime
     updated_at: UtcDateTime
+    feature_count: int = Field(description="Live (not archived) features")
+    case_count: int = Field(description="Live (not archived) cases")
 
 
 class ProductCreate(BaseModel):
@@ -237,6 +240,8 @@ class ActorRef(BaseModel):
 class FeatureNode(FeatureOut):
     # From the feature's latest audit event; null when it has none.
     updated_by: ActorRef | None = None
+    case_count: int = Field(description="Live cases directly in this feature")
+    total_case_count: int = Field(description="Live cases in this feature and its sub-features")
     children: list["FeatureNode"] = []
 
 
@@ -341,13 +346,16 @@ class PlanEntryOut(Out):
     position: int
 
 
+PlanStatus = Literal["draft", "active", "archived"]
+
+
 class PlanOut(BaseModel):
     id: str
     product_id: str
     release_id: str | None = None
     name: str
     description: RichOut
-    status: str
+    status: PlanStatus
     entries: list[PlanEntryOut]
     created_at: UtcDateTime
     updated_at: UtcDateTime
@@ -363,7 +371,7 @@ class PlanUpdate(Patch):
     name: str | None = Field(None, min_length=1, max_length=200)
     description: RichIn | None = None
     release_id: str | None = None
-    status: Literal["draft", "active", "archived"] | None = None
+    status: PlanStatus | None = None
 
 
 class ResolvedCase(BaseModel):
@@ -447,6 +455,7 @@ class CaseOut(BaseModel):
     product_id: str
     feature_id: str
     current_version: int
+    position: int = Field(description="Index among the cases of its feature, for manual order")
     title: str
     preconditions: RichOut
     steps: list[StepOut]
@@ -459,6 +468,10 @@ class CaseOut(BaseModel):
     custom: dict[str, Any]
     tags: list[str]
     change_note: str | None = None
+    last_result: str | None = Field(
+        None, description="Latest result status in any cycle; null when it has none"
+    )
+    last_result_at: UtcDateTime | None = None
     archived_at: UtcDateTime | None = None
     created_at: UtcDateTime
     updated_at: UtcDateTime
@@ -499,6 +512,9 @@ class CaseRestore(BaseModel):
 
 class CaseMove(BaseModel):
     feature_id: str
+    position: int | None = Field(
+        None, ge=0, description="Index among the live cases of the feature; omitted or past the end appends"
+    )
 
 
 class CaseBulkItem(CaseFields):
@@ -578,6 +594,7 @@ class ConsumerOut(BaseModel):
     name: str
     status: ConsumerStatus
     product_ids: list[str]
+    project_count: int = Field(description="Projects in the consumer's last inventory")
     last_heartbeat_at: UtcDateTime | None = None
     busy_job_id: str | None = None
     tj_version: str | None = None

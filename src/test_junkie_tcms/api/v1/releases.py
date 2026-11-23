@@ -83,8 +83,8 @@ def releases_list(
 ):
     p = get_product(db, ctx, product)
     query = select(Release).where(Release.org_id == ctx.org.id, Release.product_id == p.id)
-    rows, cursor = paginate(db, query, Release.id, params)
-    return Page[ReleaseOut](items=[release_out(db, r, mode) for r in rows], next_cursor=cursor)
+    rows, cursor, total = paginate(db, query, Release.id, params)
+    return Page[ReleaseOut](items=[release_out(db, r, mode) for r in rows], next_cursor=cursor, total=total)
 
 
 @router.post(

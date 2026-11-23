@@ -30,3 +30,4 @@
 - Release report: one row per release feature, including features with no cases; each row has `in_release` and `ready`, cases outside the release get their own `in_release: false` rows, and a release is not `ready` while a release feature has no case.
 - Tests run on Test Junkie (`test-junkie==0.9a8`), not pytest, locally and in CI: one suite per file, on SQLite and, with `TJ_TCMS_TEST_POSTGRES_URL` set, Postgres.
 - Case import takes an optional `mapping` from your CSV's column names to ours, and `format: "md-bundle"` exports and re-imports cases as a zip of Markdown files, one per case; over MCP a zip arrives as `{content_type, base64}`.
+- `CHANGELOG.md` merges as a union (`.gitattributes`), so branches that each add a line here no longer conflict.

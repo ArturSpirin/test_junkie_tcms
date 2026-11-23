@@ -7,6 +7,7 @@ from fastapi import Depends, HTTPException, Path, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from test_junkie_tcms.api.request_context import MCP_TOOL_KEY
 from test_junkie_tcms.auth import sessions, tokens
 from test_junkie_tcms.auth.scopes import CONSUMER, ROLE_SCOPES, lower_role
 from test_junkie_tcms.db.base import aware, utcnow
@@ -14,8 +15,6 @@ from test_junkie_tcms.db.models import Actor, ApiToken, Consumer, Membership, Or
 from test_junkie_tcms.settings import Settings
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-# ASGI scope key the MCP dispatcher sets on its in-process requests; no client header can set it.
-MCP_VIA_KEY = "tcms.via_mcp"
 
 
 def get_settings(request: Request) -> Settings:
@@ -57,7 +56,7 @@ def get_principal(
         token, actor = found
         if CONSUMER in token.scopes:
             raise HTTPException(403, "A consumer token reaches only the consumer routes")
-        via = "mcp" if request.scope.get(MCP_VIA_KEY) else "api"
+        via = "mcp" if request.scope.get(MCP_TOOL_KEY) else "api"
         return Principal(via=via, token=token, actor=actor)
 
     cookie = request.cookies.get(sessions.SESSION_COOKIE)

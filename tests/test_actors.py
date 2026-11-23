@@ -55,7 +55,7 @@ class Actors:
     def test_a_viewer_reads_every_actor_and_token_name(self, suite_parameter):
         owner = self.env.owner
         member, viewer = self.viewer()
-        agent = _agent(owner, name="nightly bot")
+        agent = _agent(owner, name="nightly-bot")
         token = ok(owner.post(url("/tokens"), json={"name": "ci", "scopes": ["read"]}), 201)
         fake = FakeConsumer(self.env)
         fake.start()
@@ -67,7 +67,7 @@ class Actors:
         assert viewer.get(url("/agents")).status_code == 403  # the admin list stays admin only
         directory = ok(viewer.get(url("/actors")))
         kinds = {a["name"]: a["kind"] for a in directory["actors"]}
-        assert kinds["Vic"] == "user" and kinds["nightly bot"] == "agent" and kinds["build-box"] == "consumer"
+        assert kinds["Vic"] == "user" and kinds["nightly-bot"] == "agent" and kinds["build-box"] == "consumer"
         assert sum(1 for kind in kinds.values() if kind == "user") == 2
         by_id = {a["id"]: a for a in directory["actors"]}
         assert by_id[member["actor_id"]]["disabled"] is False and agent["id"] in by_id

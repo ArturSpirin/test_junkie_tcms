@@ -207,6 +207,72 @@ class Migrations:
         finally:
             engine.dispose()
 
+    @test()
+    def test_0017_gives_agents_valid_names_unique_per_org_and_drops_request_columns_on_downgrade(
+        self, suite_parameter
+    ):
+        owner = self.env.owner
+        globex = self.env.client()
+        support.login(globex, "other@example.com")
+        kept = ok(owner.post("/api/v1/orgs/acme/agents", json={"name": "ci-bot", "role": "viewer"}), 201)
+        other = ok(globex.post("/api/v1/orgs/globex/agents", json={"name": "ci-bot", "role": "viewer"}), 201)
+        database_url = self.env.database_url
+        engine = create_engine(database_url)
+
+        def columns(conn):
+            return {c["name"] for c in inspect(conn).get_columns("audit_event")}
+
+        try:
+            command.downgrade(alembic_config(database_url), "0016")
+            with engine.begin() as conn:
+                assert not {"request_id", "tool"} & columns(conn)
+                org_id, user_id, actor_id = conn.execute(
+                    text(
+                        "SELECT a.org_id, a.user_id, a.id FROM actor a JOIN org o ON o.id = a.org_id"
+                        " WHERE o.slug = 'acme' AND a.kind = 'user'"
+                    )
+                ).one()
+                # Older than ci-bot, yet ci-bot already meets the rule, so it keeps its name.
+                for id_, name, created in [
+                    ("A1", "CI Bot", "2026-01-01"),
+                    ("A2", "ci  bot!", "2026-01-02"),
+                    ("A3", "__", "2026-01-03"),
+                    ("A4", "Build Box", "2026-01-04"),
+                ]:
+                    conn.execute(
+                        text(
+                            "INSERT INTO actor (id, org_id, kind, name, owner_user_id, role, created_at)"
+                            " VALUES (:id, :org, 'agent', :name, :user, 'viewer', :created)"
+                        ),
+                        {"id": id_, "org": org_id, "name": name, "user": user_id, "created": created},
+                    )
+                conn.execute(  # A4 is a consumer's actor: consumer names have their own rule
+                    text(
+                        "INSERT INTO consumer (id, org_id, name, actor_id, approved_by_actor_id, created_at)"
+                        " VALUES ('C1', :org, 'Build Box', 'A4', :actor, '2026-01-04')"
+                    ),
+                    {"org": org_id, "actor": actor_id},
+                )
+            migrate.upgrade(database_url)
+            with engine.connect() as conn:
+                assert {"request_id", "tool"} <= columns(conn)
+                names = dict(conn.execute(text("SELECT id, name FROM actor WHERE kind = 'agent'")).all())
+            assert names == {
+                kept["id"]: "ci-bot",
+                "A1": "ci-bot-2",
+                "A2": "ci-bot-3",
+                "A3": "agent",
+                "A4": "Build Box",
+                other["id"]: "ci-bot",  # unique per org: globex keeps its own ci-bot
+            }
+            command.downgrade(alembic_config(database_url), "0016")
+            with engine.connect() as conn:
+                assert not {"request_id", "tool"} & columns(conn)
+                assert conn.scalar(text("SELECT name FROM actor WHERE id = 'A1'")) == "ci-bot-2"  # one-way
+            migrate.upgrade(database_url)
+        finally:
+            engine.dispose()
+
     @test(parameters=["UPDATE audit_event SET action = 'x'", "DELETE FROM audit_event"])
     def test_raw_sql_cannot_change_audit_event(self, parameter, suite_parameter):
         statement = parameter

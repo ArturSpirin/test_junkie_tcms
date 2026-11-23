@@ -158,6 +158,9 @@ class AuditEvent(TenantMixin, Base):
     entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
     entity_id: Mapped[str] = mapped_column(String(26), nullable=False)
     changes: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    # From the request being served (api/request_context.py); null for a row written outside a request.
+    request_id: Mapped[str | None] = mapped_column(String(30))
+    tool: Mapped[str | None] = mapped_column(String(100))  # the MCP tool, when via is 'mcp'
 
 
 class Outbox(TenantMixin, Base):

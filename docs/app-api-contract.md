@@ -276,11 +276,17 @@ operations.
 | tokens: list, create, revoke | `tokens_list`, `tokens_create`, `tokens_revoke` | exists |
 | agents: list, create, edit, disable | `agents_list`, `agents_create`, `agents_update`, `agents_disable` | exists |
 | agent enable, description, last active | `agents_enable`, `agents_create` / `agents_update` (`description`), `agents_list` (`last_active_at`) | exists (F2) |
-| agent name rule | | not yet (follow-up) |
+| agent name rule | `agents_create`, `agents_update` (`name`) | exists |
 
 `POST /agents/{agent_id}/enable` (`agents_enable`, admin) clears `disabled_at` and is idempotent. It is a 422
 when the agent's owner is no longer a member or the agent's role is now above the owner's, the same rule as
 `agents_create`. `description` is at most 500 characters; an empty string clears it.
+
+An agent's `name` is the shared name rule (trimmed, 1 to 200 characters) and also lowercase letters and digits
+with single dashes between them (`nightly-bot`), else a 422. It is unique among the org's agents, disabled ones
+included, else a 409; a consumer may share it. Migration `0017` renamed existing agents to fit: each name was
+lowercased with runs of other characters turned into one dash (`agent` when nothing was left). An already valid
+name kept its own, and a later duplicate in the same org got `-2`, `-3`, oldest first.
 
 `last_active_at` is the actor's latest authenticated request in the org, any method, written at most once a
 minute.
@@ -303,7 +309,12 @@ row, past ones included, with no emails or roles:
 |---|---|---|
 | rows, diff, actor/action/via/entity/date filters, one case's history | `audit_list` | exists |
 | actor kind filter, `q`, retention | `audit_list?actor_kind=&q=`, `audit_retention` | exists (F2) |
-| request id and tool on rows | | not yet (follow-up) |
+| request id and tool on rows | `audit_list` (`request_id`, `tool`, both found by `q`) | exists |
+
+`request_id` is the `X-Request-ID` the API sent back on the response that wrote the row (`req_` and a ULID;
+a client's own `X-Request-ID` is not used). Rows written by an MCP tool call carry the id of the `/mcp`
+request and the tool's name in `tool`; `tool` is null for every other row. Both are null on rows from before
+the change and on rows written outside a request.
 
 `actor_kind` is one of `user` (a member in the app, no token), `token` (a member through a token), `agent` or
 `consumer`; the four split the log. Agents use tokens too, but their rows are `agent`, not `token`. `q` (at

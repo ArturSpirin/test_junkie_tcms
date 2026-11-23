@@ -2,9 +2,10 @@
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import event, select
 from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
 
+from test_junkie_tcms.api.v1 import cycles
 from test_junkie_tcms.db.models import Cycle
 from tests import support
 from tests.catalog_seed import events, make_feature, make_product, ok, url
@@ -92,6 +93,28 @@ class CycleEtaOrder:
         cycle = start(owner, p, order="priority")
         assert cycle["order"] == "priority"
         assert run_keys(owner, cycle["id"]) == ["PAY-3", "PAY-2", "PAY-4", "PAY-1"]
+
+    @test()
+    def test_order_by_priority_reads_the_versions_in_one_query(self, suite_parameter):
+        owner, p = self.catalog()
+        engine, original, seen = self.env.app.state.engine, cycles.run_order, []
+
+        def counted(*args, **kwargs):
+            def record(_conn, _cursor, statement, *_rest):
+                seen.append(statement)
+
+            event.listen(engine, "before_cursor_execute", record)
+            try:
+                return original(*args, **kwargs)
+            finally:
+                event.remove(engine, "before_cursor_execute", record)
+
+        cycles.run_order = counted
+        try:
+            start(owner, p, order="priority")
+        finally:
+            cycles.run_order = original
+        assert len([s for s in seen if "FROM case_version" in s]) == 1, seen
 
     @test()
     def test_the_default_order_is_the_source_and_reads_back(self, suite_parameter):

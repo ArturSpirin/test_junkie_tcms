@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
@@ -166,6 +166,26 @@ def feature_rank(db: Session, org_id: str, product_id: str) -> dict[str, int]:
     return rank
 
 
+def current_priorities(db: Session, cases: list[TestCase]) -> dict[str, str]:
+    """Each case's priority at its current version, in one query."""
+    if not cases:
+        return {}
+    return dict(
+        db.execute(
+            select(CaseVersion.case_id, CaseVersion.priority)
+            .join(
+                TestCase,
+                and_(
+                    CaseVersion.org_id == TestCase.org_id,
+                    CaseVersion.case_id == TestCase.id,
+                    CaseVersion.version == TestCase.current_version,
+                ),
+            )
+            .where(TestCase.id.in_([c.id for c in cases]))
+        ).all()
+    )
+
+
 def run_order(
     db: Session, ctx: OrgContext, product: Product, live: list[TestCase], body: CycleCreate
 ) -> tuple[list[TestCase], str]:
@@ -175,7 +195,8 @@ def run_order(
         rank = feature_rank(db, ctx.org.id, product.id)
         live = sorted(live, key=lambda c: (rank.get(c.feature_id, len(rank)), c.position))
     elif body.order == "priority":
-        live = sorted(live, key=lambda c: -PRIORITIES.index(db_current(db, c).priority))
+        priority = current_priorities(db, live)
+        live = sorted(live, key=lambda c: -PRIORITIES.index(priority[c.id]))
     if not body.case_order:
         return live, body.order
     found = resolve_cases(db, ctx, product, list(dict.fromkeys(body.case_order)))

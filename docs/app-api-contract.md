@@ -3,7 +3,8 @@
 What the TCMS web app (`src/test_junkie_tcms/web/`) calls, view by view. The source of truth for every
 payload is `/api/v1/openapi.json`; this doc says which operations each view uses, the shapes that matter, and
 what the API does not serve yet. Rows marked **not yet (Fn)** are planned follow-ups: the app does not show
-those items until they exist.
+those items until they exist. Rows marked **out of scope (v1, owner decision)** are not built in v1, and the
+app does not show them.
 
 | Key | Follow-up |
 |---|---|
@@ -14,6 +15,7 @@ those items until they exist.
 | F5 | Report periods, trend, org KPIs, product-wide and feature-history reports |
 | F6 | MCP tool descriptions and hints, recent calls, error-code breakdown |
 | F7 | Consumer jobs per machine, rejected reason, pause, deny pairing, pending-pairing preview, roster |
+| F8 | Name search (`q`) on lists, product owner, copy feature tree, ETA and manual case order on Start |
 
 ## Serving
 
@@ -69,7 +71,42 @@ Lists have no `total` yet: **not yet (F1)**.
 
 All paths below are under `/api/v1/orgs/{org}` unless they start with `/api/v1/`.
 
+### Search
+
+Two kinds of search, and the app never filters a paged list itself (that misses rows past page one):
+
+- **Case text:** `GET /orgs/{org}/search` (`search`) `?q&tag&product&feature&include_archived`, paged. It
+  matches the current version's title, preconditions and steps, and needs `q` or `tag` (else 422). The Cases
+  list's own `q` (`cases_list?q=`) matches the title only.
+- **Names on other lists** (products, features, plans, members, consumers): a server-side `q` on each list,
+  **not yet (F8)**. Until then those views show no search box.
+
 ## Views
+
+### 0. Sign-in and invite accept
+
+| Need | Operations | Status |
+|---|---|---|
+| sign in | `POST /api/v1/auth/login` (`auth_login`) `{email, password}` returns `MeOut` and sets the cookies | exists |
+| sign out | `POST /api/v1/auth/logout` (`auth_logout`), 204 | exists |
+| who is signed in | `GET /api/v1/me` (`me_get`) | exists |
+| accept an invite | `POST /api/v1/invites:accept` (`invites_accept`) | exists |
+
+Accept takes `{token}` when signed in, or `{token, name, password}` (password 8+ characters) to sign up; signup
+also starts a session and sets the cookies. It returns the new `MemberOut`.
+
+| Call | Status | When |
+|---|---|---|
+| login | 401 `Wrong email or password` | unknown email, wrong password or inactive user (one message for all three) |
+| login | 422 | email or password missing or too long |
+| logout | 400 | called with an API token, not a session |
+| accept | 404 `Invite not found` | unknown token |
+| accept | 410 `Invite expired` | past `expires_at` |
+| accept | 410 `Invite already used` | already accepted, including a concurrent accept |
+| accept | 410 `Invite revoked` | revoked by an admin |
+| accept | 409 | signup for an email that already has an account: sign in, then accept |
+| accept | 403 | signed in as another email, or called with an API token |
+| accept | 422 | `name` without `password` or the other way round, or password under 8 characters |
 
 ### 1. Products
 
@@ -78,7 +115,8 @@ All paths below are under `/api/v1/orgs/{org}` unless they start with `/api/v1/`
 | list, create, edit, archive | `products_list`, `products_create`, `products_update`, `products_archive` | exists |
 | current version, latest results | `releases_list`, `reports_product` | exists |
 | card counts (features, cases) | | not yet (F1) |
-| owner, "copy feature tree from" | | not in the API (mock only) |
+| name search | | not yet (F8) |
+| owner, "copy feature tree from" | | not yet (F8) |
 
 ### 2. Versions (releases)
 
@@ -94,6 +132,8 @@ All paths below are under `/api/v1/orgs/{org}` unless they start with `/api/v1/`
 | Need | Operations | Status |
 |---|---|---|
 | tree, cases per feature | `features_list`, `cases_list?feature=` | exists |
+| search case text | `search?q&feature` (see Search) | exists |
+| feature name search | | not yet (F8) |
 | new, rename, describe, move, archive a feature | `features_create`, `features_update`, `features_move`, `features_archive` | exists |
 | move a case | `cases_move` | exists |
 | reports, import, viewer | `reports_feature`, `imports_create`, `cases_get` | exists |
@@ -106,6 +146,8 @@ All paths below are under `/api/v1/orgs/{org}` unless they start with `/api/v1/`
 | Need | Operations | Status |
 |---|---|---|
 | table, paging, feature/status/automation filters | `cases_list` | exists |
+| title search | `cases_list?q=` | exists |
+| text search (title, preconditions, steps, tags) | `search?q&tag&product` (see Search) | exists |
 | result and priority filters, sort, total, key search | | not yet (F1) |
 | "No feature yet" option | | not in the API (a case always has a feature) |
 
@@ -145,6 +187,7 @@ can't see is a 404.
 | reorder entries | `PUT /plans/{id}/entries/order` (`plans_reorder_entries`) | exists |
 | preview what a plan resolves to | `plans_resolve` | exists |
 | filter by version and status | in the app, from `plans_list` | exists |
+| name search | | not yet (F8) |
 | cycle from plan | `cycles_create` with `plan_id` (the plan must be `active`) | exists |
 | per-entry resolution counts | | not yet (F3) |
 
@@ -176,7 +219,8 @@ operations.
 | pick plan or features, preview | `plans_list`, `features_list`, `cycles_preview` | exists |
 | mode, environment, tester, machines | `cycles_create`, `members_list`, `consumers_list` | exists |
 | split strategy, retries, queue when offline, cycle-level stop | | not yet (F4) |
-| ETA, "notify the tester", manual order | | not in the API (mock only) |
+| ETA, manual case order | | not yet (F8) |
+| "notify the tester" | | out of scope (v1, owner decision) |
 
 ### 10. Run
 
@@ -201,9 +245,11 @@ operations.
 |---|---|---|
 | list, add, change role, remove | `members_list`, `members_add`, `members_update`, `members_remove` | exists |
 | invites: list, create, revoke | `invites_list`, `invites_create`, `invites_revoke` | exists |
-| resend an invite | revoke, then create | exists |
+| copy the invite link | `InviteCreated.token` from `invites_create`, shown once; the link carries it to the accept view | exists |
+| resend an invite | revoke, then create (a new token) | exists |
+| name search | | not yet (F8) |
 | last active | `members_list` (`last_active_at`) | exists (F2) |
-| invite emails | | not in the API (create returns the invite token) |
+| invite emails | | out of scope (v1, owner decision) |
 
 ### 13. Tokens and agents
 
@@ -216,8 +262,7 @@ operations.
 
 `POST /agents/{agent_id}/enable` (`agents_enable`, admin) clears `disabled_at` and is idempotent. It is a 422
 when the agent's owner is no longer a member or the agent's role is now above the owner's, the same rule as
-`agents_create`. `description` is at most 500
-characters; an empty string clears it.
+`agents_create`. `description` is at most 500 characters; an empty string clears it.
 
 `last_active_at` is the actor's latest authenticated request in the org, any method, written at most once a
 minute.
@@ -265,7 +310,7 @@ All five need the audit-read permission (admins).
 | updates feed | `GET /mcp/updates` (`mcp_updates`) | added |
 | live usage | poll, see below | added |
 | tool description, hints, recent calls, error codes, "last call" in live mode | | not yet (F6) |
-| drift-guard CI results in the feed | | not in the API (CI results never reach the server) |
+| drift-guard CI results in the feed | | out of scope (v1, owner decision) |
 
 **Range.** `mcp_tools_list`, `mcp_usage` and `mcp_clients` take `since` and `until` (ISO 8601). `since` is
 floored and `until` ceiled to the bucket. `since >= until`, or a span over 90 days, is a 422.
@@ -329,6 +374,7 @@ There is no server push (no SSE, no `notifications/tools/list_changed`).
 | Need | Operations | Status |
 |---|---|---|
 | cards, status filter, product filter | `consumers_list?status&product` | exists |
+| name search | | not yet (F8) |
 | card "N projects" | `ConsumerOut.project_count` | added |
 | detail, heartbeat last 24 h, inventory | `consumers_get` | exists |
 | rename, set products | `PATCH /consumers/{id}` `{name?, product_ids?}` | exists |

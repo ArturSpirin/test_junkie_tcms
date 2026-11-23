@@ -7938,8 +7938,10 @@
       "comment": {
        "anyOf": [
         {
-         "maxLength": 20000,
-         "type": "string"
+         "$ref": "#/$defs/MarkdownIn"
+        },
+        {
+         "$ref": "#/$defs/DocIn"
         },
         {
          "type": "null"
@@ -7986,6 +7988,22 @@
      "title": "BulkResultItem",
      "type": "object"
     },
+    "DocIn": {
+     "additionalProperties": false,
+     "properties": {
+      "doc": {
+       "additionalProperties": true,
+       "description": "A rich text doc (TipTap StarterKit node names)",
+       "title": "Doc",
+       "type": "object"
+      }
+     },
+     "required": [
+      "doc"
+     ],
+     "title": "DocIn",
+     "type": "object"
+    },
     "Link": {
      "additionalProperties": false,
      "properties": {
@@ -8012,6 +8030,21 @@
       "url"
      ],
      "title": "Link",
+     "type": "object"
+    },
+    "MarkdownIn": {
+     "additionalProperties": false,
+     "properties": {
+      "markdown": {
+       "maxLength": 200000,
+       "title": "Markdown",
+       "type": "string"
+      }
+     },
+     "required": [
+      "markdown"
+     ],
+     "title": "MarkdownIn",
      "type": "object"
     }
    },

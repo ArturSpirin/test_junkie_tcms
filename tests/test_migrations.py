@@ -1,5 +1,6 @@
 """Migrations build the models' schema, and the database itself keeps audit_event append-only."""
 
+from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
@@ -14,6 +15,8 @@ from test_junkie_tcms.db.migrate import alembic_config
 from test_junkie_tcms.db.models import AuditEvent
 from test_junkie_tcms.db.session import AuditAppendOnlyError, make_engine, make_sessionmaker
 from tests import support
+from tests.catalog_seed import ok
+from tests.execution_seed import cycle_cases, edit_steps, make_cycle, record, run_seed
 
 
 def _count(engine) -> int:
@@ -91,6 +94,33 @@ class Migrations:
                 assert conn.scalar(text("SELECT status FROM test_plan WHERE id = 'T1'")) == "active"
         finally:
             engine.dispose()
+
+    @test()
+    def test_0011_backfills_result_case_version_from_the_pin(self, suite_parameter):
+        owner = self.env.owner
+        s = run_seed(owner)
+        ok(record(owner, s["cycle_case"]["id"], status="fail"), 201)
+        ok(record(owner, s["cycle_case"]["id"], status="success"), 201)
+        edit_steps(owner, s["case"])
+        later = make_cycle(owner, s["product"]["id"], case_ids=[s["case"]["id"]])
+        [cc2] = cycle_cases(owner, later["id"])
+        ok(record(owner, cc2["id"], status="success"), 201)
+
+        database_url = self.env.database_url
+        command.downgrade(alembic_config(database_url), "0010")
+        migrate.upgrade(database_url)
+        engine = create_engine(database_url)
+        try:
+            with engine.connect() as conn:
+                rows = conn.execute(
+                    text(
+                        "SELECT r.case_version, cc.case_version FROM result r JOIN cycle_case cc"
+                        " ON cc.org_id = r.org_id AND cc.id = r.cycle_case_id ORDER BY r.case_version"
+                    )
+                ).all()
+        finally:
+            engine.dispose()
+        assert [tuple(r) for r in rows] == [(1, 1), (1, 1), (2, 2)]
 
     @test(parameters=["UPDATE audit_event SET action = 'x'", "DELETE FROM audit_event"])
     def test_raw_sql_cannot_change_audit_event(self, parameter, suite_parameter):

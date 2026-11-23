@@ -10,7 +10,7 @@ from test_junkie_tcms.api.v1.schemas import UtcDateTime
 
 class ReportCounts(BaseModel):
     """Cases by release status. `untested` includes `not_in_cycle` (live cases of an affected feature in
-    no cycle of the release) and `stale` (cases whose only results are on an older case version)."""
+    no cycle of the release) and `stale` (cases whose newest result ran on an older case version)."""
 
     untested: int = 0
     success: int = 0
@@ -64,6 +64,9 @@ class OrgReport(BaseModel):
 
 
 class FeatureCaseStatus(BaseModel):
+    """A `stale` case is `untested`; `last_result_at` and `last_result_status` still give its last result,
+    on the older version, until a rerun on the current one."""
+
     id: str
     key: str
     title: str
@@ -72,6 +75,7 @@ class FeatureCaseStatus(BaseModel):
     stale: bool
     cycle_id: str | None
     last_result_at: UtcDateTime | None
+    last_result_status: str | None = None
 
 
 class FeatureReport(BaseModel):
@@ -85,9 +89,13 @@ class FeatureReport(BaseModel):
 
 
 class CycleReport(BaseModel):
+    """`counts` are by pinned status. `stale`: live cases pinned to an older version than the case's
+    current one (refresh and retest them)."""
+
     cycle_id: str
     counts: dict[str, int]
     total: int
+    stale: int = 0
 
 
 class SearchHit(BaseModel):

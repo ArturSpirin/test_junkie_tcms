@@ -605,6 +605,8 @@ class Result(TenantMixin, Base):
 
     cycle_case_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
     attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+    # The version of the case this attempt ran: the cycle case's pin when it was recorded.
+    case_version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     actor_id: Mapped[str] = mapped_column(String(26), nullable=False)
     via: Mapped[str] = mapped_column(String(8), nullable=False)

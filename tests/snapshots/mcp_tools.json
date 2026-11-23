@@ -2623,13 +2623,17 @@
  {
   "annotations": {
    "destructive_hint": false,
-   "idempotent_hint": false,
+   "idempotent_hint": true,
    "read_only_hint": false
   },
   "args": {
    "consumer_id": {
     "location": "path",
     "wire": "consumer_id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
    },
    "org": {
     "location": "path",
@@ -2642,6 +2646,18 @@
    "properties": {
     "consumer_id": {
      "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
     },
     "org": {
      "description": "Org slug",
@@ -2663,13 +2679,17 @@
  {
   "annotations": {
    "destructive_hint": false,
-   "idempotent_hint": false,
+   "idempotent_hint": true,
    "read_only_hint": false
   },
   "args": {
    "consumer_id": {
     "location": "path",
     "wire": "consumer_id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
    },
    "org": {
     "location": "path",
@@ -2682,6 +2702,18 @@
    "properties": {
     "consumer_id": {
      "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
     },
     "org": {
      "description": "Org slug",

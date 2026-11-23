@@ -10,6 +10,7 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
+from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, count, page_params, paginate
 from test_junkie_tcms.api.v1.cases import case_key
@@ -327,7 +328,10 @@ def _set_paused(db: Session, ctx: OrgContext, consumer_id: str, paused: bool) ->
     **op("consumers_pause", ADMIN, "consumers"),
 )
 def consumers_pause(
-    consumer_id: str = Path(), ctx: OrgContext = Depends(require_scope(ADMIN)), db: Session = Depends(get_db)
+    consumer_id: str = Path(),
+    ctx: OrgContext = Depends(require_scope(ADMIN)),
+    idem: Idem = Depends(idempotency),
+    db: Session = Depends(get_db),
 ):
     """Stop sending it new jobs: claims return none and new cycles can't choose it. A job it holds runs to
     the end. Pausing a paused consumer changes nothing."""
@@ -340,7 +344,10 @@ def consumers_pause(
     **op("consumers_resume", ADMIN, "consumers"),
 )
 def consumers_resume(
-    consumer_id: str = Path(), ctx: OrgContext = Depends(require_scope(ADMIN)), db: Session = Depends(get_db)
+    consumer_id: str = Path(),
+    ctx: OrgContext = Depends(require_scope(ADMIN)),
+    idem: Idem = Depends(idempotency),
+    db: Session = Depends(get_db),
 ):
     """It takes jobs again. Resuming a consumer that isn't paused changes nothing."""
     return _set_paused(db, ctx, consumer_id, False)

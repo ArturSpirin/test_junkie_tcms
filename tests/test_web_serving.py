@@ -55,13 +55,13 @@ class WebServing:
     @test()
     def test_the_shell_is_served_at_every_app_path(self, suite_parameter):
         client = self.env.client()
-        shell = app_shell.SHELL.read_text(encoding="utf-8")
+        shell = app_shell.SHELL.read_bytes()
         for path in SHELL_PATHS:
             response = client.get(path, follow_redirects=False)
             assert response.status_code == 200, (path, response.status_code)
             assert response.headers["content-type"].startswith("text/html"), path
             assert response.headers["cache-control"] == "no-cache", path
-            assert response.text == shell, path
+            assert response.content == shell, path
             head = client.head(path, follow_redirects=False)
             assert head.status_code == 200 and head.content == b"", path
 

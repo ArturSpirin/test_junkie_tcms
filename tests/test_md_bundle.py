@@ -126,6 +126,24 @@ class MdBundle:
         assert ok(owner.get(url("/cases/PAY-2")))["current_version"] == 1
 
     @test()
+    def test_a_title_line_of_only_spaces_writes_nothing(self, suite_parameter):
+        owner = self.env.owner
+        s = source(owner)
+        p = s["product"]["id"]
+        files = bundle(owner, p)
+        files["PAY-1.md"] = re.sub(r"^# .*$", "#    ", files["PAY-1.md"], count=1, flags=re.M)
+        files["NEW.md"] = re.sub(r"^# .*$", "#  \t", keyless(files["PAY-2.md"]), count=1, flags=re.M)
+        r = do_import(owner, p, to_zip(files))
+        assert r.status_code == 422, r.text
+        errors = r.json()["errors"]
+        assert sorted((e["detail"].split(":")[0], e["column"]) for e in errors) == [
+            ("NEW.md", "title"),
+            ("PAY-1.md", "title"),
+        ]
+        assert ok(owner.get(url("/cases/PAY-1")))["title"] == "Pay by card"
+        assert cases_count(owner, p) == 2
+
+    @test()
     def test_boundary_collision_still_round_trips(self, suite_parameter):
         owner = self.env.owner
         s = source(owner)

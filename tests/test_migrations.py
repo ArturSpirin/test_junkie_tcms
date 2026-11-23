@@ -1,5 +1,10 @@
 """Migrations build the models' schema, and the database itself keeps audit_event append-only."""
 
+import shutil
+import tempfile
+import warnings
+from pathlib import Path
+
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
@@ -23,6 +28,43 @@ def _count(engine) -> int:
         return conn.scalar(select(func.count()).select_from(AuditEvent))
 
 
+def _chain_problems(location) -> list[str]:
+    """Every way the migrations at location fail to be one chain 0001…N, each file named for its revision."""
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        script = ScriptDirectory(str(location))
+        revisions = list(script.walk_revisions())
+    # Alembic keeps one file per revision id and only warns, so a duplicate shows as a lost file.
+    problems = [str(w.message) for w in caught if "more than once" in str(w.message)]
+    files = sorted(path.name for path in Path(script.versions).glob("[0-9][0-9][0-9][0-9]_*.py"))
+    if len(files) != len(revisions):
+        problems.append(f"{len(files)} files but {len(revisions)} revisions")
+    heads = script.get_heads()
+    if len(heads) != 1:
+        problems.append(f"heads {sorted(heads)}, want one")
+    for revision in revisions:
+        name = Path(revision.path).name
+        if not name.startswith(f"{revision.revision}_"):
+            problems.append(f"{name} has revision {revision.revision}")
+        number = int(revision.revision)
+        expected = None if number == 1 else f"{number - 1:04d}"
+        if revision.down_revision != expected:
+            problems.append(f"{revision.revision} revises {revision.down_revision}, want {expected}")
+    numbers = sorted(int(revision.revision) for revision in revisions)
+    if numbers != list(range(1, len(numbers) + 1)):
+        problems.append(f"numbers {numbers} have a gap")
+    return problems
+
+
+# Each bad case adds a file made from 0012 to a copy of migrations/: file, revision, down_revision, problem.
+_BAD_CHAINS = {
+    "duplicate_id": ("0012_other_branch.py", "0012", "0011", "present more than once"),
+    "two_heads": ("0013_other_branch.py", "0013", "0011", "heads ['0012', '0013']"),
+    "prefix_mismatch": ("0013_other_branch.py", "0014", "0012", "0013_other_branch.py has revision 0014"),
+    "gap": ("0014_other_branch.py", "0014", "0012", "have a gap"),
+}
+
+
 @Suite()
 class MigrationScripts:
     @test()
@@ -30,6 +72,27 @@ class MigrationScripts:
         # Branches that each add a revision off the same parent give two heads; re-chain before merging.
         script = ScriptDirectory.from_config(alembic_config("sqlite://"))
         assert len(script.get_heads()) == 1, script.get_heads()
+
+    @test()
+    def test_migrations_form_one_numbered_chain(self):
+        # Parallel branches each take "the next" number off the staging they started from; merging
+        # origin/staging into a branch that clashes fails here, before review.
+        script = ScriptDirectory.from_config(alembic_config("sqlite://"))
+        assert _chain_problems(script.dir) == []
+
+    @test(parameters=list(_BAD_CHAINS))
+    def test_chain_check_catches(self, parameter):
+        name, revision, down_revision, problem = _BAD_CHAINS[parameter]
+        real = Path(ScriptDirectory.from_config(alembic_config("sqlite://")).dir)
+        source = (real / "versions" / "0012_case_position.py").read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = Path(tmp) / "migrations"
+            shutil.copytree(real, copy, ignore=shutil.ignore_patterns("__pycache__"))
+            bad = source.replace('revision = "0012"', f'revision = "{revision}"', 1)
+            bad = bad.replace('down_revision = "0011"', f'down_revision = "{down_revision}"', 1)
+            (copy / "versions" / name).write_text(bad, encoding="utf-8")
+            problems = _chain_problems(copy)
+        assert any(problem in found for found in problems), problems
 
 
 @Suite(parameters=support.DATABASES)

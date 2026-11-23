@@ -1,7 +1,7 @@
 """Web adapter for Cycles, run in node against a live server: the empty product, the list with its server-side
 status tabs and bulk batches, the new-cycle and bulk wizard states, one cycle's detail (open, closed, and the
-refresh-confirm diff), the writes (create, preview, bulk, close, reopen, refresh) read back from the server,
-and a raw error."""
+refresh-confirm diff, its cases per feature, who closed it), the writes (create, preview, bulk with its name
+pattern, assignees and skip drafts, close, reopen, refresh) read back from the server, and raw errors."""
 
 import json
 
@@ -117,6 +117,63 @@ class WebCyclesAdapter:
         assert rows[i]["id"] == batch["id"] and rows[i]["cycles"] == 1 and rows[i]["per"] == "features"
         assert rows[i + 1]["inBatch"] is True and rows[i + 1]["id"] == got["cycles"][0]["id"]
         assert sum(1 for r in rows if r.get("kind") != "batch") == 2
+
+    @test()
+    def test_bulk_sends_the_name_pattern_assignees_and_skip_drafts_and_the_batch_says_who_closed_it(
+        self, suite_parameter
+    ):
+        owner = self.live.owner
+        s = run_seed(owner)
+        rel, child, me = s["release"]["id"], s["child"]["id"], s["cycle"]["created_by_actor_id"]
+        form = {
+            "per": "features",
+            "environment": "staging",
+            "namePattern": "{release} on {env}: {feature}",
+            "assignees": {child: me},
+            "skipDrafts": True,
+        }
+        batch = self.js(f"""return await a.actions.bulk("{rel}", {json.dumps(form)}, ctx);""")
+        [c] = ok(owner.get(url(f"/cycle-batches/{batch['id']}")))["cycles"]
+        assert (c["name"], c["default_assignee_actor_id"]) == (f"1.0 on staging: {s['child']['name']}", me)
+        assert sum(c["counts"].values()) == 0  # the seed's one case is a draft
+        plain = self.js(
+            f"""return await a.actions.bulk("{rel}", {{ per: "features", namePattern: "" }}, ctx);"""
+        )
+        [d] = plain["cycles"]
+        assert d["name"] == f"1.0 · {s['child']['name']}" and sum(d["counts"].values()) == 1
+        row = next(r for r in self.load({"status": "all"})["data"]["rows"] if r["id"] == batch["id"])
+        assert (row["by"], row["closedBy"]) == ({"kind": "person", "name": me}, None)
+        ok(owner.post(url(f"/cycles/{c['id']}/close")))
+        row = next(r for r in self.load({"status": "all"})["data"]["rows"] if r["id"] == batch["id"])
+        assert row["closedBy"] == {"kind": "person", "name": me}
+
+    @test()
+    def test_a_bad_name_pattern_is_refused_raw(self, suite_parameter):
+        s = run_seed(self.live.owner)
+        rel = s["release"]["id"]
+        form = '{ per: "features", namePattern: "{plan}" }'
+        out = self.js(f"""return await h.fail(a.actions.bulk("{rel}", {form}, ctx));""")
+        body = {
+            "mode": "features",
+            "environment": None,
+            "name_pattern": "{plan}",
+            "assignees": {},
+            "skip_drafts": False,
+        }
+        direct = self.live.owner.post(url(f"/releases/{rel}/cycles/bulk"), json=body)
+        assert direct.status_code == 422 and out["status"] == 422
+        assert out["raw"] == as_sent(direct)
+
+    @test()
+    def test_detail_counts_cases_per_feature_and_says_who_closed_it(self, suite_parameter):
+        owner = self.live.owner
+        s = run_seed(owner)
+        cy = self.load({"id": s["cycle"]["id"]})["data"]["cycle"]
+        assert [(f["id"], f["cases"]) for f in cy["features"]] == [(s["child"]["id"], 1)]
+        assert cy["features"][0]["path"].endswith(s["child"]["name"]) and cy["closedBy"] is None
+        closed = ok(owner.post(url(f"/cycles/{s['cycle']['id']}/close")))
+        cy = self.load({"id": s["cycle"]["id"]})["data"]["cycle"]
+        assert cy["closedBy"] == {"kind": "person", "name": closed["closed_by_actor_id"]}
 
     @test()
     def test_detail_maps_the_cycle_its_cases_and_their_attempts(self, suite_parameter):

@@ -11,6 +11,8 @@ export default {
     /* the picks so far, carried in the URL from step to step */
     query: { version: "rl_2140", plan: "pl_8k2", features: null, env: null, name: null, tester: null, order: null, machines: null },
     order: "feature",
+    /* the machines' split strategy and retries */
+    split: "by_feature", retries: 1,
     /* the product and version pickers on step 1 */
     products: [{ key: "PAY", name: "Payments", markCls: "" }, { key: "ID", name: "Identity", markCls: "b" }, { key: "WEB", name: "Storefront", markCls: "c" }],
     versions: [{ id: "rl_2150", ver: "2.15.0", hint: "planned" }, { id: "rl_2140", ver: "2.14.0", hint: "in progress · 6 features" }, { id: "rl_2130", ver: "2.13.0", hint: "released" }],
@@ -61,7 +63,8 @@ export default {
         result("PAY-131", "3-D Secure challenge, frictionless", "CI runner EU 1", "running", "…"),
         result("PAY-133", "3-D Secure challenge times out", "QA lab Mac mini", "untested", "queued")
       ],
-      manual: { count: 6, done: 1, cases: [{ key: "PAY-140", title: "Receipt email layout" }, { key: "PAY-141", title: "Wallet onboarding copy" }] }
+      manual: { count: 6, done: 1, cases: [{ key: "PAY-140", title: "Receipt email layout" }, { key: "PAY-141", title: "Wallet onboarding copy" }] },
+      stopped: false, stoppedBy: ""
     }
   },
   states: {

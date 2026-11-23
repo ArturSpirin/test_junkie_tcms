@@ -1,7 +1,7 @@
 /* Start a cycle: the four-step wizard (what to test, how to run, who runs it) and the live cycle it starts.
    The data and the writes are data/start.js; each step's picks travel in the URL (d.query), so every step is
    loaded from the server. */
-import { I, crumbs, modal, footBar, dd, bar, st, actor, esc } from "../ui.js";
+import { I, crumbs, modal, footBar, dd, tg, bar, st, actor, esc } from "../ui.js";
 import { href, showError } from "../shell.js";
 import { actions } from "../data/start.js";
 
@@ -60,8 +60,11 @@ const manualReady = (d) => pageHead(d, 2) + card("Who runs it?", summary(d, mode
   <div class="field"><label>Order</label>${dd({ value: d.order, options: [{ v: "feature", label: "By feature, then priority" }, { v: "priority", label: "Priority first" }, { v: "plan", label: "As listed in the plan" }], w: "100%", label: "Order", name: "order" })}</div></div>`,
   footBar(`<a class="btn" href="${go(d, "mode-manual")}">Back</a><button class="btn primary" data-act="start" data-mode="manual">${I.play}Start manual run</button>`));
 
-/* step 3b: automated, pick machines (split strategy and retries are not in the API yet, F4) */
+/* step 3b: automated, pick machines, how the cases split across them and how often a failed case retries */
 const allowed = (m) => m.allowed !== false;
+const runOpts = (d, none) => `<div class="grid2"><div class="field"><label>Split cases</label>${dd({ value: d.split, options: [{ v: "by_feature", label: "By feature", hint: "each machine takes whole features" }, { v: "even", label: "Evenly by count" }, { v: "first_free", label: "All on the first free machine" }], w: "100%", label: "Split cases", name: "split", dis: none })}</div>
+    <div class="field"><label>Retries</label>${dd({ value: String(d.retries), options: [{ v: "0", label: "No retries" }, { v: "1", label: "Retry a failed case once" }, { v: "2", label: "Retry twice" }], w: "100%", label: "Retries", name: "retries", dis: none })}</div></div>
+    <div class="tg-list" style="margin-bottom:16px">${tg(false, "Queue on offline machines", "picked machines that are offline take their jobs when they come back", { name: "offline", disabled: none })}</div>`;
 const autoPick = (d, mixed, ui) => {
   const key = esc(d.product.key);
   const none = !d.machines.some((m) => m.status !== "offline");
@@ -75,7 +78,7 @@ const autoPick = (d, mixed, ui) => {
     ? footBar(`<a class="btn" href="${href("consumers", {}, "pair")}">${I.plus}Pair a machine</a><a class="btn" href="${go(d, "manual-ready")}">Run manually instead</a>`)
     : footBar(`<a class="btn" href="${go(d, mixed ? "mode-mixed" : "mode")}">Back</a><button class="btn primary" data-act="start" data-mode="${mixed ? "mixed" : "auto"}">${I.play}Start run on ${ids.length} machines</button>`);
   return pageHead(d, 2) + card("Which machines run it?", summary(d, modeChip(mixed ? "Both" : "Automated")) + ban +
-    `<div class="field"><label>Machines paired for ${key}</label><div class="picks c2">${d.machines.map(machPick).join("")}</div></div>` +
+    `<div class="field"><label>Machines paired for ${key}</label><div class="picks c2">${d.machines.map(machPick).join("")}</div></div>` + runOpts(d, none) +
     (mixed ? `<div class="field"><label>Tester for the ${d.plan.manual} manual cases</label>${dd({ value: d.tester, options: d.testers.filter((t) => d.mixedTesters.includes(t.handle)).map(testerOpt), w: "min(100%, 360px)", label: "Tester", name: "tester" })}</div>` : ""), foot,
     `<a class="btn sm" href="${href("consumers")}">${I.server}Machines</a>`);
 };
@@ -98,7 +101,7 @@ function live(d) {
   const key = esc(d.product.key), ver = esc(d.version), name = esc(c.name);
   const at = { product: d.product.key };
   const cycleHref = href("cycles", { ...at, id: c.id });
-  const pill = fin ? '<span class="pill closed">finished</span>' : '<span class="pill in_progress">running</span>';
+  const pill = c.stopped ? '<span class="pill closed">stopped</span>' : fin ? '<span class="pill closed">finished</span>' : '<span class="pill in_progress">running</span>';
   const fails = esc(c.failedKeys.join(", "));
   const kp = fin
     ? [["Automated", `${c.done} of ${c.total}`, `finished in ${esc(c.elapsed)}`], ["Passed", c.passed, `${c.passedPct}% of automated`], ["Failed or error", c.failed, fails], ["Manual", `${m.count} untested`, mixed ? `assigned to ${esc(tester(d, c.manualTester))}` : "not assigned yet"]]
@@ -111,14 +114,14 @@ function live(d) {
   const manual = mixed ? `<div class="card gap"><div class="hd"><h2>Manual cases</h2><span class="r">${actor("person", c.manualTester)}</span></div>
     <div class="lrow"><span class="pi">${I.person}</span><span class="m"><b>${m.count} manual cases · ${fin ? `${m.count} untested` : `${m.done} of ${m.count} done`}</b><small>${m.cases.map((x) => esc(`${x.key} ${x.title}`)).join(", ")}${more > 0 ? `, and ${more} more` : ""}. ${who} runs them while the machines work.</small></span><span class="r"><a class="btn sm primary" href="${href("run", { ...at, id: c.id })}">${I.play}Open manual run</a></span></div></div>` : "";
   const stallJob = c.stalled && c.jobs.find((j) => j.machine === c.stalled.machine);
-  const ban = c.stalled ? `<div class="banner warn" style="margin-bottom:16px">${I.wifioff}<div style="flex:1"><b>${esc(c.stalled.machine)} stopped sending heartbeats ${esc(c.stalled.since)} ago.</b> Its ${c.stalled.waiting} remaining ${esc(stallJob.features)} cases are on hold. Reassign them, wait for it to come back, or cancel them.</div></div>`
+  const ban = c.stopped ? `<div class="banner info" style="margin-bottom:16px">${I.x}<div style="flex:1"><b>Run stopped${c.stoppedBy ? ` by ${esc(c.stoppedBy)}` : ""}.</b> Queued cases were cancelled; running cases finish and their results stay in the cycle. <a href="${cycleHref}">Open cycle</a></div></div>`
+    : c.stalled ?`<div class="banner warn" style="margin-bottom:16px">${I.wifioff}<div style="flex:1"><b>${esc(c.stalled.machine)} stopped sending heartbeats ${esc(c.stalled.since)} ago.</b> Its ${c.stalled.waiting} remaining ${esc(stallJob.features)} cases are on hold. Reassign them, wait for it to come back, or cancel them.</div></div>`
     : fin ? `<div class="banner info" style="margin-bottom:16px">${I.check}<div style="flex:1"><b>Automated run finished.</b> ${c.counts.success || 0} passed, ${c.counts.fail || 0} failed, ${c.counts.error || 0} error. ${mixed ? `${who}’s ${m.count} manual cases are still open, so the cycle stays open.` : `${m.count} manual cases are untested; the cycle stays open until they’re run or skipped.`} <a href="${cycleHref}">Open cycle</a> · <a href="${href("reports", at)}">Report</a></div></div>`
     : c.queued ? `<div class="banner info" style="margin-bottom:16px">${I.clock}<div style="flex:1"><b>Cycle created; ${c.jobs.length} jobs queued.</b> They start when a machine paired for ${key} picks them up. <a href="${href("consumers")}">Machines</a></div></div>`
     : "";
   const relCrumb = d.releaseId ? [[ver, href("releases", { ...at, id: d.releaseId })]] : [];
-  /* no "Stop run": a cycle-level stop is not in the API yet (F4) */
   return head(name, `Cycle · ${key} ${ver} · ${mixed ? "Both" : "Automated"}`, crumbs([[prodLabel(d), prodHref(d)], ...relCrumb, ["Cycles", href("cycles", at)], [name]]),
-    `${pill}<a class="btn" href="${cycleHref}">${I.cycle}Open cycle</a>`) + steps(fin ? 4 : 3) + ban + kpis +
+    `${pill}<a class="btn" href="${cycleHref}">${I.cycle}Open cycle</a>${fin || c.stopped ? "" : `<a class="btn" href="#stop-confirm">${I.x}Stop run</a>`}`) + steps(fin ? 4 : 3) + ban + kpis +
     `<div style="margin:20px 0">${bar(c.counts, "", name)}</div>` + manual +
     `<div class="g2 stack-l">${queue}<div class="card"><div class="hd"><h2>Latest results</h2><span class="r faint" style="font-size:12px">${fin ? `${c.done} of ${c.total}` : `live · ${c.done} of ${c.total}`}</span></div>${resTable(d, c)}</div></div>`;
 }
@@ -129,7 +132,7 @@ const cancelCases = (d) => {
     `<a class="btn" href="#offline-mid">Keep waiting</a><button class="btn danger" data-act="cancel-job">Cancel ${s.waiting} cases</button>`);
 };
 const stopConfirm = (d) => modal("Stop this run?", `<p style="margin-top:0">Running cases finish; the ${d.cycle.total - d.cycle.done} queued cases are cancelled and marked <b>cancel</b>. Results so far stay in the cycle.</p>`,
-  `<button class="btn" data-back>Keep running</button><button class="btn danger">Stop run</button>`);
+  `<button class="btn" data-back>Keep running</button><button class="btn danger" data-act="stop">Stop run</button>`);
 
 /* the real controls: picks are links (the next load reads them), dropdowns and buttons write through data/start.js */
 const picked = (main, name) => { const o = main.querySelector(`[data-name="${name}"] .dd-o.sel`); return o ? o.dataset.v : ""; };
@@ -155,7 +158,9 @@ function after(main, state, d) {
       plan: d.query.plan, features: d.query.features ? d.query.features.split(",") : [], release: d.versionId,
       name: d.cycleName, environment: d.environment, mode: MODE_OF[start.dataset.mode],
       tester: picked(main, "tester") || d.tester, order: picked(main, "order") || d.order,
-      machines: d.machines.filter((m) => m.on).map((m) => m.id)
+      machines: d.machines.filter((m) => m.on).map((m) => m.id),
+      split: picked(main, "split") || d.split, retries: picked(main, "retries") || String(d.retries),
+      offline: !!(main.querySelector("input[name=offline]") || {}).checked
     };
     try {
       const c = await actions.start(form, d.ctx, d.product.key);
@@ -178,6 +183,14 @@ function after(main, state, d) {
       await actions.cancel(s.jobId, d.ctx);
       location.assign(href("start", { product: d.product.key, id: d.cycle.id }));
     } catch (e) { showError(errAt(cancel), e, "Couldn't cancel the cases."); cancel.disabled = false; }
+  });
+  const stop = main.querySelector("[data-act=stop]");
+  if (stop && d.cycle) stop.addEventListener("click", async () => {
+    stop.disabled = true;
+    try {
+      await actions.stop(d.cycle.id, d.ctx);
+      location.assign(href("start", { product: d.product.key, id: d.cycle.id }));
+    } catch (e) { showError(errAt(stop), e, "Couldn't stop the run."); stop.disabled = false; }
   });
 }
 

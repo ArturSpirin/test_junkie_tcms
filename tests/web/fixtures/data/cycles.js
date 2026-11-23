@@ -35,7 +35,7 @@ export default {
     tabs: { open: 6, closed: 14 },
     filter: { status: "open", release: "any", env: "any", assignee: "any" },
     rows: [
-      { kind: "batch", id: "b_31", name: "2.14.0", per: "features", cycles: 4, on: "Thu Nov 12" },
+      { kind: "batch", id: "b_31", name: "2.14.0", per: "features", cycles: 4, on: "Thu Nov 12", by: { kind: "person", name: "dana" }, closedBy: null },
       cycle("c_8k2", "2.14.0 · Card payments", "2.14.0", "staging", "person", "lee", { success: 9, fail: 1, error: 1, ignore: 1, skip: 1, untested: 2 }, "open", true),
       cycle("c_8k3", "2.14.0 · 3-D Secure challenge", "2.14.0", "staging", "person", "priya", { success: 3, ignore: 1, untested: 4 }, "open", true),
       cycle("c_8k4", "2.14.0 · Partial refunds", "2.14.0", "staging", "agent", "ci-reporter", { success: 11, fail: 1 }, "open", true),
@@ -44,21 +44,22 @@ export default {
       cycle("c_7z1", "Checkout · 2.13.0 · prod", "2.13.0", "prod", "person", "dana", { success: 30, fail: 1 }, "closed", false)
     ],
     /* the new-cycle form prefill and what the server says it would pin */
-    draft: { name: "Checkout · wallets regression", features: ["card", "wallet"], release: "2.14.0", env: "staging", assignee: "lee", total: 23, deprecated: 0, archived: 0 },
-    /* the bulk cycle wizard: per-feature counts are not served yet, so a feature row's cases is null */
+    draft: { name: "Checkout · wallets regression", features: ["card", "wallet"], release: "2.14.0", env: "staging", assignee: "lee", total: 23, deprecated: 0, archived: 0, drafts: 2 },
+    /* the bulk cycle wizard: one row per affected feature, its cases with drafts left out and the drafts skipped */
     bulk: {
-      release: "2.14.0", releaseId: "r_214", env: "staging", per: "features", plans: 1, featureCount: 4, cases: 46, total: 46,
+      release: "2.14.0", releaseId: "r_214", env: "staging", per: "features", plans: 1, featureCount: 4, cases: 49, total: 46, drafts: 3,
+      pattern: "{release} · {feature}",
       features: [
-        { path: "Checkout › Card payments", cases: null },
-        { path: "Checkout › 3-D Secure challenge", cases: null },
-        { path: "Refunds › Partial refunds", cases: null },
-        { path: "Subscriptions › Proration on plan change", cases: null }
+        { id: "card", path: "Checkout › Card payments", cases: 14, drafts: 2, assignee: "lee" },
+        { id: "3ds", path: "Checkout › 3-D Secure challenge", cases: 8, drafts: 0, assignee: "priya" },
+        { id: "partial", path: "Refunds › Partial refunds", cases: 12, drafts: 1, assignee: "ci" },
+        { id: "proration", path: "Subscriptions › Proration on plan change", cases: 12, drafts: 0, assignee: "none" }
       ]
     },
     /* one cycle */
     cycle: {
       id: "c_8k2", name: "2.14.0 · Card payments", release: "2.14.0", releaseId: "r_214", env: "staging", status: "open",
-      plan: "Checkout regression", planId: "pl_8k2", batch: "b_31", closedAt: "",
+      plan: "Checkout regression", planId: "pl_8k2", batch: "b_31", closedAt: "", closedBy: null,
       counts: { success: 1, fail: 1, error: 1, ignore: 1, skip: 1, cancel: 0, untested: 2 },
       features: [{ id: "card", path: "Checkout › Card payments", cases: 7 }],
       cases: [
@@ -79,7 +80,7 @@ export default {
     "refresh-409": {
       error: `HTTP/1.1 409 Conflict\nContent-Type: application/problem+json\n\n{"type":"about:blank","title":"Conflict","status":409,"detail":"The cycle is closed; reopen it first","code":"cycle_closed"}`
     },
-    closed: { cycle: { status: "closed", closedAt: "Fri Nov 13, 9:40 AM" } },
+    closed: { cycle: { status: "closed", closedAt: "Fri Nov 13, 9:40 AM", closedBy: { kind: "person", name: "dana" } } },
     empty: { rows: [], tabs: { open: 0, closed: 0 } }
   }
 };

@@ -1,7 +1,8 @@
 """Web adapter for the Run screen, run in node against a live server: the first untested case with its pinned
 steps (in-progress), a case with an earlier attempt (retest), the toast after a save (submitted), a cycle with
-nothing left (complete), the writes (submit a result, attach evidence) read back from the server, and a raw
-error."""
+nothing left (complete), the skip reasons and the build menu from the builds recorded, the writes (submit a
+result with every step status, a skip reason and the build; attach evidence) read back from the server, and
+raw errors."""
 
 import base64
 import json
@@ -145,6 +146,69 @@ class WebRunAdapter:
             "via": res["via"],
         }
         assert shown["data"]["case"]["id"] == w["ccs"][1]["id"]
+
+    @test()
+    def test_the_build_menu_lists_the_recorded_builds_and_the_case_keeps_its_last_build(
+        self, suite_parameter
+    ):
+        owner = self.live.owner
+        w = world(owner)
+        first, second = w["ccs"]
+        fresh = self.load({"id": w["cycle"]["id"]})["data"]
+        assert [o["v"] for o in fresh["builds"]] == [""] and fresh["case"]["build"] == ""
+        assert [o["v"] for o in fresh["skipReasons"] if isinstance(o, dict) and "v" in o] == [
+            "defect",
+            "env",
+            "data",
+            "dep",
+            "na_env",
+            "flag",
+            "other",
+        ]
+        assert record(owner, second["id"], status="success", build="1.4.3").status_code == 201
+        new = self.load({"id": w["cycle"]["id"]})["data"]
+        assert new["case"]["id"] == first["id"] and new["case"]["build"] == "1.4.3"  # the newest recorded
+        assert record(owner, first["id"], status="fail", build="1.4.2").status_code == 201
+        assert record(owner, second["id"], status="success", build="1.4.4").status_code == 201
+        d = self.load({"id": w["cycle"]["id"], "cc": first["id"]})["data"]
+        assert [o["v"] for o in d["builds"] if isinstance(o, dict) and "v" in o] == [
+            "1.4.4",
+            "1.4.2",
+            "1.4.3",
+            "",
+        ]
+        assert d["case"]["build"] == "1.4.2"  # its last attempt's
+
+    @test()
+    def test_submit_sends_every_step_status_the_skip_reason_and_the_build(self, suite_parameter):
+        owner = self.live.owner
+        w = world(owner)
+        first = w["ccs"][0]
+        steps = [s["id"] for s in ok(owner.get(url(f"/cases/{first['case_id']}/versions/1")))["steps"]]
+        self.js(
+            f"""return await a.actions.submit("{first["id"]}", {{
+              status: "skip", skip_reason: "env", build: "2.0.1",
+              steps: [{{ step_id: "{steps[0]}", status: "ignore" }},
+                      {{ step_id: "{steps[1]}", status: "cancel" }}],
+              defects: [{{ url: "https://issues.example.com/OPS-3" }}] }}, ctx);""",
+            {"product": "PAY"},
+        )
+        [res] = ok(owner.get(url(f"/cycle-cases/{first['id']}/results")))["items"]
+        assert (res["status"], res["skip_reason"], res["build"]) == ("skip", "env", "2.0.1")
+        assert [s["status"] for s in res["steps"]] == ["ignore", "cancel"]
+        assert [d["url"] for d in res["defects"]] == ["https://issues.example.com/OPS-3"]
+
+    @test()
+    def test_skip_reason_other_with_no_comment_is_refused_raw(self, suite_parameter):
+        owner = self.live.owner
+        cc = world(owner)["ccs"][0]["id"]
+        body = {"status": "skip", "skip_reason": "other"}
+        out = self.js(
+            f"""return await h.fail(a.actions.submit("{cc}", {json.dumps(body)}, ctx));""", {"product": "PAY"}
+        )
+        direct = owner.post(url(f"/cycle-cases/{cc}/results"), json=body)
+        assert direct.status_code == 422 and out["status"] == 422
+        assert out["raw"] == as_sent(direct)
 
     @test()
     def test_a_result_on_a_closed_cycle_is_refused_raw(self, suite_parameter):

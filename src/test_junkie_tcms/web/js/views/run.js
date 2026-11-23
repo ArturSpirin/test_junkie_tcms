@@ -7,8 +7,8 @@ import { actions } from "../data/run.js";
 /* Test Junkie statuses (test_junkie/constants.py:3-11) with their run-screen keys */
 const TJ = ["success", "fail", "error", "ignore", "skip", "cancel"];
 const KEY = { success: "1", fail: "2", error: "3", ignore: "4", skip: "5", cancel: "6" };
-/* the statuses a step result can have (StepResultIn); per-step ignore and cancel are not served yet (F4) */
-const STEP = TJ.filter((s) => !["ignore", "cancel"].includes(s));
+/* a step result can have any of them (StepResultIn) */
+const STEP = TJ;
 const ICON = (s) => STATUS.find((x) => x[0] === s)[2];
 /* data options name their icon; the dropdown wants the svg */
 const opts = (list) => list.map((o) => (o === "-" || o.group ? o : { ...o, icon: I[o.icon] }));
@@ -17,8 +17,9 @@ const FLAGS = { "skip-reason": { skipOpen: true }, drop: { drop: true } };
 const at = (d) => ({ product: d.product.key });
 
 /* the run model: which step is current, the step results, what each failed step carries (actual, defect, the
-   files attached) and the view flags; keys() mutates it as the tester works */
-const model = (d, flags = {}) => ({ cur: d.current.step, res: [...d.current.res], q: d.current.q, actual: {}, du: {}, dk: {}, files: {}, ...flags });
+   files attached), each skipped step's blocking defect, the case's skip reason and build, and the view flags;
+   keys() mutates it as the tester works */
+const model = (d, flags = {}) => ({ cur: d.current.step, res: [...d.current.res], q: d.current.q, actual: {}, du: {}, dk: {}, bk: {}, files: {}, skip: d.skip.reason, build: d.case.build, ...flags });
 
 function overall(d, res) {
   const v = Object.values(res);
@@ -48,8 +49,8 @@ function rstep(d, s, i, o) {
     <div><span class="mini-lbl">Evidence</span><div class="row wrap">${files.map((a) => `<span class="att">${I.clip}${esc(a.name)} <span class="faint">${esc(a.size)}</span></span>`).join("")}</div>
       <div class="drop ${o.drop ? "over" : ""}" style="margin-top:10px">${I.upload} ${o.drop ? "<b>Drop to attach to step " + (i + 1) + "</b>" : "Drop files or paste a screenshot (Ctrl+V)"}</div>${d.uploadError ? uploadErr(d.uploadError) : ""}</div>
     <div class="grid2"><div class="field mb0"><label for="du${i}">Defect URL</label><input id="du${i}" class="in" data-f="du" value="${esc(o.du[i] ?? f.defectUrl)}"></div><div class="field mb0"><label for="dk${i}">Defect key</label><input id="dk${i}" class="in mono" data-f="dk" value="${esc(o.dk[i] ?? f.defectKey)}"></div></div></div>`;
-  else if (v === "skip" && d.skipReasons) xtra = `<div class="xtra"><div class="grid2"><div class="field mb0"><label>Skip reason <span class="muted">required</span></label>${dd({ value: d.skip.reason, options: opts(d.skipReasons), cls: "block", open: !!o.skipOpen, label: "Skip reason", hl: o.skipOpen ? "env" : undefined })}<span class="hint">Test Junkie has no “blocked” status: a blocked step is a skip with a reason.</span></div>
-    <div class="field mb0"><label for="bk${i}">Blocking defect <span class="muted">optional</span></label><input id="bk${i}" class="in mono" value="${esc(d.skip.blockingDefect)}" placeholder="LAB-412"></div></div></div>`;
+  else if (v === "skip") xtra = `<div class="xtra"><div class="grid2"><div class="field mb0"><label>Skip reason <span class="muted">required</span></label>${dd({ value: o.skip, options: opts(d.skipReasons), cls: "block", open: !!o.skipOpen, label: "Skip reason", name: "skip", hl: o.skipOpen ? "env" : undefined })}<span class="hint">Test Junkie has no “blocked” status: a blocked step is a skip with a reason.</span></div>
+    <div class="field mb0"><label for="bk${i}">Blocking defect URL <span class="muted">optional</span></label><input id="bk${i}" class="in mono" data-f="bk" value="${esc(o.bk[i] ?? d.skip.blockingDefect)}" placeholder="https://"></div></div></div>`;
   const pill = v ? st(v) : cur ? "" : st("untested");
   return `<div class="rstep ${cur ? "cur" : ""}" data-i="${i}">${disc(i + 1, cur && !v ? "cur" : v || "untested")}
   <div class="shd"><span class="eyebrow">Step ${i + 1}</span><span class="sid">${esc(s.id)}</span><span class="r">${pill}${cur ? '<span class="chip acc">Current</span>' : ""}</span></div>
@@ -67,11 +68,11 @@ function run(d, o) {
   <div class="only-n" style="margin-bottom:16px"><span class="mini-lbl">Case ${o.q + 1} of ${n} · ${esc(d.cycle.queue)}</span>${caseDd(d)}</div>
   <div class="eyebrow hide-n">Case ${o.q + 1} of ${n}</div>
   <div class="case-hd"><span class="key">${esc(c.key)}</span>${ver(c.pin, 1)}<span class="faint" style="font-size:12px">case_version pinned in this cycle${c.newer ? " · v" + c.newer + " exists" : ""}</span>${c.attempt > 1 ? `<span class="chip acc">${I.restore}attempt ${c.attempt}</span>` : '<span class="chip">attempt 1</span>'}
-    ${d.builds ? dd({ value: c.build, options: opts(d.builds), cls: "sm", pre: "Build", label: "Build under test" }) : ""}</div>
+    ${dd({ value: o.build, options: opts(d.builds), cls: "sm", pre: "Build", label: "Build under test", name: "build" })}</div>
   <h1>${esc(c.title)}</h1>
   ${c.attempt > 1 && p ? `<div class="banner info">${I.restore}<div>This is <b>attempt ${c.attempt}</b>. Attempt ${c.attempt - 1} ${st(p.status)} by ${esc(person(p.by)[0])}, ${esc(p.at)}${prev ? `: ${prev}` : ""}. Attempt ${c.attempt - 1} stays in the history.</div></div>` : ""}
   ${c.preconditions ? `<details class="card pre-card"><summary><span class="eyebrow">Preconditions</span><span class="muted" style="font-weight:400;font-size:13px">${esc(c.preShort)}</span><span class="dd-c">${I.chevd}</span></summary><div class="bd rich">${esc(c.preconditions)}</div></details>` : ""}
-  <div class="kbar"><span><kbd>j</kbd>/<kbd>k</kbd> next/prev case</span><span><kbd>↓</kbd>/<kbd>↑</kbd> step</span><span><kbd>1</kbd>–<kbd>3</kbd>, <kbd>5</kbd> success, fail, error, skip</span><span><kbd>a</kbd> actual</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> submit</span><span><kbd>?</kbd> all keys</span></div>
+  <div class="kbar"><span><kbd>j</kbd>/<kbd>k</kbd> next/prev case</span><span><kbd>↓</kbd>/<kbd>↑</kbd> step</span><span><kbd>1</kbd>–<kbd>6</kbd> success, fail, error, ignore, skip, cancel</span><span><kbd>a</kbd> actual</span><span><kbd>Ctrl</kbd>+<kbd>Enter</kbd> submit</span><span><kbd>?</kbd> all keys</span></div>
   <div id="steps">${steps(d, o)}</div>
   <div class="field" style="margin-top:16px"><label for="cm">Comment</label><textarea id="cm" class="in" rows="2" placeholder="Optional"></textarea></div>
   <div class="runfoot"><span class="row"><span class="mini-lbl" style="margin:0">Case result</span><span id="overall">${st(overall(d, o.res), { lg: 1 })}</span></span><span class="faint" style="font-size:12px">attempt ${c.attempt} · <span id="el">${esc(c.elapsed || "00:00")}</span> elapsed</span><span style="flex:1"></span>
@@ -88,7 +89,7 @@ function complete(d) {
   <div style="max-width:360px;margin:16px auto 0">${bar(c, "lg")}</div>
   <a class="btn" href="${href("cycles", { ...at(d), id: d.cycle.id })}">Back to cycle</a> <a class="btn primary" href="${report}">Release report</a></div></div></div></div>`;
 }
-/* the toast after a save; undo is not served yet (F4) */
+/* the toast after a save; result undo is not in the API yet */
 const saved = (s) => `<div class="toast" role="status"><div class="row wrap"><b>${esc(s.key)}</b>${st(s.status)}<span class="muted">attempt ${s.attempt} · ${s.defects} defect · ${s.files} files · saved via ${esc(s.via)}</span></div></div>`;
 
 /* a dropped or pasted file as AttachmentBase64In */
@@ -100,7 +101,8 @@ const read = (file) => new Promise((ok, no) => {
 });
 
 /* the ResultCreate this screen sends: the case result, the comment, each step's result (a failed one with its
-   actual result and files) and the defects the failed steps name */
+   actual result and files), the defects the failed and skipped steps name, the skip reason when the case is a
+   skip, and the build under test (none when "not recorded") */
 function body(main, d, o, ms) {
   const comment = main.querySelector("#cm").value.trim();
   const defects = [];
@@ -112,10 +114,17 @@ function body(main, d, o, ms) {
       out.attachment_ids = (o.files[i] || []).map((a) => a.id);
       const url = (o.du[i] ?? "").trim(), key = (o.dk[i] ?? "").trim();
       if (url) defects.push(key ? { url, key } : { url });
+    } else if (o.res[i] === "skip") {
+      const url = (o.bk[i] ?? "").trim();
+      if (url) defects.push({ url });
     }
     return out;
   });
-  return { status: overall(d, o.res), ...(comment ? { comment: { markdown: comment } } : {}), duration_ms: ms, steps: stepsIn, defects };
+  const status = overall(d, o.res);
+  return {
+    status, ...(comment ? { comment: { markdown: comment } } : {}), duration_ms: ms, steps: stepsIn, defects,
+    ...(status === "skip" && o.skip ? { skip_reason: o.skip } : {}), ...(o.build ? { build: o.build } : {})
+  };
 }
 
 /* step clicks, drag and drop, the keyboard and the writes; o is this render's model */
@@ -159,6 +168,10 @@ function keys(main, o, d) {
   box.addEventListener("paste", (e) => { const r = e.target.closest(".rstep"); const files = [...(e.clipboardData ? e.clipboardData.files : [])]; if (r && files.length && o.res[+r.dataset.i] === "fail") { e.preventDefault(); attach(+r.dataset.i, files); } });
   const nar = main.querySelector('[data-name="case"]');
   if (nar) nar.addEventListener("dd:change", (e) => toCase(d.queue.findIndex((q) => q.key === e.detail.value)));
+  const bd = main.querySelector('[data-name="build"]');
+  if (bd) bd.addEventListener("dd:change", (e) => { o.build = e.detail.value; });
+  /* the skip reason dropdown is redrawn with the steps, so it is heard on the steps box */
+  box.addEventListener("dd:change", (e) => { if (e.detail.name === "skip") o.skip = e.detail.value; });
   const btn = main.querySelector("[data-act=submit]");
   const submit = async () => {
     if (btn.disabled) return;

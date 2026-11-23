@@ -18,11 +18,11 @@ from test_junkie_tcms.mcp_server.generator import build_tools, tool_list_hash
 from tests import support
 from tests.catalog_seed import ok, url
 from tests.support import add_member, login
+from tests.test_mcp_drift import TOOL_COUNT
 from tests.test_mcp_server import call, rpc, token, tool_names
 
 T0 = datetime(2026, 11, 14, 10, 15, tzinfo=UTC)
 MCP_OPS = {"mcp_tools_list", "mcp_usage", "mcp_server_get", "mcp_clients", "mcp_updates", "mcp_calls"}
-TOOL_COUNT = 93
 
 
 def make_clock(env):

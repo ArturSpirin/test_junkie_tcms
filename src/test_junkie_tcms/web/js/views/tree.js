@@ -165,8 +165,7 @@ function treeCard(o) {
   else body = rows(o.model, 0, o);
   const cnt = o.q ? (o.model.length ? `${hits(o.model)} cases · ${o.feats} features` : "0 results") : "";
   return `<div class="card tcard"><div class="hd"><div class="tch"><span class="eyebrow">Product</span>${dd({ value: d.picked, options: prodOpts(d), cls: "sm block", search: "Find a product", label: "Product" })}</div>${o.ro ? "" : `<button class="icon-btn" title="New feature" aria-label="New feature">${I.plus}</button>`}</div>
-  ${o.emptyProduct ? "" : psearch({ q: o.q, ph: "Search features and cases", cnt, clear: "#search-cleared" })}
-  <div class="dnd-bar${o.barBad ? " bad" : ""}" id="dndbar" role="status"${o.bar ? "" : " hidden"}>${o.bar || ""}</div>
+  <div class="dnd-slot">${o.emptyProduct ? "" : psearch({ q: o.q, ph: "Search features and cases", cnt, clear: "#search-cleared" })}<div class="dnd-bar${o.barBad ? " bad" : ""}" id="dndbar" role="status"${o.bar ? "" : " hidden"}>${o.bar || ""}</div></div>
   <ul class="tree" id="tree" role="tree" aria-label="Features and cases">${body}</ul>
   ${o.ro || o.emptyProduct ? "" : `<div class="tfoot">${I.drag}<span>Drag any feature or case. Drop on a feature to put it inside; drop between rows to reorder. Or Space to pick up, arrows, Enter.</span></div>`}</div>`;
 }
@@ -196,7 +195,7 @@ function descBlock(o) {
   const fe = o.d.feature;
   const m = o.desc || (fe.agentEdit ? "agent" : "view");
   if (m === "edit") return `<div class="fdesc"><div class="sec-h"><h2>Description</h2></div>
-    ${rte({ html: fe.desc, compact: true, focus: true, label: "Feature description", foot: `<span class="faint">Markdown shortcuts work · saves with <code>PATCH /features/${esc(fe.id)}</code></span>` })}
+    ${rte({ html: fe.desc, compact: true, focus: true, label: "Feature description", foot: `<span class="faint">Markdown shortcuts work</span>` })}
     <div class="row" style="justify-content:flex-end;margin-top:10px"><a class="btn sm" href="#default">Cancel</a><a class="btn sm primary" href="#desc-saved">Save description</a></div></div>`;
   const a = fe.agentEdit;
   const meta = m === "agent"
@@ -233,7 +232,7 @@ function filters(o) {
     ${dd({ multi: true, value: [], options: OPTS.pri, pre: "Priority", placeholder: "Any", cls: "sm hide-n", w: "150px", name: "priority", label: "Priority" })}
     ${v ? '<button class="btn ghost sm">Clear</button>' : ""}<span class="sp"></span>
     ${dd({ value: d.sort, options: OPTS.sort, pre: "Sort", cls: "sm ghost", w: "196px", name: "sort", label: "Sort" })}
-  </div>${v ? `<div class="qline mono faint">GET /products/${esc(d.product.key)}/cases?status=${esc(v.status.join(","))}&amp;automation=${esc(v.automation.join(","))}&amp;tag=${esc(v.tag.join(","))}</div>` : ""}`;
+  </div>`;
 }
 
 const head = (d, ro) => `${crumbs([[esc(`${d.product.key} · ${d.product.name}`), "products.html"], ["Features", "tree.html"], [esc(d.feature.parent)], [esc(d.feature.name)]])}
@@ -296,18 +295,24 @@ function layout(d, ui) {
   return head(d, o.ro) + (o.banner || "") + filters(o) + `<div class="split"><div id="tcol">${treeCard(o)}</div><div id="ccol">${right(o)}</div></div>`;
 }
 
-const newBanner = (d) => `<div class="banner info">${I.info}<div>New feature under <b>${esc(find(d.tree, d.newUnder).node.name)}</b>. Enter saves (<code>features_create</code>), Esc cancels.</div></div>`;
+const newBanner = (d) => `<div class="banner info">${I.info}<div>New feature under <b>${esc(find(d.tree, d.newUnder).node.name)}</b>. Enter saves, Esc cancels.</div></div>`;
 function moveModal(d) {
   const s = find(d.tree, d.move.src).node, t = find(d.tree, d.move.dest).node;
   return modal(`Move '${esc(s.name)}'`,
-    `<p style="margin-top:0">Moving <b>${esc(s.name)}</b> (${count(s)} cases) under <b>${esc(t.name)}</b>. Saves with <code>features_move</code>; its cases and their versions move with it.</p>
+    `<p style="margin-top:0">Moving <b>${esc(s.name)}</b> (${count(s)} cases) under <b>${esc(t.name)}</b>. Its cases and their versions move with it.</p>
     <div class="field"><label>Destination feature</label>${dd({ value: d.move.dest, options: destOpts(d), cls: "block", search: "Find a feature", open: true, label: "Destination feature" })}</div>
     <div class="field mb0"><label>Position</label><div class="seg"><button class="on">Inside, at the end</button><button>Inside, at the top</button></div></div>`,
-    `<span class="l mono">features_move</span><button class="btn" data-back>Cancel</button><button class="btn primary">Move here</button>`);
+    `<button class="btn" data-back>Cancel</button><button class="btn primary">Move here</button>`);
+}
+/* The move toast's text, for the live drop and the dropped state: before/after on a reorder within the same parent, "into" otherwise. */
+function movedMsg(s, same, dest, z, t, product) {
+  const dl = esc(dest ? dest.name : product), sn = esc(name(s));
+  const where = !same ? `into '${dl}'` : z === "in" ? `to the end of '${dl}'` : `${z} '${esc(name(t))}'`;
+  return `<div><b>Moved '${sn}' ${where}.</b> <span class="muted">${s.t === "f" ? `${count(s)} cases moved with it` : "Its versions and results stay with it"}</span></div>`;
 }
 function droppedToast(d) {
   const m = find(d.tree, d.moved);
-  return `<div class="toast" role="status"><div><b>Moved '${esc(name(m.node))}' into '${esc(m.parent ? m.parent.name : d.product.name)}'.</b> <span class="muted">${count(m.node)} cases moved with it · features_move</span></div><button class="btn sm" data-hash="default">Undo</button></div>`;
+  return `<div class="toast" role="status">${movedMsg(m.node, false, m.parent, "in", null, d.product.name)}<button class="btn sm" data-hash="default">Undo</button></div>`;
 }
 const loading = (d) => head(d) + `<div class="split"><div class="card"><div class="bd stack">${"<span class='skel'></span>".repeat(8)}</div></div><div class="card"><div class="bd stack">${"<span class='skel' style='height:18px'></span>".repeat(6)}</div></div></div>`;
 const error = (d) => head(d) + `<div class="banner err">${I.warn}<div style="min-width:0;flex:1"><b>Couldn't load the tree.</b> The server said:
@@ -363,11 +368,11 @@ function endKeyMove() {
 }
 function move(src, tgt, z) {
   UNDO = { model: JSON.parse(JSON.stringify(MODEL)), id: src };
-  const dest = place(MODEL, src, tgt, z), s = find(MODEL, src).node;
+  const a = find(MODEL, src), s = a.node, from = a.parent, t = find(MODEL, tgt).node;
+  const dest = place(MODEL, src, tgt, z);
   CUR = { ...CUR, model: MODEL, cls: { [src]: "just" }, ext: {} };
   paint();
-  const dl = dest ? dest.name : CUR.d.product.name;
-  toast(`<div><b>Moved '${esc(name(s))}' into '${esc(dl)}'.</b> <span class="muted">${s.t === "f" ? `${count(s)} cases moved with it · features_move` : "Its versions and results stay with it"} · Ctrl+Z undoes</span></div><button class="btn sm" data-undo aria-keyshortcuts="Control+Z" title="Undo (Ctrl+Z)">Undo</button>`, false, true);
+  toast(`${movedMsg(s, from === dest, dest, z, t, CUR.d.product.name)}<button class="btn sm" data-undo aria-keyshortcuts="Control+Z" title="Undo (Ctrl+Z)">Undo</button>`, false, true);
   clearTimeout(move.t); move.t = setTimeout(() => document.querySelectorAll(".toast.live-t").forEach((x) => x.remove()), 7000);
 }
 function wire() {
@@ -478,9 +483,9 @@ const states = {
   "error": { render: error },
   "search": S({}),
   "search-empty": S({}),
-  "search-cleared": S({ live: true }, { after: (m, d) => toast(`<div><b>Search cleared.</b> <span class="muted">Showing all ${d.tree.length} top features in ${esc(d.product.key)}.</span></div>`) }),
+  "search-cleared": S({ live: true }, { toast: (d) => `<div><b>Search cleared.</b> <span class="muted">Showing all ${d.tree.length} top features in ${esc(d.product.key)}.</span></div>` }),
   "desc-edit": S({ desc: "edit" }),
-  "desc-saved": S({ live: true }, { after: (m, d) => toast(`<div><b>Description saved.</b> <span class="muted">PATCH /features/${esc(d.feature.id)} · 200</span></div>`) }),
+  "desc-saved": S({ live: true }, { toast: (d) => `<div><b>Description saved.</b></div>` }),
   "desc-agent": S({ live: true }),
   "nav-open": S({}, { navOpen: true }),
   "read-only": S({})

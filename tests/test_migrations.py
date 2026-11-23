@@ -165,7 +165,7 @@ class Migrations:
             engine.dispose()
 
     @test()
-    def test_0014_keeps_pending_pairings_and_drops_denied_on_downgrade(self, suite_parameter):
+    def test_0015_keeps_pending_pairings_and_drops_denied_on_downgrade(self, suite_parameter):
         owner, anon = self.env.owner, self.env.client()
         kept = ok(anon.post("/api/v1/pair", json={"os": "Linux"}), 201)["user_code"]
         denied = ok(anon.post("/api/v1/pair"), 201)["user_code"]
@@ -174,7 +174,7 @@ class Migrations:
         engine = create_engine(database_url)
         rows = "SELECT user_code, status FROM pairing_request ORDER BY user_code"
         try:
-            command.downgrade(alembic_config(database_url), "0013")
+            command.downgrade(alembic_config(database_url), "0014")
             with engine.connect() as conn:
                 assert "machine" not in {c["name"] for c in inspect(conn).get_columns("pairing_request")}
                 assert "paused_at" not in {c["name"] for c in inspect(conn).get_columns("consumer")}

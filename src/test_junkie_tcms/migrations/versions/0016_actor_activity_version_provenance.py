@@ -1,15 +1,15 @@
 """actor last_active_at and description; case_version via, token and on-behalf-of
 
-Revision ID: 0012
-Revises: 0011
+Revision ID: 0016
+Revises: 0015
 Create Date: 2026-11-22 20:00:00.000000
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0012"
-down_revision = "0011"
+revision = "0016"
+down_revision = "0015"
 branch_labels = None
 depends_on = None
 

@@ -28,6 +28,15 @@ def report(client, release: str, org: str = "acme") -> dict:
     return ok(client.get(url(f"/releases/{release}/report", org)))
 
 
+def cycle_report(client, cycle: str, org: str = "acme") -> dict:
+    return ok(client.get(url(f"/cycles/{cycle}/report", org)))
+
+
+def feature_items(client, s: dict, org: str = "acme") -> list[dict]:
+    path = url(f"/features/{s['child']['id']}/report", org)
+    return ok(client.get(path, params={"release": s["release"]["id"]}))["items"]
+
+
 def counts(r: dict, *names: str) -> tuple:
     return tuple(r["counts"][n] for n in names)
 
@@ -105,10 +114,47 @@ class Reports:
         r = report(owner, s["release"]["id"])
         assert counts(r, "success", "untested", "stale", "total") == (0, 1, 1, 1)
         assert r["ready"] is False
-        items = ok(
-            owner.get(url(f"/features/{s['child']['id']}/report"), params={"release": s["release"]["id"]})
-        )["items"]
-        assert (items[0]["status"], items[0]["stale"]) == ("untested", True)
+        [item] = feature_items(owner, s)
+        assert (item["status"], item["stale"], item["last_result_status"]) == ("untested", True, "success")
+        assert item["last_result_at"] is not None and item["cycle_id"] == s["cycle"]["id"]
+        # The cycle report keeps the pinned result and says the pin is behind.
+        c = cycle_report(owner, s["cycle"]["id"])
+        assert (c["counts"]["success"], c["stale"]) == (1, 1)
+
+    @test()
+    def test_stale_case_is_refreshed_and_rerun_in_its_cycle(self, suite_parameter):
+        owner = self.env.owner
+        s = release_seed(owner, n=1)
+        cc, cycle, release = s["cc"][0], s["cycle"]["id"], s["release"]["id"]
+        ok(record(owner, cc, status="fail"), 201)
+        ok(record(owner, cc, status="success"), 201)
+        ok(
+            owner.patch(
+                url(f"/cases/{s['cases'][0]['id']}"), json={"title": "Changed"}, headers={"If-Match": '"1"'}
+            )
+        )
+        c = cycle_report(owner, cycle)
+        assert (c["counts"]["success"], c["stale"]) == (1, 1)
+
+        # Refreshed, not rerun yet: untested on version 2 in the cycle, still stale in the release.
+        ok(owner.post(url(f"/cycle-cases/{cc}/refresh-version")))
+        r = report(owner, release)
+        assert counts(r, "success", "untested", "stale") == (0, 1, 1)
+        [item] = feature_items(owner, s)
+        assert (item["status"], item["stale"], item["last_result_status"]) == ("untested", True, "success")
+        assert item["last_result_at"] is not None
+        c = cycle_report(owner, cycle)
+        assert (c["counts"]["success"], c["counts"]["untested"], c["stale"]) == (0, 1, 0)
+
+        rerun = ok(record(owner, cc, status="success"), 201)
+        assert (rerun["attempt"], rerun["case_version"]) == (3, 2)
+        r = report(owner, release)
+        assert counts(r, "success", "untested", "stale") == (1, 0, 0)
+        assert r["ready"] is True
+        [item] = feature_items(owner, s)
+        assert (item["status"], item["stale"], item["last_result_status"]) == ("success", False, "success")
+        c = cycle_report(owner, cycle)
+        assert (c["counts"]["success"], c["stale"]) == (1, 0)
 
     @test()
     def test_unrun_row_in_newer_cycle_does_not_override_a_result(self, suite_parameter):

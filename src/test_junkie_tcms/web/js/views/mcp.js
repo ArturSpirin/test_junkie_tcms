@@ -183,7 +183,7 @@ function wire() {
   document.addEventListener("click", (e) => {
     const go = e.target.closest("[data-go]");
     if (go) { location.hash = go.dataset.go; return; }
-    if (e.target.closest("[data-retry]")) { toast('<b>Retrying…</b> <span class="muted">GET /mcp</span>'); return; }
+    if (e.target.closest("[data-retry]")) { toast("<b>Retrying…</b>"); return; }
     const b = e.target.closest("[data-copy]");
     if (!b) return;
     try { navigator.clipboard && navigator.clipboard.writeText(b.dataset.copy).catch(() => {}); } catch (err) { /* file:// may refuse; the toast still shows */ }

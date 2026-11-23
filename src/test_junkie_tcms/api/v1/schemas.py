@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Annotated, Any, Generic, Literal, TypeVar
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from test_junkie_tcms.db.base import aware
 
@@ -9,6 +9,10 @@ from test_junkie_tcms.db.base import aware
 UtcDateTime = Annotated[datetime, AfterValidator(aware)]
 
 Role = Literal["viewer", "tester", "editor", "admin", "owner"]
+# The one name check for every write (org, member, agent, token, invite, product, feature, release, plan,
+# cycle, consumer; API, bulk, CSV and Markdown import, MCP): stripped first, so a name of only spaces is
+# refused like an empty one.
+Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 
 
 class Out(BaseModel):
@@ -53,7 +57,7 @@ class OrgOut(Out):
 
 
 class OrgUpdate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
+    name: Name
 
 
 class MemberOut(BaseModel):
@@ -67,7 +71,7 @@ class MemberOut(BaseModel):
 
 class MemberAdd(BaseModel):
     email: str = Field(min_length=3, max_length=320)
-    name: str = Field(min_length=1, max_length=200)
+    name: Name
     role: Role
     # Only used when the email has no account yet.
     password: str | None = Field(None, min_length=8, max_length=1000)
@@ -87,14 +91,14 @@ class AgentOut(Out):
 
 
 class AgentCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
+    name: Name
     role: Role
     # Defaults to the calling user.
     owner_user_id: str | None = None
 
 
 class AgentUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     role: Role | None = None
 
 
@@ -112,7 +116,7 @@ class TokenOut(Out):
 
 
 class TokenCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
+    name: Name
     scopes: list[str] = Field(min_length=1)
     # Defaults to the caller's own actor.
     actor_id: str | None = None
@@ -153,9 +157,7 @@ class InviteCreated(InviteOut):
 class InviteAccept(BaseModel):
     token: str = Field(min_length=1, max_length=200)
     # Both or neither: with them, an invitee with no account signs up and is signed in.
-    name: str | None = Field(
-        None, min_length=1, max_length=200, description="Signup only: the new user's name"
-    )
+    name: Name | None = Field(None, description="Signup only: the new user's name")
     password: str | None = Field(
         None, min_length=8, max_length=1000, description="Signup only: the new user's password"
     )
@@ -186,7 +188,6 @@ class DocIn(BaseModel):
 
 
 RichIn = MarkdownIn | DocIn
-Name = Field(min_length=1, max_length=200)
 
 
 class Patch(BaseModel):
@@ -209,12 +210,12 @@ class ProductOut(BaseModel):
 
 class ProductCreate(BaseModel):
     key: str = Field(pattern=r"^[A-Z][A-Z0-9]{1,9}$", description="Short key, e.g. PAY; can't change later")
-    name: str = Name
+    name: Name
     description: RichIn | None = None
 
 
 class ProductUpdate(Patch):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     description: RichIn | None = None
 
 
@@ -250,14 +251,14 @@ class FeatureTree(BaseModel):
 
 
 class FeatureCreate(BaseModel):
-    name: str = Name
+    name: Name
     description: RichIn | None = None
     parent_id: str | None = None
     owner_actor_id: str | None = None
 
 
 class FeatureUpdate(Patch):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     description: RichIn | None = None
     owner_actor_id: str | None = None
 
@@ -286,7 +287,7 @@ class ReleaseOut(BaseModel):
 
 class ReleaseCreate(BaseModel):
     version: str = Field(min_length=1, max_length=64)
-    name: str = Name
+    name: Name
     status: ReleaseStatus = "planned"
     target_date: date | None = None
     released_at: datetime | None = None
@@ -295,7 +296,7 @@ class ReleaseCreate(BaseModel):
 
 class ReleaseUpdate(Patch):
     version: str | None = Field(None, min_length=1, max_length=64)
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     status: ReleaseStatus | None = None
     target_date: date | None = None
     released_at: datetime | None = None
@@ -362,13 +363,13 @@ class PlanOut(BaseModel):
 
 
 class PlanCreate(BaseModel):
-    name: str = Name
+    name: Name
     description: RichIn | None = None
     release_id: str | None = None
 
 
 class PlanUpdate(Patch):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     description: RichIn | None = None
     release_id: str | None = None
     status: PlanStatus | None = None
@@ -392,7 +393,9 @@ CaseStatus = Literal["draft", "ready", "deprecated"]
 Automation = Literal["manual", "automated", "to_automate"]
 Priority = Literal["low", "medium", "high", "critical"]
 CaseType = Literal["functional", "regression", "smoke", "acceptance", "performance", "security", "other"]
-Title = Field(min_length=1, max_length=500)
+# The one title check for every case write (create, update, bulk, CSV and Markdown import, MCP): stripped
+# first, so a title of only spaces is refused like an empty one.
+CaseTitle = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 ChangeNote = Field(None, max_length=500)
 
 
@@ -439,11 +442,11 @@ class CaseFields(BaseModel):
 
 class CaseCreate(CaseFields):
     feature_id: str
-    title: str = Title
+    title: CaseTitle
 
 
 class CaseUpdate(CaseFields):
-    title: str | None = Field(None, min_length=1, max_length=500)
+    title: CaseTitle | None = None
 
 
 class CaseOut(BaseModel):
@@ -522,7 +525,7 @@ class CaseBulkItem(CaseFields):
     key: str | None = None
     expected_version: int | None = Field(None, ge=1)
     feature_id: str | None = None
-    title: str | None = Field(None, min_length=1, max_length=500)
+    title: CaseTitle | None = None
 
 
 class CaseBulkIn(BaseModel):
@@ -570,6 +573,29 @@ class PairingCreated(BaseModel):
     interval: int
 
 
+class PairingIn(BaseModel):
+    """What the machine tells about itself, shown to the admin before approving. Every field is optional."""
+
+    os: str | None = Field(None, max_length=200)
+    tj_version: str | None = Field(None, max_length=64)
+    python: str | None = Field(None, max_length=64)
+    projects: list[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, max_length=50)
+
+
+class PairingPreview(BaseModel):
+    user_code: str
+    status: Literal["pending", "approved", "claimed", "denied"]
+    expires_at: UtcDateTime
+    os: str | None = None
+    tj_version: str | None = None
+    python: str | None = None
+    projects: list[str] = []
+
+
+class PairingDeny(BaseModel):
+    user_code: str = Field(min_length=8, max_length=9)
+
+
 class PairingTokenIn(BaseModel):
     device_code: str = Field(min_length=1, max_length=200)
 
@@ -583,8 +609,9 @@ class PairingToken(BaseModel):
 
 class PairingApprove(BaseModel):
     user_code: str = Field(min_length=8, max_length=9)
-    name: str = Field(min_length=1, max_length=200, description="User-given; never the machine's hostname")
+    name: Name = Field(description="User-given; never the machine's hostname")
     product_ids: list[str] = Field(min_length=1)
+    accept_jobs: bool = Field(True, description="False pairs the consumer paused")
 
 
 class ConsumerOut(BaseModel):
@@ -598,6 +625,7 @@ class ConsumerOut(BaseModel):
     tj_version: str | None = None
     python: str | None = None
     os: str | None = None
+    paused_at: UtcDateTime | None = Field(None, description="Set while paused: it takes no new jobs")
     revoked_at: UtcDateTime | None = None
     created_at: UtcDateTime
 
@@ -617,10 +645,22 @@ class InventorySummary(Out):
 class ConsumerDetail(ConsumerOut):
     heartbeats: list[HeartbeatOut] = Field(description="The last 24 h, newest first")
     inventory: list[InventorySummary]
+    jobs_today: int = Field(description="Jobs created for it in the last 24 h (a rolling window)")
+    rejected_today: int = Field(description="Of those, the ones it rejected")
+    tests_found: int = Field(description="Refs in its inventory, across projects")
+    tests_linked: int = Field(description="Of those, the ones linked to a case you can see")
+
+
+class RosterItem(BaseModel):
+    project: str
+    ref: str
+    case_key: str | None = Field(
+        None, description="The case whose automation_ref is this ref, if you can see it"
+    )
 
 
 class ConsumerUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     product_ids: list[str] | None = Field(None, min_length=1)
 
 

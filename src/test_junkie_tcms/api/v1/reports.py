@@ -2,8 +2,9 @@
 
 A case's release status is its newest result in any cycle of the release, on the case's current
 version. A result on an older version doesn't count: the case is `untested` and `stale`, so a release
-can't look `ready` on case text that changed after the run. Live cases of the release's features that
-are in no cycle are `untested` and `not_in_cycle`. Archived cases are left out.
+can't look `ready` on case text that changed after the run, but its last result is still given. Live
+cases of the release's features that are in no cycle are `untested` and `not_in_cycle`. Archived cases
+are left out. `behind` is the one rule for "stale" in every report.
 
 With no release (the whole product, or a feature's subtree), a case's status is its newest result in
 the period in any cycle of the product, by the same rule. Trends count every result recorded in the
@@ -127,10 +128,43 @@ class CaseStatus:
     not_in_cycle: bool = False
     cycle_id: str | None = None
     last_result_at: datetime | None = None
+    last_result_status: str | None = None
+    last_version: int | None = None  # the case version `last_result_status` ran on
     cc: CycleCase | None = None  # the cycle case that decides `status`
     last_cc: CycleCase | None = None  # the newest cycle case with a result, on any version
     result: Result | None = None
     last_result: Result | None = None
+
+
+def behind(version: int, case: TestCase) -> bool:
+    """Stale: `version` (a result's or a pin's) is older than the case's current version."""
+    return version != case.current_version
+
+
+def newest_results(db: Session, org_id: str, release: Release) -> dict[str, tuple[int, str]]:
+    """(case_version, status) of the newest result of each cycle case in the release's cycles."""
+    in_release = (
+        select(CycleCase.id)
+        .join(Cycle, and_(Cycle.org_id == CycleCase.org_id, Cycle.id == CycleCase.cycle_id))
+        .where(CycleCase.org_id == org_id, Cycle.release_id == release.id)
+    )
+    newest = (
+        select(Result.cycle_case_id, func.max(Result.attempt).label("attempt"))
+        .where(Result.org_id == org_id, Result.cycle_case_id.in_(in_release))
+        .group_by(Result.cycle_case_id)
+        .subquery()
+    )
+    rows = db.execute(
+        select(Result.cycle_case_id, Result.case_version, Result.status).join(
+            newest,
+            and_(
+                Result.org_id == org_id,
+                Result.cycle_case_id == newest.c.cycle_case_id,
+                Result.attempt == newest.c.attempt,
+            ),
+        )
+    )
+    return {cc_id: (version, status) for cc_id, version, status in rows}
 
 
 def release_feature_ids(db: Session, org_id: str, release: Release) -> list[str]:
@@ -145,6 +179,7 @@ def release_feature_ids(db: Session, org_id: str, release: Release) -> list[str]
 
 def release_status(db: Session, org_id: str, release: Release) -> dict[str, CaseStatus]:
     """Each case's status in the release, by case id."""
+    newest = newest_results(db, org_id, release)
     rows = db.execute(
         select(CycleCase, TestCase)
         .join(Cycle, and_(Cycle.org_id == CycleCase.org_id, Cycle.id == CycleCase.cycle_id))
@@ -157,13 +192,22 @@ def release_status(db: Session, org_id: str, release: Release) -> dict[str, Case
     decided: set[str] = set()
     for cc, case in rows:
         s = out.setdefault(case.id, CaseStatus(case, cycle_id=cc.cycle_id))
-        if case.id in decided or cc.status == "untested":
+        if case.id in decided or cc.id not in newest:
             continue
+        version, last_status = newest[cc.id]
         s.last_cc = s.last_cc or cc
-        if cc.case_version != case.current_version:
-            s.stale = True
+        if behind(version, case):
+            # Rows come newest first: the first stale one gives the last result.
+            if not s.stale:
+                s.stale, s.cycle_id = True, cc.cycle_id
+                s.last_result_at, s.last_result_status, s.last_version = (
+                    cc.last_result_at,
+                    last_status,
+                    version,
+                )
             continue
-        s.status, s.stale, s.cycle_id, s.last_result_at = cc.status, False, cc.cycle_id, cc.last_result_at
+        s.status, s.stale, s.cycle_id = cc.status, False, cc.cycle_id
+        s.last_result_at, s.last_result_status, s.last_version = cc.last_result_at, last_status, version
         s.cc = cc
         decided.add(case.id)
     feature_ids = release_feature_ids(db, org_id, release)
@@ -194,13 +238,25 @@ def product_status(db: Session, org_id: str, product_id: str, per: Period) -> di
     out: dict[str, CaseStatus] = {}
     decided: set[str] = set()
     for res, cc, case in rows:
-        s = out.setdefault(case.id, CaseStatus(case, cycle_id=cc.cycle_id, last_cc=cc, last_result=res))
+        s = out.setdefault(
+            case.id,
+            CaseStatus(
+                case,
+                cycle_id=cc.cycle_id,
+                last_result_at=res.at,
+                last_result_status=res.status,
+                last_version=res.case_version,
+                last_cc=cc,
+                last_result=res,
+            ),
+        )
         if case.id in decided:
             continue
-        if cc.case_version != case.current_version:
+        if behind(res.case_version, case):
             s.stale = True
             continue
         s.status, s.stale, s.cycle_id, s.last_result_at = res.status, False, cc.cycle_id, res.at
+        s.last_result_status, s.last_version = res.status, res.case_version
         s.cc, s.result = cc, res
         decided.add(case.id)
     live = select(TestCase).where(TestCase.org_id == org_id, TestCase.product_id == product_id)
@@ -338,7 +394,9 @@ def feature_rows(
         listed = f_id in wanted
         basis = under[f_id] if listed else cases
         whole = tally(basis)
-        drifted = sorted((s for s in basis if s.stale and s.last_cc is not None), key=lambda s: s.case.number)
+        drifted = sorted(
+            (s for s in basis if s.stale and s.last_version is not None), key=lambda s: s.case.number
+        )
         return FeatureCounts(
             feature_id=f_id,
             name=f.name if f else "",
@@ -350,7 +408,7 @@ def feature_rows(
             drifted=[
                 DriftedCase(
                     key=case_key(product, s.case),
-                    ran_version=s.last_cc.case_version,
+                    ran_version=s.last_version,
                     current_version=s.case.current_version,
                 )
                 for s in drifted
@@ -680,7 +738,8 @@ def reports_feature(
             stale=s.stale,
             cycle_id=s.cycle_id,
             last_result_at=s.last_result_at,
-            ran_version=s.cc.case_version if s.cc is not None else None,
+            last_result_status=s.last_result_status,
+            ran_version=res.case_version if res else None,
             current_version=s.case.current_version,
             actor=actors.get(res.actor_id) if res else None,
             attempt=res.attempt if res else None,
@@ -688,12 +747,12 @@ def reports_feature(
             defects=res.defects if res else [],
             last_result=LastResult(
                 status=last.status,
-                version=s.last_cc.case_version,
+                version=last.case_version,
                 at=last.at,
                 actor=actors.get(last.actor_id),
                 attempt=last.attempt,
             )
-            if last is not None and s.last_cc is not None
+            if last is not None
             else None,
         )
 
@@ -727,7 +786,14 @@ def reports_cycle(
     ctx: OrgContext = Depends(require_scope(READ)),
     db: Session = Depends(get_db),
 ):
-    """One cycle's counts by status, as they stand (pinned versions, no stale check)."""
+    """One cycle's counts by pinned status, and `stale`: its live cases pinned behind the current version.
+    A case refreshed to the current version but not rerun yet counts as `untested`, not `stale`."""
     cy = get_cycle(db, ctx, cycle_id)
     c = cycle_counts(db, [cy.id])[cy.id]
-    return CycleReport(cycle_id=cy.id, counts=c, total=sum(c.values()))
+    rows = db.execute(
+        select(CycleCase.case_version, TestCase)
+        .join(TestCase, and_(TestCase.org_id == CycleCase.org_id, TestCase.id == CycleCase.case_id))
+        .where(CycleCase.org_id == ctx.org.id, CycleCase.cycle_id == cy.id, TestCase.archived_at.is_(None))
+    )
+    stale = sum(behind(version, case) for version, case in rows)
+    return CycleReport(cycle_id=cy.id, counts=c, total=sum(c.values()), stale=stale)

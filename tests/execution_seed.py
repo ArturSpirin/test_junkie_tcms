@@ -30,6 +30,18 @@ def record(client, cycle_case: str, org: str = "acme", **body):
     return client.post(url(f"/cycle-cases/{cycle_case}/results", org), json=body)
 
 
+def edit_steps(owner, case: dict, version: int = 1) -> dict:
+    """Version 2: the first step reworded (same id), the second dropped, a new one added."""
+    first = case["steps"][0]
+    steps = [
+        {"id": first["id"], "action": {"markdown": "Open the basket"}, "expected": {"markdown": "It opens"}},
+        {"action": {"markdown": "Pay by voucher"}, "expected": {"markdown": "The order is paid"}},
+    ]
+    return ok(
+        owner.patch(url(f"/cases/{case['key']}"), json={"steps": steps}, headers={"If-Match": f'"{version}"'})
+    )
+
+
 def run_seed(client, key: str = "PAY", org: str = "acme") -> dict:
     """The catalog seed plus one two-step case under the child feature, in an open cycle."""
     s = seed(client, key, org)

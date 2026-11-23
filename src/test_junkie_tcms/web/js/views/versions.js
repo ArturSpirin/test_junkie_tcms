@@ -61,7 +61,7 @@ const page = (d, right, o = {}) => {
 
 function compare(d) {
   const { a, b } = d.pick;
-  return page(d, `<div class="banner info">${I.info}<div>Comparing two picked versions, <b>v${a}</b> and <b>v${b}</b> (<code>GET /cases/${esc(d.case.key)}/versions?compare=${a},${b}</code>). Pick any two in the list or in From and To.</div></div>` + cbar(d, a, b, "a") + diff(d, a, b));
+  return page(d, `<div class="banner info">${I.info}<div>Comparing two picked versions, <b>v${a}</b> and <b>v${b}</b>. Pick any two in the list or in From and To.</div></div>` + cbar(d, a, b, "a") + diff(d, a, b));
 }
 function restoreConfirm(d) {
   const a = d.pick.a, next = d.versions[0].n + 1;
@@ -70,7 +70,7 @@ function restoreConfirm(d) {
   return page(d) + modal(`Restore v${a} as v${next}?`, `<p style="margin-top:0">Restoring copies v${a} into a <b>new version v${next}</b>. ${and(kept)} stay in history; nothing is deleted.</p>
     <div class="field"><label for="cn">Change note</label><input id="cn" class="in" value="${esc(d.draft.note)}"></div>
     <div class="banner warn mb0">${I.info}<div>Open cycles keep their pinned versions (${pinned.join(", ")}). Use “Refresh to v${next}” in a cycle to move an untested case.</div></div>`,
-    `<span class="l mono">POST /cases/${esc(d.case.key)}/versions/${a}:restore</span><button class="btn" data-back>Cancel</button><button class="btn primary">Restore as v${next}</button>`);
+    `<button class="btn" data-back>Cancel</button><button class="btn primary">Restore as v${next}</button>`);
 }
 function restored(d) {
   const { a, b } = d.pick, prev = d.versions[1].n;

@@ -30,13 +30,12 @@ const BY_CASE = EVENTS.filter((e) => e.id === "PAY-101").concat([
 
 export default {
   base: {
-    orgSlug: "northwind",
     retention: { days: 90, oldest: "Sat Aug 15" },
     /* the actor filter's choices beyond the fixed kinds */
     agents: [{ id: "triage-bot", owner: "dana", role: "editor" }, { id: "ci-reporter", owner: "lee", role: "tester" }],
     members: [{ handle: "dana", role: "admin" }, { handle: "lee", role: "editor" }, { handle: "priya", role: "tester" }],
-    /* filter values; range is the date range (from is an ISO date, to defaults to today); query is the API query string */
-    filter: { actor: "any", action: "any", via: "any", type: "any", entityId: "", viaOpen: false, range: { value: "7d" }, query: "?since=2026-11-08" },
+    /* filter values; range is the date range (from is an ISO date, to defaults to today) */
+    filter: { actor: "any", action: "any", via: "any", type: "any", entityId: "", viaOpen: false, range: { value: "7d" } },
     events: EVENTS,
     /* index of the expanded event, -1 for none */
     open: -1,
@@ -44,14 +43,14 @@ export default {
   },
   states: {
     "filter-open": { filter: { viaOpen: true } },
-    "filtered-agent": { filter: { actor: "agent:triage-bot", query: "?actor=agent:triage-bot&since=2026-11-08" }, events: BY_AGENT },
+    "filtered-agent": { filter: { actor: "agent:triage-bot" }, events: BY_AGENT },
     expanded: { open: EVENTS.findIndex((e) => e.actor.id === "triage-bot") },
     entity: {
       entity: { type: "case", id: "PAY-101", title: "Pay with a saved Visa card" },
-      filter: { type: "case", entityId: "PAY-101", range: { value: "30d" }, query: "?entity_type=case&entity_id=PAY-101&since=2026-10-16" },
+      filter: { type: "case", entityId: "PAY-101", range: { value: "30d" } },
       events: BY_CASE
     },
-    empty: { filter: { actor: "agent:triage-bot", range: { value: "today" }, query: "?actor=agent:triage-bot&since=2026-11-14T00:00:00-08:00" }, events: [] },
-    retention: { filter: { range: { value: "custom", applied: true, from: "2026-08-15" }, query: "?since=2026-08-15" }, events: EVENTS.slice(-2) }
+    empty: { filter: { actor: "agent:triage-bot", range: { value: "today" } }, events: [] },
+    retention: { filter: { range: { value: "custom", applied: true, from: "2026-08-15" } }, events: EVENTS.slice(-2) }
   }
 };

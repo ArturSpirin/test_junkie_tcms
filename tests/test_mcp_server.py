@@ -75,12 +75,12 @@ class McpServer:
     # Listing
 
     @test()
-    def test_default_toolsets_list_31_tools_and_all_lists_every_tool(self, suite_parameter):
+    def test_default_toolsets_list_34_tools_and_all_lists_every_tool(self, suite_parameter):
         app = self.env.app
         with mcp_client(app) as mcp:
             owner = self.env.owner
             admin_token = make_admin_token(owner)
-            assert len(tool_names(mcp, admin_token)) == 31
+            assert len(tool_names(mcp, admin_token)) == 34
             assert len(tool_names(mcp, admin_token, "?toolsets=all")) == TOOL_COUNT
             all_but_admin = ",".join(t for t in TOOLSETS if t != "admin")
             assert len(tool_names(mcp, admin_token, f"?toolsets={all_but_admin}")) == TOOL_COUNT - 24

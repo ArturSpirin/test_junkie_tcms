@@ -2,6 +2,7 @@
 
 ## Unreleased
 - Feature tree works by keyboard: one tab stop, arrows move between rows and open or close features, Enter opens a case; Space picks a row up, arrows move the drop bar, Enter drops and Esc cancels, with the same toast, and Ctrl+Z undoes while it shows. Focused rows show the focus ring.
+- Cycle and run extras: cycles and batches show `created_by` and `closed_by`; `GET /cycles/{id}/features` counts per feature; bulk create takes `name_pattern`, per-cycle `assignees` and `skip_drafts`; a released release refuses new cycles (409 `release_closed`); cycles take `split`, `retries` (0-2) and `queue_when_offline`, and `POST /cycles/{id}/stop` stops one; steps take `ignore` and `cancel`; results take `skip_reason` and `build`, listed by `GET /cycles/{id}/builds`.
 - Web app: `/assets` files are served with `Cache-Control: no-cache`, so browsers revalidate them (a 304 when unchanged) and never run stale JS after an upgrade.
 - Migrations: `audit_request_tool_agent_names` is now revision `0019` on top of `0018_product_owner_cycle_eta_order`, so `upgrade head` has one head again.
 - CI: the test job runs the suites even when its lint step fails (the job still fails), and skips them only when install failed.

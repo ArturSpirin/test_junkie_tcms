@@ -3392,6 +3392,46 @@
   "annotations": {
    "destructive_hint": false,
    "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Cycle Builds. The builds recorded on results of the cycle's product, latest first, at most 20: the choices for\nthe build under test.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "cycle_builds",
+  "path": "/api/v1/orgs/{org}/cycles/{id}/builds",
+  "scope": "read",
+  "toolset": "execution"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
    "read_only_hint": false
   },
   "args": {
@@ -3746,9 +3786,53 @@
   "annotations": {
    "destructive_hint": false,
    "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Cycle Feature Counts. The cycle's case statuses per feature of each case, in feature name order.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "cycle_feature_counts",
+  "path": "/api/v1/orgs/{org}/cycles/{id}/features",
+  "scope": "read",
+  "toolset": "execution"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
    "read_only_hint": false
   },
   "args": {
+   "assignees": {
+    "location": "body",
+    "wire": "assignees"
+   },
    "environment": {
     "location": "body",
     "wire": "environment"
@@ -3769,6 +3853,10 @@
     "location": "body",
     "wire": "name"
    },
+   "name_pattern": {
+    "location": "body",
+    "wire": "name_pattern"
+   },
    "org": {
     "location": "path",
     "wire": "org"
@@ -3776,12 +3864,23 @@
    "plan_ids": {
     "location": "body",
     "wire": "plan_ids"
+   },
+   "skip_drafts": {
+    "location": "body",
+    "wire": "skip_drafts"
    }
   },
   "description": "Cycles Bulk Create. Pick a release: `features` makes one cycle per affected (non-archived) feature, each case in the\ncycle of its nearest affected feature; `plans` makes one cycle per active plan of the release (or per\nlisted plan). All the cycles share one batch, and the call makes all or none of them.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
+    "assignees": {
+     "additionalProperties": {
+      "type": "string"
+     },
+     "maxProperties": 200,
+     "type": "object"
+    },
     "environment": {
      "anyOf": [
       {
@@ -3828,6 +3927,18 @@
       }
      ]
     },
+    "name_pattern": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "minLength": 1,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
     "org": {
      "description": "Org slug",
      "type": "string"
@@ -3845,6 +3956,10 @@
        "type": "null"
       }
      ]
+    },
+    "skip_drafts": {
+     "default": false,
+     "type": "boolean"
     }
    },
    "required": [
@@ -3982,9 +4097,25 @@
     "location": "body",
     "wire": "product_id"
    },
+   "queue_when_offline": {
+    "location": "body",
+    "wire": "queue_when_offline"
+   },
    "release_id": {
     "location": "body",
     "wire": "release_id"
+   },
+   "retries": {
+    "location": "body",
+    "wire": "retries"
+   },
+   "skip_drafts": {
+    "location": "body",
+    "wire": "skip_drafts"
+   },
+   "split": {
+    "location": "body",
+    "wire": "split"
    }
   },
   "description": "Cycles Create. A cycle from at most one source: `product_id` (every live case), an active `plan_id`, `feature_ids`\n(with their sub-features) or `case_ids`; none makes an empty cycle. Archived and deprecated cases are\nleft out. Each case is pinned to its current version: a later edit doesn't change this cycle.",
@@ -4141,6 +4272,10 @@
       }
      ]
     },
+    "queue_when_offline": {
+     "default": false,
+     "type": "boolean"
+    },
     "release_id": {
      "anyOf": [
       {
@@ -4150,6 +4285,25 @@
        "type": "null"
       }
      ]
+    },
+    "retries": {
+     "default": 0,
+     "maximum": 2.0,
+     "minimum": 0.0,
+     "type": "integer"
+    },
+    "skip_drafts": {
+     "default": false,
+     "type": "boolean"
+    },
+    "split": {
+     "default": "even",
+     "enum": [
+      "even",
+      "by_feature",
+      "first_free"
+     ],
+     "type": "string"
     }
    },
    "required": [
@@ -4323,6 +4477,22 @@
    "product_id": {
     "location": "body",
     "wire": "product_id"
+   },
+   "queue_when_offline": {
+    "location": "body",
+    "wire": "queue_when_offline"
+   },
+   "retries": {
+    "location": "body",
+    "wire": "retries"
+   },
+   "skip_drafts": {
+    "location": "body",
+    "wire": "skip_drafts"
+   },
+   "split": {
+    "location": "body",
+    "wire": "split"
    }
   },
   "description": "Cycles Preview. What `cycles_create` would pin for this source, per feature and per runner; writes nothing.",
@@ -4406,6 +4576,29 @@
        "type": "null"
       }
      ]
+    },
+    "queue_when_offline": {
+     "default": false,
+     "type": "boolean"
+    },
+    "retries": {
+     "default": 0,
+     "maximum": 2.0,
+     "minimum": 0.0,
+     "type": "integer"
+    },
+    "skip_drafts": {
+     "default": false,
+     "type": "boolean"
+    },
+    "split": {
+     "default": "even",
+     "enum": [
+      "even",
+      "by_feature",
+      "first_free"
+     ],
+     "type": "string"
     }
    },
    "required": [
@@ -4475,6 +4668,62 @@
   "path": "/api/v1/orgs/{org}/cycles/{id}/reopen",
   "scope": "write:planning",
   "toolset": "planning"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "id": {
+    "location": "path",
+    "wire": "id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Cycles Stop. Stops the cycle's automated run: every queued job is cancelled and its untested cases get `cancel`.\nClaimed or running jobs finish, but no failed case is retried after. People's cases are untouched and\nthe cycle stays open.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "cycles_stop",
+  "path": "/api/v1/orgs/{org}/cycles/{id}/stop",
+  "scope": "write:execution",
+  "toolset": "execution"
  },
  {
   "annotations": {
@@ -9102,6 +9351,18 @@
        ],
        "title": "Automation Ref"
       },
+      "build": {
+       "anyOf": [
+        {
+         "maxLength": 120,
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Build"
+      },
       "case_key": {
        "anyOf": [
         {
@@ -9147,6 +9408,26 @@
         }
        ],
        "title": "Duration Ms"
+      },
+      "skip_reason": {
+       "anyOf": [
+        {
+         "enum": [
+          "defect",
+          "env",
+          "data",
+          "dep",
+          "na_env",
+          "flag",
+          "other"
+         ],
+         "type": "string"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Skip Reason"
       },
       "status": {
        "enum": [
@@ -9281,6 +9562,10 @@
     "location": "body",
     "wire": "attachment_ids"
    },
+   "build": {
+    "location": "body",
+    "wire": "build"
+   },
    "comment": {
     "location": "body",
     "wire": "comment"
@@ -9309,6 +9594,10 @@
     "location": "query",
     "wire": "rich"
    },
+   "skip_reason": {
+    "location": "body",
+    "wire": "skip_reason"
+   },
    "status": {
     "location": "body",
     "wire": "status"
@@ -9318,7 +9607,7 @@
     "wire": "steps"
    }
   },
-  "description": "Results Create. Records the next attempt for the case. Step ids come from the version the cycle pinned, each once.\nA `skip` needs a reason in `comment`. Results are never edited: a retest is the next attempt.",
+  "description": "Results Create. Records the next attempt for the case. Step ids come from the version the cycle pinned, each once.\nA `skip` needs a `skip_reason` code or a reason in `comment`. Results are never edited: a retest is the\nnext attempt.",
   "input_schema": {
    "$defs": {
     "DocIn": {
@@ -9411,7 +9700,9 @@
         "success",
         "fail",
         "error",
-        "skip"
+        "ignore",
+        "skip",
+        "cancel"
        ],
        "title": "Status",
        "type": "string"
@@ -9437,6 +9728,17 @@
      },
      "maxItems": 50,
      "type": "array"
+    },
+    "build": {
+     "anyOf": [
+      {
+       "maxLength": 120,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
     },
     "comment": {
      "anyOf": [
@@ -9497,6 +9799,25 @@
       "both"
      ],
      "type": "string"
+    },
+    "skip_reason": {
+     "anyOf": [
+      {
+       "enum": [
+        "defect",
+        "env",
+        "data",
+        "dep",
+        "na_env",
+        "flag",
+        "other"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
     },
     "status": {
      "enum": [

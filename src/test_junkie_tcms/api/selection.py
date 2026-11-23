@@ -133,18 +133,23 @@ def is_live(c: TestCase) -> bool:
     return c.archived_at is None and c.status != "deprecated"
 
 
-def split(found: list[TestCase]) -> tuple[list[TestCase], dict[str, int]]:
-    """Each case once (first wins), live ones in order, and the counts of those left out."""
+def split(found: list[TestCase], skip_drafts: bool = False) -> tuple[list[TestCase], dict[str, int]]:
+    """Each case once (first wins), live ones in order, and the counts of those left out. With
+    `skip_drafts`, draft cases are left out too, under `skipped["draft"]`."""
     seen: dict[str, TestCase] = {}
     for c in found:
         seen.setdefault(c.id, c)
     skipped = {"archived": 0, "deprecated": 0}
+    if skip_drafts:
+        skipped["draft"] = 0
     live = []
     for c in seen.values():
         if c.archived_at is not None:
             skipped["archived"] += 1
         elif c.status == "deprecated":
             skipped["deprecated"] += 1
+        elif skip_drafts and c.status == "draft":
+            skipped["draft"] += 1
         else:
             live.append(c)
     return live, skipped

@@ -18,6 +18,7 @@ from test_junkie_tcms.api.v1.execution_schemas import (
     BulkResultsIn,
     BulkResultsOut,
     BulkUnmatched,
+    CycleBuildOut,
     ResultCreate,
     ResultOut,
     StepResultOut,
@@ -40,6 +41,7 @@ from test_junkie_tcms.errors import ProblemError
 from test_junkie_tcms.richtext import doc_to_text
 
 router = APIRouter(tags=["execution"])
+MAX_BUILDS = 20
 
 
 def result_via(request: Request, ctx: OrgContext) -> str:
@@ -76,6 +78,8 @@ def record(
     steps: list[dict[str, Any]],
     attachment_ids: list[str],
     defects: list[dict[str, Any]],
+    skip_reason: str | None = None,
+    build: str | None = None,
 ) -> Result:
     """Append the next attempt and move the cycle case to its status."""
     last = db.scalar(select(func.max(Result.attempt)).where(Result.cycle_case_id == cc.id))
@@ -94,6 +98,8 @@ def record(
         steps=steps,
         attachment_ids=attachment_ids,
         defects=defects,
+        skip_reason=skip_reason,
+        build=build,
         at=now,
     )
     db.add(result)
@@ -126,8 +132,22 @@ def result_out(r: Result, mode: RichMode) -> ResultOut:
         ],
         attachment_ids=r.attachment_ids,
         defects=r.defects,
+        skip_reason=r.skip_reason,
+        build=r.build,
         at=r.at,
     )
+
+
+def check_skip_reason(
+    where: str, status: str, skip_reason: str | None, comment: dict[str, Any] | None
+) -> None:
+    """A skip_reason goes only with a skip, and `other` needs a comment saying what it is."""
+    if skip_reason is None:
+        return
+    if status != "skip":
+        raise ProblemError(422, f"{where}skip_reason goes only with status skip", code="skip_reason_not_skip")
+    if skip_reason == "other" and not doc_to_text(comment).strip():
+        raise ProblemError(422, f"{where}skip_reason other needs a comment", code="skip_reason_needs_comment")
 
 
 @router.post(
@@ -146,12 +166,14 @@ def results_create(
     db: Session = Depends(get_db),
 ):
     """Records the next attempt for the case. Step ids come from the version the cycle pinned, each once.
-    A `skip` needs a reason in `comment`. Results are never edited: a retest is the next attempt."""
+    A `skip` needs a `skip_reason` code or a reason in `comment`. Results are never edited: a retest is the
+    next attempt."""
     cc, cycle = get_cycle_case(db, ctx, id)
     require_open(cycle)
     comment = to_doc("comment", body.comment)
-    if body.status == "skip" and not doc_to_text(comment).strip():
-        raise ProblemError(422, "A skip needs a reason in comment", code="skip_needs_reason")
+    check_skip_reason("", body.status, body.skip_reason, comment)
+    if body.status == "skip" and body.skip_reason is None and not doc_to_text(comment).strip():
+        raise ProblemError(422, "A skip needs a skip_reason or a reason in comment", code="skip_needs_reason")
     pinned = db.get(CaseVersion, cc.case_version_id)
     known = {s["id"] for s in pinned.steps}
     seen: set[str] = set()
@@ -184,6 +206,8 @@ def results_create(
         steps,
         attachment_ids,
         defects,
+        body.skip_reason,
+        body.build,
     )
     changes = {
         "cycle_case_id": [None, cc.id],
@@ -254,8 +278,22 @@ def results_bulk_create(
             )
             continue
         comment = to_doc(f"items[{i}].comment", item.comment)
+        check_skip_reason(f"items[{i}].", item.status, item.skip_reason, comment)
         defects = [d.model_dump(exclude_none=True) for d in item.defects]
-        result = record(db, ctx, cc, via, item.status, comment, item.duration_ms, [], [], defects)
+        result = record(
+            db,
+            ctx,
+            cc,
+            via,
+            item.status,
+            comment,
+            item.duration_ms,
+            [],
+            [],
+            defects,
+            item.skip_reason,
+            item.build,
+        )
         created.append(
             BulkResultRow(index=i, cycle_case_id=cc.id, result_id=result.id, attempt=result.attempt)
         )
@@ -271,3 +309,21 @@ def results_bulk_create(
         audit.record(db, ctx, "result.bulk_create", "cycle", cycle.id, changes)
     db.commit()
     return BulkResultsOut(created=created, unmatched=unmatched)
+
+
+@router.get(CYCLE + "/builds", response_model=list[CycleBuildOut], **op("cycle_builds", READ, "execution"))
+def cycle_builds(id: str, ctx: OrgContext = Depends(require_scope(READ)), db: Session = Depends(get_db)):
+    """The builds recorded on results of the cycle's product, latest first, at most 20: the choices for
+    the build under test."""
+    cycle = get_cycle(db, ctx, id)
+    last = func.max(Result.at)
+    rows = db.execute(
+        select(Result.build, last)
+        .join(CycleCase, CycleCase.id == Result.cycle_case_id)
+        .join(Cycle, Cycle.id == CycleCase.cycle_id)
+        .where(Cycle.org_id == ctx.org.id, Cycle.product_id == cycle.product_id, Result.build.is_not(None))
+        .group_by(Result.build)
+        .order_by(last.desc(), Result.build)
+        .limit(MAX_BUILDS)
+    ).all()
+    return [CycleBuildOut(build=b, last_at=at) for b, at in rows]

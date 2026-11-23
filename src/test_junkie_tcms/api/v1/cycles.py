@@ -1,5 +1,6 @@
 """Cycles: a run of cases, each pinned to the case version it runs; and bulk cycles for a release."""
 
+import string
 from datetime import datetime
 from typing import Literal
 
@@ -35,15 +36,24 @@ from test_junkie_tcms.api.v1.execution_schemas import (
     CyclePreviewOut,
     CycleSource,
     CycleUpdate,
+    FeatureCountsOut,
     PreviewConsumer,
     PreviewFeature,
     PreviewRunners,
 )
-from test_junkie_tcms.api.v1.job_queue import Split, check_consumers, make_jobs, split_by_runner
+from test_junkie_tcms.api.v1.job_queue import (
+    Split,
+    cancel_open_cases,
+    check_consumers,
+    consumer_status,
+    make_jobs,
+    release,
+    split_by_runner,
+)
 from test_junkie_tcms.api.v1.plans import _release_features
 from test_junkie_tcms.api.v1.schemas import Page, RichMode
 from test_junkie_tcms.auth.deps import OrgContext, effective_role, get_db, require_scope
-from test_junkie_tcms.auth.scopes import READ, WRITE_PLANNING
+from test_junkie_tcms.auth.scopes import READ, WRITE_EXECUTION, WRITE_PLANNING
 from test_junkie_tcms.db.base import aware, utcnow
 from test_junkie_tcms.db.models import (
     CYCLE_CASE_STATUSES,
@@ -55,6 +65,7 @@ from test_junkie_tcms.db.models import (
     CycleBatch,
     CycleCase,
     Feature,
+    Job,
     Product,
     Release,
     TestCase,
@@ -103,8 +114,8 @@ def check_release(db: Session, ctx: OrgContext, product_id: str, release_id: str
     r = db.scalar(select(Release).where(Release.org_id == ctx.org.id, Release.id == release_id))
     if r is None or r.product_id != product_id:
         raise HTTPException(422, "release_id is not a release of this product")
-    if r.status == "cancelled":
-        raise HTTPException(409, "The release is cancelled")
+    if r.status in ("released", "cancelled"):
+        raise ProblemError(409, f"The release is {r.status}; it can't get new cycles", code="release_closed")
 
 
 def require_active_plan(plan: TestPlan) -> None:
@@ -241,7 +252,9 @@ def chosen_consumers(db: Session, ctx: OrgContext, product_id: str, body: CycleS
         return []
     if not body.consumer_ids:
         raise HTTPException(422, f"mode {body.mode} needs at least one consumer_id")
-    return check_consumers(db, ctx.org.id, product_id, body.consumer_ids, utcnow())
+    return check_consumers(
+        db, ctx.org.id, product_id, body.consumer_ids, utcnow(), allow_offline=body.queue_when_offline
+    )
 
 
 def new_cycle(db: Session, ctx: OrgContext, product_id: str, name: str, **fields) -> Cycle:
@@ -262,23 +275,54 @@ def new_cycle(db: Session, ctx: OrgContext, product_id: str, name: str, **fields
 ## Responses
 
 
-def counts(db: Session, cycle_ids: list[str]) -> dict[str, dict[str, int]]:
-    out = {i: dict.fromkeys(CYCLE_CASE_STATUSES, 0) for i in cycle_ids}
-    if cycle_ids:
-        rows = db.execute(
-            select(CycleCase.cycle_id, CycleCase.status, func.count())
-            .where(CycleCase.cycle_id.in_(cycle_ids))
-            .group_by(CycleCase.cycle_id, CycleCase.status)
-        )
-        for cycle_id, status, n in rows:
-            out[cycle_id][status] = n
+def tally(rows) -> dict[str, dict[str, int]]:
+    """(key, status, n) rows to each key's count per cycle case status, every status present."""
+    out: dict = {}
+    for key, status, n in rows:
+        out.setdefault(key, dict.fromkeys(CYCLE_CASE_STATUSES, 0))[status] = n
     return out
 
 
+def counts(db: Session, cycle_ids: list[str]) -> dict[str, dict[str, int]]:
+    found = {}
+    if cycle_ids:
+        found = tally(
+            db.execute(
+                select(CycleCase.cycle_id, CycleCase.status, func.count())
+                .where(CycleCase.cycle_id.in_(cycle_ids))
+                .group_by(CycleCase.cycle_id, CycleCase.status)
+            )
+        )
+    return {i: found.get(i, dict.fromkeys(CYCLE_CASE_STATUSES, 0)) for i in cycle_ids}
+
+
+def queued_offline(db: Session, cycle_ids: list[str]) -> dict[str, int]:
+    """Per cycle, the queued jobs whose consumer is offline: they start once it polls again."""
+    out = dict.fromkeys(cycle_ids, 0)
+    if cycle_ids:
+        now = utcnow()
+        rows = db.execute(
+            select(Job.cycle_id, Consumer)
+            .join(Consumer, Consumer.id == Job.consumer_id)
+            .where(Job.cycle_id.in_(cycle_ids), Job.status == "queued")
+        )
+        for cycle_id, consumer in rows:
+            if consumer_status(consumer, now) == "offline":
+                out[cycle_id] += 1
+    return out
+
+
+COMPUTED = ("counts", "queued_offline", "skipped")
+
+
 def cycles_out(db: Session, cycles: list[Cycle]) -> list[CycleOut]:
-    by_id = counts(db, [c.id for c in cycles])
-    fields = [f for f in CycleOut.model_fields if f != "counts"]
-    return [CycleOut(**{f: getattr(c, f) for f in fields}, counts=by_id[c.id]) for c in cycles]
+    ids = [c.id for c in cycles]
+    by_id, offline = counts(db, ids), queued_offline(db, ids)
+    fields = [f for f in CycleOut.model_fields if f not in COMPUTED]
+    return [
+        CycleOut(**{f: getattr(c, f) for f in fields}, counts=by_id[c.id], queued_offline=offline[c.id])
+        for c in cycles
+    ]
 
 
 def cycle_out(db: Session, cycle: Cycle) -> CycleOut:
@@ -361,7 +405,7 @@ def cycles_create(
     check_actor(db, ctx, body.default_assignee_actor_id)
     check_eta(body.eta)
     consumers = chosen_consumers(db, ctx, p.id, body)
-    live, skipped = split(found)
+    live, skipped = split(found, body.skip_drafts)
     live, order = run_order(db, ctx, p, live, body)
     cycle = new_cycle(
         db,
@@ -373,6 +417,8 @@ def cycles_create(
         environment=body.environment,
         default_assignee_actor_id=body.default_assignee_actor_id,
         mode=body.mode,
+        split=body.split,
+        retries=body.retries,
         order=order,
         eta=body.eta,
     )
@@ -381,7 +427,7 @@ def cycles_create(
     if consumers:
         db.flush()
         versions = [(r, db.get(CaseVersion, r.case_version_id)) for r in rows]
-        jobs = make_jobs(db, cycle, split_by_runner(db, consumers, versions))
+        jobs = make_jobs(db, cycle, split_by_runner(db, consumers, versions, body.split, utcnow()))
     changes = {
         "name": [None, cycle.name],
         "release_id": [None, release_id],
@@ -391,10 +437,14 @@ def cycles_create(
         "order": [None, cycle.order],
         "eta": [None, cycle.eta.isoformat() if cycle.eta else None],
         "jobs": [None, len(jobs)],
+        "split": [None, cycle.split],
+        "retries": [None, cycle.retries],
     }
     audit.record(db, ctx, "cycle.create", "cycle", cycle.id, changes)
     db.commit()
-    return cycle_out(db, cycle)
+    out = cycle_out(db, cycle)
+    out.skipped = skipped
+    return out
 
 
 @router.post(CYCLES + "/preview", response_model=CyclePreviewOut, **op("cycles_preview", READ, "planning"))
@@ -408,14 +458,14 @@ def cycles_preview(
     p = get_product(db, ctx, product)
     found, _ = resolve_source(db, ctx, p, body)
     consumers = chosen_consumers(db, ctx, p.id, body)
-    live, skipped = split(found)
+    live, skipped = split(found, body.skip_drafts)
     per: dict[str, int] = {}
     for c in live:
         per[c.feature_id] = per.get(c.feature_id, 0) + 1
     names = dict(db.execute(select(Feature.id, Feature.name).where(Feature.id.in_(per))).all()) if per else {}
     features = [PreviewFeature(feature_id=f, name=names.get(f, ""), cases=n) for f, n in per.items()]
     plan = (
-        split_by_runner(db, consumers, [(c, db_current(db, c)) for c in live])
+        split_by_runner(db, consumers, [(c, db_current(db, c)) for c in live], body.split, utcnow())
         if consumers
         else Split(person=live)
     )
@@ -474,9 +524,14 @@ def cycles_update(
 def _set_status(db: Session, ctx: OrgContext, id_: str, status: str) -> CycleOut:
     cycle = get_cycle(db, ctx, id_)
     if cycle.status != status:
-        changes = {"status": [cycle.status, status]}
+        closed_by = ctx.actor.id if status == "closed" else None
+        changes = {
+            "status": [cycle.status, status],
+            "closed_by_actor_id": [cycle.closed_by_actor_id, closed_by],
+        }
         cycle.status = status
         cycle.closed_at = utcnow() if status == "closed" else None
+        cycle.closed_by_actor_id = closed_by
         audit.record(
             db, ctx, "cycle.close" if status == "closed" else "cycle.reopen", "cycle", cycle.id, changes
         )
@@ -503,6 +558,64 @@ def cycles_reopen(
     db: Session = Depends(get_db),
 ):
     return _set_status(db, ctx, id, "open")
+
+
+@router.post(CYCLE + "/stop", response_model=CycleOut, **op("cycles_stop", WRITE_EXECUTION, "execution"))
+def cycles_stop(
+    id: str,
+    ctx: OrgContext = Depends(require_scope(WRITE_EXECUTION)),
+    idem: Idem = Depends(idempotency),
+    db: Session = Depends(get_db),
+):
+    """Stops the cycle's automated run: every queued job is cancelled and its untested cases get `cancel`.
+    Claimed or running jobs finish, but no failed case is retried after. People's cases are untouched and
+    the cycle stays open."""
+    cycle = get_cycle(db, ctx, id)
+    require_open(cycle)
+    if cycle.stopped_at is not None:
+        raise ProblemError(409, "The cycle is already stopped", code="cycle_stopped")
+    now = utcnow()
+    jobs = db.scalars(select(Job).where(Job.cycle_id == cycle.id, Job.status == "queued")).all()
+    cancelled = 0
+    for job in jobs:
+        job.status, job.finished_at, job.cancel_sent_at = "cancelled", now, now
+        release(db, job)
+        cancelled += cancel_open_cases(db, ctx, job, "cycle stopped")
+        audit.record(
+            db, ctx, "job.cancel", "job", job.id, {"status": ["queued", "cancelled"], "reason": "stop"}
+        )
+    cycle.stopped_at, cycle.stopped_by_actor_id = now, ctx.actor.id
+    changes = {"stopped_by_actor_id": [None, ctx.actor.id], "jobs": [None, len(jobs)], "cancelled": cancelled}
+    audit.record(db, ctx, "cycle.stop", "cycle", cycle.id, changes)
+    db.commit()
+    return cycle_out(db, cycle)
+
+
+@router.get(
+    CYCLE + "/features",
+    response_model=list[FeatureCountsOut],
+    **op("cycle_feature_counts", READ, "execution"),
+)
+def cycle_feature_counts(
+    id: str, ctx: OrgContext = Depends(require_scope(READ)), db: Session = Depends(get_db)
+):
+    """The cycle's case statuses per feature of each case, in feature name order."""
+    cycle = get_cycle(db, ctx, id)
+    by_feature = tally(
+        db.execute(
+            select(TestCase.feature_id, CycleCase.status, func.count())
+            .join(TestCase, TestCase.id == CycleCase.case_id)
+            .where(CycleCase.org_id == ctx.org.id, CycleCase.cycle_id == cycle.id)
+            .group_by(TestCase.feature_id, CycleCase.status)
+        )
+    )
+    ids = [f for f in by_feature if f is not None]
+    names = dict(db.execute(select(Feature.id, Feature.name).where(Feature.id.in_(ids))).all()) if ids else {}
+    out = [
+        FeatureCountsOut(feature_id=f, name=names.get(f), total=sum(c.values()), counts=c)
+        for f, c in by_feature.items()
+    ]
+    return sorted(out, key=lambda o: (o.name is None, o.name or "", o.feature_id or ""))
 
 
 ## Cycle cases
@@ -642,8 +755,10 @@ def cycles_bulk_create(
     listed plan). All the cycles share one batch, and the call makes all or none of them."""
     release = get_release(db, ctx, id)
     require_active_product(db, release.product_id)
-    if release.status == "cancelled":
-        raise HTTPException(409, "The release is cancelled")
+    check_release(db, ctx, release.product_id, release.id)
+    check_name_pattern(body.name_pattern, "feature" if body.mode == "features" else "plan")
+    for actor_id in dict.fromkeys(body.assignees.values()):
+        check_actor(db, ctx, actor_id)
     label = body.name or release.version
     batch = CycleBatch(
         org_id=ctx.org.id,
@@ -658,6 +773,7 @@ def cycles_bulk_create(
     db.flush()
     common = {"release_id": release.id, "batch_id": batch.id, "environment": body.environment}
     cycles: list[Cycle] = []
+    skipped: dict[str, dict[str, int]] = {}
     if body.mode == "features":
         if body.plan_ids:
             raise HTTPException(422, "plan_ids is for mode plans")
@@ -671,18 +787,26 @@ def cycles_bulk_create(
                 select(Feature).where(Feature.org_id == ctx.org.id, Feature.product_id == release.product_id)
             )
         }
+        check_assignee_keys(body.assignees, set(affected), "feature")
         parents = {f.id: f.parent_id for f in features.values()}
-        live, _ = split(product_cases(db, ctx.org.id, release.product_id))
         owned: dict[str, list[TestCase]] = {f: [] for f in affected}
-        for c in live:
+        for c in product_cases(db, ctx.org.id, release.product_id):
             owner = _nearest(c.feature_id, set(affected), parents)
             if owner is not None:
                 owned[owner].append(c)
         for f in affected:
+            name = cycle_name(body, label, release, features[f].name)
             cycle = new_cycle(
-                db, ctx, release.product_id, f"{label} · {features[f].name}", feature_id=f, **common
+                db,
+                ctx,
+                release.product_id,
+                name,
+                feature_id=f,
+                default_assignee_actor_id=body.assignees.get(f),
+                **common,
             )
-            pin(db, cycle, owned[f])
+            live, skipped[cycle.id] = split(owned[f], body.skip_drafts)
+            pin(db, cycle, live)
             cycles.append(cycle)
     else:
         if body.plan_ids:
@@ -705,22 +829,74 @@ def cycles_bulk_create(
             )
             if not plans:
                 raise HTTPException(422, "The release has no active plans")
+        check_assignee_keys(body.assignees, {p.id for p in plans}, "plan")
         for plan in plans:
+            name = cycle_name(body, label, release, plan.name)
             cycle = new_cycle(
-                db, ctx, release.product_id, f"{label} · {plan.name}", plan_id=plan.id, **common
+                db,
+                ctx,
+                release.product_id,
+                name,
+                plan_id=plan.id,
+                default_assignee_actor_id=body.assignees.get(plan.id),
+                **common,
             )
-            pin(db, cycle, split(plan_candidates(db, plan))[0])
+            live, skipped[cycle.id] = split(plan_candidates(db, plan), body.skip_drafts)
+            pin(db, cycle, live)
             cycles.append(cycle)
     changes = {"release_id": [None, release.id], "mode": [None, body.mode], "cycles": [None, len(cycles)]}
     audit.record(db, ctx, "cycle_batch.create", "cycle_batch", batch.id, changes)
     db.commit()
-    return batch_out(db, batch)
+    return batch_out(db, batch, skipped)
 
 
-def batch_out(db: Session, batch: CycleBatch) -> CycleBatchOut:
+PLACEHOLDERS = {"release", "env"}
+
+
+def check_name_pattern(pattern: str | None, own: str) -> None:
+    """422 unless every {placeholder} is {release}, {env} or the mode's own ({feature} or {plan})."""
+    if pattern is None:
+        return
+    try:
+        names = {f for _, f, _, _ in string.Formatter().parse(pattern) if f is not None}
+    except ValueError as e:
+        raise ProblemError(422, f"name_pattern is not a valid pattern: {e}", code="bad_name_pattern") from e
+    unknown = sorted(names - PLACEHOLDERS - {own})
+    if unknown:
+        allowed = ", ".join(f"{{{n}}}" for n in sorted(PLACEHOLDERS | {own}))
+        raise ProblemError(422, f"name_pattern has {{{unknown[0]}}}; use {allowed}", code="bad_name_pattern")
+
+
+def check_assignee_keys(assignees: dict[str, str], known: set[str], what: str) -> None:
+    extra = sorted(set(assignees) - known)
+    if extra:
+        raise HTTPException(422, f"assignees key {extra[0]} is not a {what} this batch makes a cycle for")
+
+
+def cycle_name(body: BulkCycleCreate, label: str, release: Release, own: str) -> str:
+    if body.name_pattern is None:
+        return f"{label} · {own}"
+    key = "feature" if body.mode == "features" else "plan"
+    values = {"release": release.version, "env": body.environment or "", key: own}
+    return body.name_pattern.format(**values).strip() or f"{label} · {own}"
+
+
+def batch_out(db: Session, batch: CycleBatch, skipped: dict[str, dict] | None = None) -> CycleBatchOut:
     cycles = list(db.scalars(select(Cycle).where(Cycle.batch_id == batch.id).order_by(Cycle.id)))
-    fields = [f for f in CycleBatchOut.model_fields if f != "cycles"]
-    return CycleBatchOut(**{f: getattr(batch, f) for f in fields}, cycles=cycles_out(db, cycles))
+    fields = [f for f in CycleBatchOut.model_fields if f not in ("cycles", "closed_at", "closed_by_actor_id")]
+    out = cycles_out(db, cycles)
+    for c in out:
+        c.skipped = (skipped or {}).get(c.id)
+    # The batch is closed once all its cycles are, by whoever closed the last one.
+    last = None
+    if cycles and all(c.status == "closed" for c in cycles):
+        last = max(cycles, key=lambda c: c.closed_at)
+    return CycleBatchOut(
+        **{f: getattr(batch, f) for f in fields},
+        closed_at=last.closed_at if last else None,
+        closed_by_actor_id=last.closed_by_actor_id if last else None,
+        cycles=out,
+    )
 
 
 @router.get(

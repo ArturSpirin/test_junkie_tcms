@@ -1,5 +1,6 @@
 """Plans name cases directly, and resolve to their cases at the current version (T3)."""
 
+from sqlalchemy import event
 from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
 
 from tests import support
@@ -132,6 +133,52 @@ class PlanCases:
         assert [k for k, _, _ in resolve(owner, plan)] == ["PAY-1", "PAY-3"]
         ok(add(owner, plan, {"query": {"automation": ["automated"]}}))
         assert [k for k, _, _ in resolve(owner, plan)] == ["PAY-1", "PAY-3", "PAY-4"]
+
+    @test()
+    def test_entries_count_their_live_cases_and_the_new_ones(self, suite_parameter):
+        owner = self.env.owner
+        s = self.s()
+        p, plan = s["product"]["id"], s["plan"]["id"]
+        child, parent = s["child"]["id"], s["parent"]["id"]
+        make_case(owner, p, child, "Card", tags=["smoke"])
+        make_case(owner, p, child, "Wallet")
+        make_case(owner, p, child, "Old", tags=["smoke"])
+        top = make_case(owner, p, parent, "Top", tags=["smoke"])
+        ok(owner.post(url("/cases/PAY-3/archive")))
+        # seed's plan has the child feature entry: Card and Wallet, not the archived Old
+        ok(add(owner, plan, {"case_id": "PAY-1"}, {"query": {"tags": ["smoke"]}}, {"case_id": top["id"]}))
+        entries = ok(owner.get(url(f"/plans/{plan}")))["entries"]
+        assert [(e["cases"], e["new_cases"]) for e in entries] == [(2, 2), (1, 0), (2, 1), (1, 0)]
+        assert sum(e["new_cases"] for e in entries) == len(resolve(owner, plan)) == 3
+        [listed] = [x for x in ok(owner.get(url(f"/products/{p}/plans")))["items"] if x["id"] == plan]
+        assert [(e["cases"], e["new_cases"]) for e in listed["entries"]] == [(2, 2), (1, 0), (2, 1), (1, 0)]
+
+    @test()
+    def test_plans_list_reads_the_product_once_however_many_entries(self, suite_parameter):
+        owner = self.env.owner
+        s = self.s()
+        p, child = s["product"]["id"], s["child"]["id"]
+        make_case(owner, p, child, "Card", tags=["smoke"])
+        ok(add(owner, s["plan"]["id"], {"query": {"tags": ["smoke"]}}))
+        statements = []
+
+        def count(*_):
+            statements.append(1)
+
+        def queries() -> int:
+            statements.clear()
+            event.listen(self.env.app.state.engine, "before_cursor_execute", count)
+            try:
+                ok(owner.get(url(f"/products/{p}/plans")))
+            finally:
+                event.remove(self.env.app.state.engine, "before_cursor_execute", count)
+            return len(statements)
+
+        one = queries()
+        for name in ("Second", "Third"):
+            plan = ok(owner.post(url(f"/products/{p}/plans"), json={"name": name}), 201)["id"]
+            ok(add(owner, plan, {"feature_id": child}, {"query": {"tags": ["smoke"]}}, {"case_id": "PAY-1"}))
+        assert queries() == one + 2  # one entries read per extra plan, nothing per entry
 
     @test()
     def test_resolve_is_tenant_scoped(self, suite_parameter):

@@ -49,6 +49,20 @@ class Search:
         assert search(owner, q="nothing like this") == []
 
     @test()
+    def test_text_matches_the_description(self, suite_parameter):
+        owner = self.env.owner
+        s = catalog(owner)
+        make_case(
+            owner,
+            s["product"]["id"],
+            s["child"]["id"],
+            "Wallet",
+            description={"markdown": "Pays by **card** too"},
+        )
+        hits = {h["key"]: h["matched_in"] for h in search(owner, q="card")}
+        assert hits["PAY-4"] == ["description"]
+
+    @test()
     def test_tags_are_case_insensitive_and_all_must_match(self, suite_parameter):
         owner = self.env.owner
         catalog(owner)

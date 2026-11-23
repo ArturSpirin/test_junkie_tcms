@@ -10,6 +10,8 @@ title as the `# ` line, then the rich sections split by boundary marker lines, l
     ---
     # Pay by card
 
+    <!-- tcms-3f9a description -->
+    ...Markdown...
     <!-- tcms-3f9a preconditions -->
     ...Markdown...
     <!-- tcms-3f9a step 01J... action -->
@@ -68,7 +70,7 @@ def _boundary(text: str) -> str:
 
 def case_to_md(case: dict[str, Any]) -> str:
     """One case (the export's row, with JSON fields as values) as a bundle file."""
-    sections = [("preconditions", case["preconditions"])]
+    sections = [("description", case["description"]), ("preconditions", case["preconditions"])]
     for s in case["steps"]:
         sections += [(f"step {s['id']} action", s["action"]), (f"step {s['id']} expected", s["expected"])]
     boundary = _boundary(case["title"] + "\n" + "\n".join(md for _, md in sections))
@@ -136,10 +138,11 @@ def md_to_row(text: str) -> dict[str, str]:
             sections[-1][2].append(line)
             continue
         name = m.group(1).split(" ")
-        if name == ["preconditions"]:
-            if pre:
-                raise FileError("preconditions", "appears twice")
-            holder, part = pre, "preconditions"
+        if name in (["description"], ["preconditions"]):
+            part = name[0]
+            if part in pre:
+                raise FileError(part, "appears twice")
+            holder = pre
         elif len(name) in (2, 3) and name[0] == "step" and name[-1] in ("action", "expected"):
             part, step_id = name[-1], (name[1] if len(name) == 3 else None)
             last = steps[-1] if steps else None
@@ -162,11 +165,15 @@ def md_to_row(text: str) -> dict[str, str]:
         value = values.get(name)
         return "" if value is None else json.dumps(value, ensure_ascii=False)
 
+    # A file with no description section (one exported before cases had it) leaves the key out of the row,
+    # so the import keeps the stored description instead of clearing it.
+    described = {"description": pre["description"]} if "description" in pre else {}
     return {
         "key": text_of("key"),
         "version": text_of("version"),
         "feature": text_of("feature"),
         "title": title,
+        **described,
         "preconditions": preconditions or "",
         "steps": json.dumps(steps, ensure_ascii=False),
         "priority": text_of("priority"),

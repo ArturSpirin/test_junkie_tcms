@@ -143,6 +143,12 @@ class Reports:
         [item] = feature_items(owner, s)
         assert (item["status"], item["stale"], item["last_result_status"]) == ("untested", True, "success")
         assert item["last_result_at"] is not None
+        # The refresh moves the pin to version 2, but the result was run on version 1.
+        last = item["last_result"]
+        assert (last["status"], last["version"], last["attempt"]) == ("success", 1, 2)
+        [f] = r["features"]
+        assert (f["verdict"], f["drift"]) == ("at_risk", 1)
+        assert f["drifted"] == [{"key": "PAY-1", "ran_version": 1, "current_version": 2}]
         c = cycle_report(owner, cycle)
         assert (c["counts"]["success"], c["counts"]["untested"], c["stale"]) == (0, 1, 0)
 

@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Annotated, Any, Generic, Literal, TypeVar
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from test_junkie_tcms.db.base import aware
 
@@ -384,7 +384,9 @@ CaseStatus = Literal["draft", "ready", "deprecated"]
 Automation = Literal["manual", "automated", "to_automate"]
 Priority = Literal["low", "medium", "high", "critical"]
 CaseType = Literal["functional", "regression", "smoke", "acceptance", "performance", "security", "other"]
-Title = Field(min_length=1, max_length=500)
+# The one title check for every case write (create, update, bulk, CSV and Markdown import, MCP): stripped
+# first, so a title of only spaces is refused like an empty one.
+CaseTitle = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 ChangeNote = Field(None, max_length=500)
 
 
@@ -431,11 +433,11 @@ class CaseFields(BaseModel):
 
 class CaseCreate(CaseFields):
     feature_id: str
-    title: str = Title
+    title: CaseTitle
 
 
 class CaseUpdate(CaseFields):
-    title: str | None = Field(None, min_length=1, max_length=500)
+    title: CaseTitle | None = None
 
 
 class CaseOut(BaseModel):
@@ -506,7 +508,7 @@ class CaseBulkItem(CaseFields):
     key: str | None = None
     expected_version: int | None = Field(None, ge=1)
     feature_id: str | None = None
-    title: str | None = Field(None, min_length=1, max_length=500)
+    title: CaseTitle | None = None
 
 
 class CaseBulkIn(BaseModel):

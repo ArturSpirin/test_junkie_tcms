@@ -220,6 +220,20 @@ class McpServer:
             assert other["status"] == 422
 
     @test()
+    def test_a_title_of_only_spaces_is_a_422(self, suite_parameter):
+        with mcp_client(self.env.app) as mcp:
+            owner = self.env.owner
+            admin_token = make_admin_token(owner)
+            s = run_seed(owner)
+            p, f, case = s["product"]["id"], s["child"]["id"], s["case"]
+            args = {"org": "acme", "product": p, "feature_id": f}
+            assert call(mcp, admin_token, "cases_create", **args, title="   ")["status"] == 422
+            update = {"org": "acme", "case": case["key"], "expected_version": case["current_version"]}
+            assert call(mcp, admin_token, "cases_update", **update, title=" \t ")["status"] == 422
+            stripped = call(mcp, admin_token, "cases_create", **args, title=" Refund ")
+            assert stripped["status"] == 201 and stripped["data"]["title"] == "Refund"
+
+    @test()
     def test_missing_and_unknown_args_are_a_422(self, suite_parameter):
         with mcp_client(self.env.app) as mcp:
             admin_token = make_admin_token(self.env.owner)

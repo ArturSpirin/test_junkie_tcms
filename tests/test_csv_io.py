@@ -155,6 +155,20 @@ class CsvIo:
         assert [(e["row"], e["column"]) for e in r.json()["errors"]] == [(2, "version")]
 
     @test()
+    def test_a_title_of_only_spaces_is_a_row_error(self, suite_parameter):
+        owner = self.env.owner
+        s = source(owner)
+        p = s["product"]["id"]
+        items = rows(export(owner, p))
+        items[0]["title"] = "   "
+        items.append({**items[1], "key": "", "version": "", "title": " \t "})
+        r = do_import(owner, p, to_csv(items))
+        assert r.status_code == 422, r.text
+        assert [(e["row"], e["column"]) for e in r.json()["errors"]] == [(1, "title"), (3, "title")]
+        assert ok(owner.get(url("/cases/PAY-1")))["title"] == "Pay by card"
+        assert cases_count(owner, p) == 2
+
+    @test()
     def test_feature_change_on_a_keyed_row_is_a_row_error(self, suite_parameter):
         owner = self.env.owner
         s = source(owner)

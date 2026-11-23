@@ -1,7 +1,10 @@
 """Results: append-only attempts with per-step status, evidence, defects and where they came from (T4)."""
 
+import json
+
 from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
 
+from test_junkie_tcms.api.v1.execution_schemas import BulkResultItem, ResultCreate
 from tests import support
 from tests.catalog_seed import events, ok, url
 from tests.execution_seed import cycle_cases, make_case, make_cycle, record, run_seed
@@ -180,7 +183,11 @@ class Results:
         ok(owner.post(url(f"/cycles/{cycle}/cases"), json={"case_ids": [auto["id"]]}))
         items = [
             {"case_key": "pay-1", "status": "success"},
-            {"automation_ref": "tests/test_pay.py::test_card", "status": "fail", "comment": "Timeout"},
+            {
+                "automation_ref": "tests/test_pay.py::test_card",
+                "status": "fail",
+                "comment": {"markdown": "Timeout"},
+            },
             {"case_key": "PAY-99", "status": "success"},
             {"automation_ref": "tests/missing.py::test_x", "status": "skip"},
         ]
@@ -191,6 +198,36 @@ class Results:
         assert statuses == {"PAY-1": "success", "PAY-2": "fail"}
         neither = owner.post(url(f"/cycles/{cycle}/results/bulk"), json={"items": [{"status": "success"}]})
         assert neither.status_code == 422
+
+    @test()
+    def test_bulk_and_single_results_take_the_same_rich_comment(self, suite_parameter):
+        bulk_type = BulkResultItem.model_fields["comment"].annotation
+        assert bulk_type == ResultCreate.model_fields["comment"].annotation
+        owner = self.env.owner
+        s = run_seed(owner)
+        cycle, cc = s["cycle"]["id"], s["cycle_case"]["id"]
+        md = "Fails on **step 2**"
+        single = ok(record(owner, cc, status="fail", comment={"markdown": md}), 201)
+
+        def post_bulk(comment):
+            item = {"case_key": "PAY-1", "status": "fail", "comment": comment}
+            return owner.post(url(f"/cycles/{cycle}/results/bulk"), json={"items": [item]})
+
+        def results(rich):
+            return ok(owner.get(url(f"/cycle-cases/{cc}/results"), params={"rich": rich}))["items"]
+
+        ok(post_bulk({"markdown": md}), 201)
+        ok(post_bulk({"doc": results("doc")[0]["comment"]}), 201)
+        rows = results("both")
+        assert [r["attempt"] for r in rows] == [1, 2, 3]
+        assert rows[0]["id"] == single["id"]
+        assert rows[1]["comment"] == rows[0]["comment"] == rows[2]["comment"]
+        assert rows[1]["comment"]["markdown"].strip() == md
+        assert '{"type": "bold"}' in json.dumps(rows[1]["comment"]["doc"])
+        plain = post_bulk(md)
+        assert plain.status_code == 422, plain.text
+        locs = [e["loc"][:4] for e in plain.json()["errors"]]
+        assert ["body", "items", 0, "comment"] in locs, plain.text
 
     @test()
     def test_results_are_never_edited(self, suite_parameter):

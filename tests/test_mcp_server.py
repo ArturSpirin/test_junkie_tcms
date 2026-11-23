@@ -75,18 +75,18 @@ class McpServer:
     # Listing
 
     @test()
-    def test_default_toolsets_list_30_tools_and_all_lists_93(self, suite_parameter):
+    def test_default_toolsets_list_30_tools_and_all_lists_95(self, suite_parameter):
         app = self.env.app
         with mcp_client(app) as mcp:
             owner = self.env.owner
             admin_token = make_admin_token(owner)
             assert len(tool_names(mcp, admin_token)) == 30
-            assert len(tool_names(mcp, admin_token, "?toolsets=all")) == 93
+            assert len(tool_names(mcp, admin_token, "?toolsets=all")) == 95
             all_but_admin = ",".join(t for t in TOOLSETS if t != "admin")
             assert len(tool_names(mcp, admin_token, f"?toolsets={all_but_admin}")) == 74
             assert tool_names(mcp, admin_token, "?toolsets=cases") <= tool_names(mcp, admin_token)
             app.state.settings.mcp_default_toolsets = "all"
-            assert len(tool_names(mcp, admin_token)) == 93
+            assert len(tool_names(mcp, admin_token)) == 95
 
     @test()
     def test_an_unknown_toolset_is_a_400(self, suite_parameter):

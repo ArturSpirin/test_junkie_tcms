@@ -341,13 +341,16 @@ class PlanEntryOut(Out):
     position: int
 
 
+PlanStatus = Literal["draft", "active", "archived"]
+
+
 class PlanOut(BaseModel):
     id: str
     product_id: str
     release_id: str | None = None
     name: str
     description: RichOut
-    status: str
+    status: PlanStatus
     entries: list[PlanEntryOut]
     created_at: UtcDateTime
     updated_at: UtcDateTime
@@ -363,7 +366,7 @@ class PlanUpdate(Patch):
     name: str | None = Field(None, min_length=1, max_length=200)
     description: RichIn | None = None
     release_id: str | None = None
-    status: Literal["draft", "active", "archived"] | None = None
+    status: PlanStatus | None = None
 
 
 class ResolvedCase(BaseModel):
@@ -576,6 +579,7 @@ class ConsumerOut(BaseModel):
     name: str
     status: ConsumerStatus
     product_ids: list[str]
+    project_count: int = Field(description="Projects in the consumer's last inventory")
     last_heartbeat_at: UtcDateTime | None = None
     busy_job_id: str | None = None
     tj_version: str | None = None

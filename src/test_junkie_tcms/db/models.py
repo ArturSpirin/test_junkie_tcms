@@ -687,3 +687,23 @@ class McpToolStat(TenantMixin, Base):
     resp_bytes_sum: Mapped[int] = mapped_column(BigInteger, nullable=False)
     # 24 counts; bucket i holds sizes in [2^i, 2^(i+1)) bytes (0 also holds 0-1 B, 23 everything above)
     resp_bytes_hist: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+
+
+MCP_SERVER_EVENT_KINDS = ("server_started", "tools_changed")
+
+
+class McpServerEvent(IdMixin, Base):
+    """A start of the MCP server, or a change in its tool list between starts. Server-wide, not per org."""
+
+    __tablename__ = "mcp_server_event"
+    __table_args__ = (CheckConstraint("kind IN ('server_started', 'tools_changed')", name="kind"),)
+
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    version: Mapped[str] = mapped_column(String(40), nullable=False)
+    tool_list_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    # name -> sha256 of that tool's definition, so the next start can name what changed
+    tool_hashes: Mapped[dict[str, str]] = mapped_column(JSON, nullable=False)
+    added: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    removed: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    changed: Mapped[list[str]] = mapped_column(JSON, nullable=False)

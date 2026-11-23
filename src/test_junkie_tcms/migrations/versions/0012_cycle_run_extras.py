@@ -1,15 +1,15 @@
 """cycle and run extras: closed/stopped by, split, retries, result skip_reason and build (F4)
 
-Revision ID: 0011
-Revises: 0010
+Revision ID: 0012
+Revises: 0011
 Create Date: 2026-11-22 19:00:00.000000
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0011"
-down_revision = "0010"
+revision = "0012"
+down_revision = "0011"
 branch_labels = None
 depends_on = None
 

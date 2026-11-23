@@ -23,7 +23,7 @@ from test_junkie_tcms.api.v1.execution_schemas import (
     ResultOut,
     StepResultOut,
 )
-from test_junkie_tcms.api.v1.schemas import MarkdownIn, Page, RichMode
+from test_junkie_tcms.api.v1.schemas import Page, RichMode
 from test_junkie_tcms.auth.deps import OrgContext, get_db, require_scope
 from test_junkie_tcms.auth.scopes import READ, WRITE_EXECUTION
 from test_junkie_tcms.db.base import utcnow
@@ -275,7 +275,7 @@ def results_bulk_create(
                 BulkUnmatched(index=i, case_key=item.case_key, automation_ref=item.automation_ref)
             )
             continue
-        comment = to_doc(f"items[{i}].comment", MarkdownIn(markdown=item.comment) if item.comment else None)
+        comment = to_doc(f"items[{i}].comment", item.comment)
         check_skip_reason(f"items[{i}].", item.status, item.skip_reason, comment)
         defects = [d.model_dump(exclude_none=True) for d in item.defects]
         result = record(

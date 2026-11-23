@@ -21,6 +21,7 @@ from starlette.responses import JSONResponse
 
 from test_junkie_tcms import __version__
 from test_junkie_tcms.api.operations import TOOLSETS
+from test_junkie_tcms.api.request_context import REQUEST_ID_KEY
 from test_junkie_tcms.auth import tokens
 from test_junkie_tcms.auth.deps import effective_role
 from test_junkie_tcms.auth.scopes import ADMIN, AUDIT_READ, CONSUMER, ROLE_SCOPES
@@ -180,7 +181,9 @@ def make_server(app: FastAPI, tools: list[ToolSpec]) -> Server:
             status, detail = refused
             return _result(_error(status, "Forbidden", detail))
         started = time.perf_counter()
-        envelope = await dispatch(app, tool, params.arguments or {}, caller.token)
+        # From the scope, as the caller is: the SDK may run this in a task that didn't copy the context.
+        request_id = ctx.request.scope.get(REQUEST_ID_KEY)
+        envelope = await dispatch(app, tool, params.arguments or {}, caller.token, request_id)
         ms = round((time.perf_counter() - started) * 1000)
         result = _result(envelope)
         size = len(result.content[0].text.encode())

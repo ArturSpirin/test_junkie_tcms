@@ -3,13 +3,14 @@ a job whose consumer stopped beating. Cycles, jobs and consumers all use it, so 
 
 from dataclasses import dataclass, field
 from datetime import timedelta
-from types import SimpleNamespace
 
 from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
+from test_junkie_tcms.auth.deps import OrgContext, Principal
+from test_junkie_tcms.auth.scopes import CONSUMER
 from test_junkie_tcms.db.base import aware
 from test_junkie_tcms.db.models import (
     Actor,
@@ -20,6 +21,8 @@ from test_junkie_tcms.db.models import (
     Cycle,
     CycleCase,
     Job,
+    Org,
+    TestCase,
 )
 from test_junkie_tcms.errors import ProblemError
 
@@ -66,10 +69,13 @@ def rosters(db: Session, consumer_ids: list[str]) -> dict[str, dict[str, set[str
     return out
 
 
-def check_consumers(db: Session, org_id: str, product_id: str, ids: list[str], now) -> list[Consumer]:
+def check_consumers(
+    db: Session, org_id: str, product_id: str, ids: list[str], now, allow_offline: bool = False
+) -> list[Consumer]:
     """The chosen consumers in the given order.
 
-    404 not in the org, 422 not serving the product, 409 offline."""
+    404 not in the org, 422 not serving the product, 409 revoked, paused, or offline unless `allow_offline`
+    (its jobs then wait queued until it polls)."""
     found = []
     for consumer_id in dict.fromkeys(ids):
         row = db.scalar(select(Consumer).where(Consumer.org_id == org_id, Consumer.id == consumer_id))
@@ -77,8 +83,11 @@ def check_consumers(db: Session, org_id: str, product_id: str, ids: list[str], n
             raise HTTPException(404, f"Consumer {consumer_id} not found")
         if not serves(db, row.id, product_id):
             raise HTTPException(422, f"Consumer {row.name!r} does not serve this product")
-        if not online(row, now):
-            raise ProblemError(409, f"Consumer {row.name!r} is offline", code="consumer_offline")
+        status = consumer_status(row, now)
+        if status == "revoked" or (status == "offline" and not allow_offline):
+            raise ProblemError(409, f"Consumer {row.name!r} is {status}", code="consumer_offline")
+        if row.paused_at is not None:
+            raise ProblemError(409, f"Consumer {row.name!r} is paused", code="consumer_paused")
         found.append(row)
     return found
 
@@ -93,30 +102,73 @@ class Split:
     unmatched: int = 0
 
 
-def split_by_runner(db: Session, consumers: list[Consumer], items: list[tuple[object, CaseVersion]]) -> Split:
+def split_by_runner(
+    db: Session,
+    consumers: list[Consumer],
+    items: list[tuple[object, CaseVersion]],
+    strategy: str = "even",
+    now=None,
+) -> Split:
     """An item goes to a consumer when its pinned version is automated and its automation_ref is in that
-    consumer's inventory; ties go to the consumer with the fewest cases so far, then the given order. One
-    share per (consumer, project). An automated case no consumer lists counts as unmatched and goes to
-    people."""
+    consumer's inventory. Among those candidates, `strategy` picks:
+
+    - `even`: the one with the fewest cases so far, then the given order.
+    - `by_feature`: per feature, the one listing most of its refs (ties by load, then order) takes them all.
+    - `first_free`: the first consumer online and not busy (else the first given) takes every case it lists.
+
+    A case the strategy's pick doesn't list falls back to `even`. One share per (consumer, project). An
+    automated case no consumer lists counts as unmatched and goes to people."""
     out = Split()
     inventory = rosters(db, [c.id for c in consumers])
     load = {c.id: 0 for c in consumers}
     order = {c.id: i for i, c in enumerate(consumers)}
+
+    def candidates(ref: str) -> dict[str, str]:
+        """Consumer id to the project that lists the ref."""
+        found = {}
+        for c in consumers:
+            project = next((p for p, refs in inventory[c.id].items() if ref in refs), None)
+            if project is not None:
+                found[c.id] = project
+        return found
+
+    def feature_of(version: CaseVersion) -> str | None:
+        return db.get(TestCase, version.case_id).feature_id
+
+    tally: dict[str | None, dict[str, int]] = {}
+    if strategy == "by_feature":
+        for _, version in items:
+            if version.automation == "automated" and version.automation_ref:
+                per = tally.setdefault(feature_of(version), {})
+                for consumer_id in candidates(version.automation_ref):
+                    per[consumer_id] = per.get(consumer_id, 0) + 1
+    preferred: dict[str | None, str] = {}
+    free = None
+    if strategy == "first_free" and consumers:
+        free = next((c.id for c in consumers if consumer_status(c, now) == "online"), consumers[0].id)
+
     for item, version in items:
         ref = version.automation_ref
         if version.automation != "automated" or not ref:
             out.person.append(item)
             continue
-        candidates = []
-        for c in consumers:
-            project = next((p for p, refs in inventory[c.id].items() if ref in refs), None)
-            if project is not None:
-                candidates.append((load[c.id], order[c.id], c.id, project))
-        if not candidates:
+        listed = candidates(ref)
+        if not listed:
             out.person.append(item)
             out.unmatched += 1
             continue
-        _, _, consumer_id, project = min(candidates)
+        pick = None
+        if strategy == "by_feature":
+            feature = feature_of(version)
+            if feature not in preferred:
+                per = tally[feature]
+                preferred[feature] = max(per, key=lambda i: (per[i], -load[i], -order[i]))
+            pick = preferred[feature]
+        elif strategy == "first_free":
+            pick = free
+        if pick not in listed:
+            pick = min(listed, key=lambda i: (load[i], order[i]))
+        consumer_id, project = pick, listed[pick]
         load[consumer_id] += 1
         key = (consumer_id, project)
         out.shares.setdefault(key, []).append(item)
@@ -146,12 +198,16 @@ def make_jobs(db: Session, cycle: Cycle, plan: Split) -> list[Job]:
     return jobs
 
 
-def system_ctx(db: Session, org_id: str, consumer: Consumer):
-    """Acts as the consumer for what the server does on its behalf: requeue, fail, cancel results."""
-    return SimpleNamespace(
-        org=SimpleNamespace(id=org_id),
-        actor=db.get(Actor, consumer.actor_id),
-        principal=SimpleNamespace(token=None, via="api"),
+def system_ctx(db: Session, org_id: str, consumer: Consumer) -> OrgContext:
+    """Acts as the consumer for what the server does on its behalf: requeue, fail, cancel results.
+    A real `OrgContext`, so audit and provenance read it like any request's."""
+    actor = db.get(Actor, consumer.actor_id)
+    return OrgContext(
+        org=db.get(Org, org_id),
+        actor=actor,
+        role=actor.role,
+        scopes=frozenset({CONSUMER}),
+        principal=Principal(via="api", actor=actor),
     )
 
 
@@ -181,7 +237,8 @@ def cancel_open_cases(db: Session, ctx, job: Job, comment: str) -> int:
 
 
 def pick_other(db: Session, job: Job, product_id: str, now) -> Consumer | None:
-    """Another online consumer that serves the product and lists the job's project, least busy first."""
+    """Another online, unpaused consumer that serves the product and lists the job's project, least busy
+    first."""
     rows = db.scalars(
         select(Consumer)
         .join(ConsumerProduct, ConsumerProduct.consumer_id == Consumer.id)
@@ -190,6 +247,7 @@ def pick_other(db: Session, job: Job, product_id: str, now) -> Consumer | None:
             Consumer.org_id == job.org_id,
             Consumer.id != job.consumer_id,
             Consumer.revoked_at.is_(None),
+            Consumer.paused_at.is_(None),
             ConsumerProduct.product_id == product_id,
             ConsumerInventory.project == job.project,
         )
@@ -216,7 +274,7 @@ def requeue_or_fail(db: Session, job: Job, now, reason: str = LOST) -> None:
             cc.consumer_id = target.id
         audit.record(db, ctx, "job.requeue", "job", job.id, {**changes, "reason": reason})
         return
-    job.status, job.finished_at = "failed", now
+    job.status, job.finished_at, job.reason = "failed", now, reason
     cancelled = cancel_open_cases(db, ctx, job, reason)
     audit.record(db, ctx, "job.fail", "job", job.id, {"reason": reason, "cancelled": cancelled})
 

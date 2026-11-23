@@ -4,7 +4,7 @@ cancel or reassign it. A job with no heartbeat for 2 min is requeued once, then 
 import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
@@ -22,7 +22,7 @@ from test_junkie_tcms.api.v1.job_queue import (
     rosters,
     stall_check,
 )
-from test_junkie_tcms.api.v1.results import record
+from test_junkie_tcms.api.v1.results import check_skip_reason, record
 from test_junkie_tcms.api.v1.schemas import MarkdownIn, Page
 from test_junkie_tcms.auth.deps import (
     ConsumerContext,
@@ -33,7 +33,7 @@ from test_junkie_tcms.auth.deps import (
 )
 from test_junkie_tcms.auth.scopes import CONSUMER, READ, WRITE_EXECUTION
 from test_junkie_tcms.db.base import utcnow
-from test_junkie_tcms.db.models import CaseVersion, Consumer, Cycle, CycleCase, Job
+from test_junkie_tcms.db.models import CaseVersion, Consumer, Cycle, CycleCase, Job, Result
 from test_junkie_tcms.errors import ProblemError
 
 router = APIRouter(tags=["execution"])
@@ -60,13 +60,15 @@ def get_job(db: Session, ctx: OrgContext, id_: str) -> Job:
 
 
 def claim(db: Session, consumer: Consumer, now) -> Job | None:
-    """The job this consumer already holds, else its oldest queued job, claimed with a conditional update
-    so two polls can't both take it."""
+    """The job this consumer already holds, else (unless it's paused) its oldest queued job, claimed with a
+    conditional update so two polls can't both take it."""
     held = db.scalar(
         select(Job).where(Job.consumer_id == consumer.id, Job.status.in_(HELD)).order_by(Job.claimed_at)
     )
     if held is not None:
         return held
+    if consumer.paused_at is not None:
+        return None
     queued = db.scalars(
         select(Job.id)
         .where(Job.consumer_id == consumer.id, Job.status == "queued")
@@ -84,6 +86,41 @@ def claim(db: Session, consumer: Consumer, now) -> Job | None:
             db.refresh(job)
             return job
     return None
+
+
+def queue_retry(db: Session, ctx, job: Job) -> Job | None:
+    """A done job's cases that ended `fail` or `error` with retries left move to one new queued job for the
+    same consumer and project. Retries count the case's result attempts (`Result.attempt`), not the job's
+    stall requeues (`Job.attempts`); a stopped or closed cycle retries nothing."""
+    cycle = db.get(Cycle, job.cycle_id)
+    if cycle.retries == 0 or cycle.stopped_at is not None or cycle.status != "open":
+        return None
+    attempts = select(func.max(Result.attempt)).where(Result.cycle_case_id == CycleCase.id).scalar_subquery()
+    rows = db.execute(
+        select(CycleCase, CaseVersion.automation_ref)
+        .join(CaseVersion, CaseVersion.id == CycleCase.case_version_id)
+        .where(CycleCase.job_id == job.id, CycleCase.status.in_(("fail", "error")), attempts <= cycle.retries)
+        .order_by(CycleCase.position)
+    ).all()
+    if not rows:
+        return None
+    refs = list(dict.fromkeys(ref for _, ref in rows))
+    retry = Job(
+        org_id=job.org_id,
+        cycle_id=job.cycle_id,
+        consumer_id=job.consumer_id,
+        project=job.project,
+        refs=refs,
+        timeout_s=job.timeout_s,
+        status="queued",
+    )
+    db.add(retry)
+    db.flush()
+    for cc, _ in rows:
+        cc.job_id = retry.id
+    changes = {"from_job": [None, job.id], "cases": [None, len(rows)]}
+    audit.record(db, ctx, "job.retry", "job", retry.id, changes)
+    return retry
 
 
 ## The consumer side
@@ -131,8 +168,8 @@ def jobs_report(
     db: Session = Depends(get_db),
 ):
     """Results for the job's refs, matched to the cycle cases whose pinned version has that automation_ref,
-    and its state: `running` keeps it alive, `done` or `failed` ends it. A failed job cancels the cases it
-    didn't report."""
+    and its state: `running` keeps it alive, `done`, `failed` or `rejected` ends it. A failed or rejected
+    job cancels the cases it didn't report; `rejected` needs a `reason`, which the job keeps."""
     consumer = cc.consumer
     job = db.scalar(select(Job).where(Job.id == id, Job.consumer_id == consumer.id))
     if job is None:
@@ -159,17 +196,39 @@ def jobs_report(
             unmatched.append(item.ref)
             continue
         comment = to_doc("comment", MarkdownIn(markdown=item.comment) if item.comment else None)
+        check_skip_reason("", item.status, item.skip_reason, comment)
         for row in matched:
-            record(db, cc.ctx, row, "consumer", item.status, comment, item.duration_ms, [], [], [])
+            record(
+                db,
+                cc.ctx,
+                row,
+                "consumer",
+                item.status,
+                comment,
+                item.duration_ms,
+                [],
+                [],
+                [],
+                item.skip_reason,
+                item.build,
+            )
             recorded += 1
     if body.state == "running":
         job.status = "running"
     else:
-        job.status, job.finished_at = body.state, now
+        job.status, job.finished_at, job.reason = body.state, now, body.reason
         release(db, job)
-        cancelled = cancel_open_cases(db, cc.ctx, job, "job failed") if body.state == "failed" else 0
+        # A rejecting machine won't run the cases, so they end now with its reason; people rerun them.
+        cancelled = 0
+        if body.state in ("failed", "rejected"):
+            comment = f"job {body.state}" + (f": {body.reason}" if body.reason else "")
+            cancelled = cancel_open_cases(db, cc.ctx, job, comment)
         changes = {"status": [None, job.status], "recorded": recorded, "cancelled": cancelled}
+        if body.reason is not None:
+            changes["reason"] = body.reason
         audit.record(db, cc.ctx, "job.finish", "job", job.id, changes)
+        if body.state == "done":
+            queue_retry(db, cc.ctx, job)
     db.commit()
     return JobReportOut(job=job_out(job), recorded=recorded, unmatched=unmatched)
 

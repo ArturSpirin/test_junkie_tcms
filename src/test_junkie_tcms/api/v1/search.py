@@ -16,13 +16,20 @@ from test_junkie_tcms.db.models import CaseVersion, CaseVersionTag, Product, Tag
 
 router = APIRouter(tags=["cases"])
 
-TEXT_FIELDS = (("title", "title_text"), ("preconditions", "preconditions_text"), ("steps", "steps_text"))
+TEXT_FIELDS = (
+    ("title", "title_text"),
+    ("description", "description_text"),
+    ("preconditions", "preconditions_text"),
+    ("steps", "steps_text"),
+)
 
 
 @router.get("/orgs/{org}/search", response_model=Page[SearchHit], **op("search", READ, "cases"))
 def search(
     q: str | None = Query(
-        None, max_length=200, description="Case-insensitive text in the title, preconditions or steps"
+        None,
+        max_length=200,
+        description="Case-insensitive text in the title, description, preconditions or steps",
     ),
     tag: list[str] = Query([], description="Repeatable; a case must have every tag"),
     product: str | None = Query(None, description="A product id or key"),

@@ -133,7 +133,7 @@ class Results:
         twice = [{"step_id": step, "status": "fail"}, {"step_id": step, "status": "success"}]
         assert record(owner, cc, status="fail", steps=twice).status_code == 422
         assert (
-            record(owner, cc, status="fail", steps=[{"step_id": step, "status": "ignore"}]).status_code == 422
+            record(owner, cc, status="fail", steps=[{"step_id": step, "status": "held"}]).status_code == 422
         )
         assert record(owner, cc, status="fail", attachment_ids=["nope"]).status_code == 422
         assert ok(owner.get(url(f"/cycle-cases/{cc}/results")))["items"] == []
@@ -237,6 +237,70 @@ class Results:
         path = url(f"/cycle-cases/{s['cycle_case']['id']}/results/{result['id']}")
         assert owner.patch(path, json={"status": "success"}).status_code in (404, 405)
         assert owner.delete(path).status_code in (404, 405)
+
+    @test()
+    def test_a_step_can_be_ignored_or_cancelled(self, suite_parameter):
+        owner = self.env.owner
+        s = run_seed(owner)
+        first, second = (st["id"] for st in s["case"]["steps"])
+        steps = [{"step_id": first, "status": "ignore"}, {"step_id": second, "status": "cancel"}]
+        result = ok(record(owner, s["cycle_case"]["id"], status="cancel", steps=steps), 201)
+        assert [st["status"] for st in result["steps"]] == ["ignore", "cancel"]
+
+    @test()
+    def test_a_skip_reason_code_goes_only_with_a_skip_and_other_needs_a_comment(self, suite_parameter):
+        owner = self.env.owner
+        s = run_seed(owner)
+        cc = s["cycle_case"]["id"]
+        wrong = record(owner, cc, status="fail", skip_reason="env")
+        assert wrong.status_code == 422 and wrong.json()["code"] == "skip_reason_not_skip"
+        other = record(owner, cc, status="skip", skip_reason="other")
+        assert other.status_code == 422 and other.json()["code"] == "skip_reason_needs_comment"
+        assert record(owner, cc, status="skip", skip_reason="nope").status_code == 422
+        coded = ok(record(owner, cc, status="skip", skip_reason="defect"), 201)
+        assert coded["skip_reason"] == "defect"
+        said = ok(
+            record(owner, cc, status="skip", skip_reason="other", comment={"markdown": "Lab down"}), 201
+        )
+        assert said["skip_reason"] == "other"
+
+    @test()
+    def test_a_bulk_skip_still_needs_no_comment_and_takes_a_reason_code(self, suite_parameter):
+        owner = self.env.owner
+        s = run_seed(owner)
+        cycle = s["cycle"]["id"]
+        bulk = url(f"/cycles/{cycle}/results/bulk")
+        out = ok(owner.post(bulk, json={"items": [{"case_key": "PAY-1", "status": "skip"}]}), 201)
+        assert len(out["created"]) == 1
+        coded = [{"case_key": "PAY-1", "status": "skip", "skip_reason": "flag"}]
+        ok(owner.post(bulk, json={"items": coded}), 201)
+        attempts = ok(owner.get(url(f"/cycle-cases/{s['cycle_case']['id']}/results")))["items"]
+        assert [r["skip_reason"] for r in attempts] == [None, "flag"]
+        misused = [{"case_key": "PAY-1", "status": "success", "skip_reason": "flag"}]
+        refused = owner.post(bulk, json={"items": misused})
+        assert refused.status_code == 422 and refused.json()["code"] == "skip_reason_not_skip"
+
+    @test()
+    def test_a_result_carries_the_build_under_test_and_the_cycle_lists_builds_newest_first(
+        self, suite_parameter
+    ):
+        owner = self.env.owner
+        s = run_seed(owner)
+        cc = s["cycle_case"]["id"]
+        old = ok(record(owner, cc, status="fail", build=" 2.4.0+400 "), 201)
+        assert old["build"] == "2.4.0+400"
+        assert ok(record(owner, cc, status="fail", build="  "), 201)["build"] is None
+        new = ok(record(owner, cc, status="success", build="2.4.1+412"), 201)
+        assert new["build"] == "2.4.1+412"
+        assert record(owner, cc, status="success", build="x" * 121).status_code == 422
+        # Newest first, not by name: a name order would put 2.4.0 first.
+        builds = ok(owner.get(url(f"/cycles/{s['cycle']['id']}/builds")))
+        assert [b["build"] for b in builds] == ["2.4.1+412", "2.4.0+400"]
+        other = make_cycle(owner, s["product"]["id"])
+        assert [b["build"] for b in ok(owner.get(url(f"/cycles/{other['id']}/builds")))] == [
+            "2.4.1+412",
+            "2.4.0+400",
+        ]
 
     @test()
     def test_an_empty_cycle_has_zero_counts(self, suite_parameter):

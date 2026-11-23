@@ -1,44 +1,79 @@
-/* Test cases view data: every case in a product, across features. Demo data only. */
-const kase = (key, title, feature, version, status, automation, priority, tags, result, updated) => ({ key, title, feature, version, status, automation, priority, tags, result, updated });
+/* Cases adapter (docs/app-api-contract.md §4): cases_list for the table with the server's own q (a case key or
+   number, or text in the title, steps and tags), its filters (feature, status, last result, automation,
+   priority), sort, paging and total; features_list for the feature filter. The view never filters or sorts.
+   URL: ?q=&feature=<id>&status=a,b&result=a,b&automation=a,b&priority=a,b&sort=&shown=<rows to show>. */
+import { get, org, page } from "../api.js";
+import { day, flatten } from "./map.js";
 
-export default {
-  base: {
-    q: "",
-    product: { key: "PAY", name: "Payments" },
-    total: 64,
-    cases: [
-      kase("PAY-101", "Pay with a saved Visa card", "Checkout › Card payments", 7, "ready", "manual", "high", ["smoke", "visa"], "success", "Nov 12"),
-      kase("PAY-102", "Card is declined with insufficient funds and the order stays unpaid", "Checkout › Card payments", 3, "ready", "automated", "high", ["decline"], "fail", "Nov 11"),
-      kase("PAY-118", "Checkout with a card that needs a 3-D Secure challenge after the issuer times out on the first attempt and the customer retries from the order summary page", "Checkout › Card payments", 2, "draft", "to_automate", "medium", ["3ds", "retry"], "skip", "Nov 13"),
-      kase("PAY-131", "Pay with Maestro (removed)", "Checkout › Card payments", 4, "deprecated", "manual", "low", [], "ignore", "Sep 30"),
-      kase("PAY-140", "saved_card_token_expired_mid_session", "Checkout › Card payments", 1, "draft", "manual", "medium", ["token_refresh"], "untested", "Nov 14"),
-      kase("PAY-152", "Pay with Apple Pay on Safari", "Checkout › Apple Pay / Google Pay", 5, "ready", "automated", "high", ["smoke", "wallet"], "success", "Nov 10"),
-      kase("PAY-163", "Google Pay sheet is dismissed and the cart is kept", "Checkout › Apple Pay / Google Pay", 2, "ready", "automated", "medium", ["wallet"], "error", "Nov 9"),
-      kase("PAY-177", "3-D Secure challenge passes on the first try", "Checkout › 3-D Secure challenge", 4, "ready", "manual", "critical", ["3ds"], "success", "Nov 8"),
-      kase("PAY-204", "Partial refund of one line item", "Refunds › Partial refunds", 6, "ready", "automated", "high", ["refund"], "success", "Nov 7"),
-      kase("PAY-210", "Refund to an expired card", "Refunds › Partial refunds", 3, "ready", "manual", "medium", ["refund"], "cancel", "Nov 6"),
-      kase("PAY-233", "refund_webhook_retry after a 502 from the PSP", "Refunds › refund_webhook_retry", 2, "draft", "to_automate", "medium", ["webhook", "retry"], "untested", "Nov 5"),
-      kase("PAY-301", "Proration when a monthly plan moves to yearly", "Subscriptions › Proration on plan change", 8, "ready", "automated", "high", ["billing"], "success", "Nov 4")
-    ],
-    /* the feature filter's choices: id, path, short label, case count; unfiled = cases with no feature yet */
-    features: [
-      { id: "checkout", path: "Checkout", cases: 26 },
-      { id: "card", path: "Checkout › Card payments", short: "Card payments", cases: 9 },
-      { id: "wallet", path: "Checkout › Apple Pay / Google Pay", short: "Wallets", cases: 9 },
-      { id: "refunds", path: "Refunds", cases: 21 },
-      { id: "subs", path: "Subscriptions", cases: 12 }
-    ],
-    unfiled: 5,
-    /* active filters (feature ids, case statuses, last results) and the open filter menu */
-    filter: { feature: [], status: [], result: [] },
-    open: null,
-    sort: "updated"
-  },
-  states: {
-    filtered: { filter: { feature: ["card"], status: ["draft", "ready"], result: ["fail", "skip"] } },
-    "filter-open": { open: "feature" },
-    search: { q: "refund" },
-    "search-empty": { q: "invoice" },
-    empty: { product: { key: "KYC", name: "Partner onboarding" }, total: 0, cases: [] }
-  }
-};
+export const PAGE = 50;
+const SORTS = ["key", "title", "updated", "result", "priority"];
+const MULTI = ["status", "result", "automation", "priority"];
+const split = (v) => String(v || "").split(",").map((s) => s.trim()).filter(Boolean);
+
+/* the filters a URL holds, as the view's filter object */
+export function filtersOf(params) {
+  const f = { feature: params.feature ? [params.feature] : [] };
+  for (const k of MULTI) f[k] = split(params[k]);
+  return f;
+}
+
+/* the URL params for a filter object (empty ones dropped by href) */
+export function paramsOf(f) {
+  const out = { feature: f.feature[0] || null };
+  for (const k of MULTI) out[k] = (f[k] || []).join(",") || null;
+  return out;
+}
+
+/* each page of cases_list until `shown` rows (or the last page): the "Load 50 more" button raises shown */
+async function rows(path, query, shown) {
+  const items = [];
+  let cursor = null, total = 0;
+  do {
+    const p = await page(path, { ...query, limit: Math.min(200, shown - items.length), cursor });
+    items.push(...p.items);
+    total = p.total;
+    cursor = p.next;
+  } while (cursor && items.length < shown);
+  return { items, total };
+}
+
+/* params: the URL's query (q, filters, sort, shown) and ui ("filter-open", "search-cleared"). */
+export async function load(params, ctx) {
+  const p = ctx.product;
+  if (!p) throw new Error("This org has no products yet. Add a product, then its cases.");
+  const at = (...rest) => org(ctx.org.id, ...rest);
+  const q = (params.q || "").trim();
+  const filter = filtersOf(params);
+  const sort = SORTS.includes(params.sort) ? params.sort : "updated";
+  const shown = Math.max(PAGE, Math.floor(Number(params.shown)) || PAGE);
+  const narrowed = !!(q || filter.feature.length || MULTI.some((k) => filter[k].length));
+  const query = { q, sort, feature: filter.feature[0], ...Object.fromEntries(MULTI.map((k) => [k, filter[k]])) };
+  const [hits, every, tree] = await Promise.all([
+    rows(at("products", p.key, "cases"), query, shown),
+    narrowed ? page(at("products", p.key, "cases"), { limit: 1 }) : null,
+    get(at("products", p.key, "features"))
+  ]);
+  const features = flatten(tree.items);
+  const path = Object.fromEntries(features.map((f) => [f.id, f.path]));
+  const data = {
+    q, sort, filter, shown,
+    open: params.ui === "filter-open" ? "feature" : null,
+    product: { key: p.key, name: p.name },
+    total: every ? every.total : hits.total,
+    matched: hits.total,
+    cases: hits.items.map((c) => ({
+      id: c.id, key: c.key, title: c.title, feature: path[c.feature_id] || "", version: c.current_version,
+      status: c.status, automation: c.automation, priority: c.priority, tags: c.tags,
+      result: c.last_result || "untested", updated: day(c.updated_at)
+    })),
+    features: features.map((f) => ({ id: f.id, path: f.path, ...(f.depth ? { short: f.name } : {}), cases: f.total_case_count }))
+  };
+  if (!data.total) return { state: "empty", data };
+  if (q) return { state: hits.total ? "search" : "search-empty", data };
+  if (data.open) return { state: "filter-open", data };
+  if (narrowed) return { state: "filtered", data };
+  return { state: params.ui === "search-cleared" ? "search-cleared" : "list", data };
+}
+
+/* The list only reads; its writes are on the case view. */
+export const actions = {};

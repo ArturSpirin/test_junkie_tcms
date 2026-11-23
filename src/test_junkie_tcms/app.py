@@ -3,7 +3,7 @@ import contextlib
 from fastapi import FastAPI
 
 from test_junkie_tcms import __version__, app_shell, errors
-from test_junkie_tcms.api import idempotency
+from test_junkie_tcms.api import idempotency, request_context
 from test_junkie_tcms.api.v1 import router as v1_router
 from test_junkie_tcms.db.session import make_engine, make_sessionmaker
 from test_junkie_tcms.mcp_server import server as mcp_server
@@ -34,6 +34,7 @@ def create_app(settings: Settings | None = None, load_entry_points: bool = True)
     app.state.audit_retention = RetentionPolicy()
     errors.install(app)
     idempotency.install(app)
+    request_context.install(app)
     app.include_router(v1_router)
 
     @app.get("/healthz", include_in_schema=False)

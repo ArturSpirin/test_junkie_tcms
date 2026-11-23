@@ -48,8 +48,8 @@ def tokens_list(
     if not ctx.has(ADMIN):
         _require_own_or_admin(ctx, ctx.actor.id)
         query = query.where(ApiToken.actor_id == ctx.actor.id)
-    rows, cursor = paginate(db, query, ApiToken.id, params)
-    return Page[TokenOut](items=rows, next_cursor=cursor)
+    rows, cursor, total = paginate(db, query, ApiToken.id, params)
+    return Page[TokenOut](items=rows, next_cursor=cursor, total=total)
 
 
 @router.post(

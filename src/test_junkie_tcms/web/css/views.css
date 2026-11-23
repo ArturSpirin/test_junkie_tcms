@@ -1,5 +1,7 @@
 /* Page styles for each view, scoped by the view's main element with :where([data-view="<view>"]),
-   which adds no specificity, so each rule meets app.css with the same weight it has in the design. */
+   which adds no specificity, so each rule meets app.css with the same weight it has in the design.
+   The views layer comes after app (declared at the top of app.css), so these rules still override it. */
+@layer views {
 
 /* products */
 :where([data-view="products"]) .plist { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; }
@@ -67,12 +69,14 @@
 :where([data-view="tree"]) .dghost.bad { cursor: not-allowed; }
 :where([data-view="tree"]) .dghost.bad .gx { color: var(--fail); }
 :where([data-view="tree"]) .dghost.bad > svg:first-child { color: var(--fail); }
-:where([data-view="tree"]) .dnd-bar { margin: 12px 12px 0; padding: 9px 12px; border-radius: 10px; background: var(--accent-soft); color: var(--accent-text); font-size: 12.5px; display: flex; gap: 8px; align-items: flex-start; }
-:where([data-view="tree"]) .dnd-bar.bad { background: var(--fail-soft); color: var(--fail); }
+/* the drag bar is out of the flow: it overlays the search row (growing upward when it wraps), so rows never move mid-drag */
+:where([data-view="tree"]) .dnd-slot { position: relative; }
+:where([data-view="tree"]) .dnd-bar { position: absolute; left: 12px; right: 12px; bottom: 0; min-height: 100%; z-index: 3; pointer-events: none; padding: 9px 12px; border-radius: 10px;
+  background: linear-gradient(var(--accent-soft), var(--accent-soft)), var(--panel); box-shadow: var(--shadow); color: var(--accent-text); font-size: 12.5px; display: flex; gap: 8px; align-items: center; }
+:where([data-view="tree"]) .dnd-bar.bad { background: linear-gradient(var(--fail-soft), var(--fail-soft)), var(--panel); color: var(--fail); }
 :where([data-view="tree"]) .dnd-bar[hidden] { display: none; }
 :where([data-view="tree"]) .tfoot { display: flex; gap: 10px; align-items: flex-start; padding: 14px 20px 16px; border-top: 1px solid var(--edge); font-size: 12px; color: var(--faint); }
 :where([data-view="tree"]) .filters .sp { flex: 1; }
-:where([data-view="tree"]) .qline { font-size: 11.5px; margin: -6px 0 16px; overflow-wrap: anywhere; }
 :where([data-view="tree"]) .t .gh { color: var(--faint); cursor: grab; display: grid; opacity: .55; }
 :where([data-view="tree"]) .t tr:hover .gh { opacity: 1; }
 :where([data-view="tree"]) .t td.g { width: 28px; padding-right: 0; }
@@ -92,7 +96,6 @@
 :where([data-view="cases"]) .t td .ell { display: block; color: var(--text); font-weight: 500; }
 :where([data-view="cases"]) .t tbody tr { cursor: pointer; }
 :where([data-view="cases"]) .t td .fpath { font-size: 12px; color: var(--faint); }
-:where([data-view="cases"]) .qline { font-size: 11.5px; margin: -6px 0 16px; overflow-wrap: anywhere; }
 :where([data-view="cases"]) .mlist .it { color: var(--text); }
 :where([data-view="cases"]) .mlist .it:hover { background: var(--hov); }
 
@@ -263,7 +266,6 @@
 :where([data-view="audit"]) .afbar .in-ic .in { height: 32px; border-radius: 9px; font-size: 13px; }
 :where([data-view="audit"]) .afbar .dr { margin-left: auto; }
 :where([data-view="audit"]) .afmeta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 2px 16px; font-size: 12px; color: var(--muted); }
-:where([data-view="audit"]) .afmeta .mono { margin-left: auto; color: var(--faint); font-size: 11.5px; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 :where([data-view="audit"]) .atbl td { padding-top: 14px; padding-bottom: 14px; }
 :where([data-view="audit"]) .atbl tbody tr.ev { cursor: pointer; }
 :where([data-view="audit"]) .atbl tr.ev.open td { background: var(--raise2); }
@@ -292,7 +294,6 @@ html.light :where([data-view="audit"]) .xpanel { background: var(--panel); }
   :where([data-view="audit"]) .afbar { padding: 10px; } :where([data-view="audit"]) .afbar .dd { flex: 1 1 140px; } :where([data-view="audit"]) .afbar .dr { margin-left: 0; }
   :where([data-view="audit"]) .xpanel .kv { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   :where([data-view="audit"]) .xpanel .drow { grid-template-columns: minmax(0, 1fr); gap: 6px; }
-  :where([data-view="audit"]) .afmeta .mono { margin-left: 0; }
 }
 
 /* mcp */
@@ -389,3 +390,4 @@ html.dark :where([data-view="mcp"]) .drw { background: linear-gradient(180deg, r
 :where([data-view="consumers"]) .t td code { font: 500 12px var(--mono); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 520px; }
 @media (max-width: 1180px) { :where([data-view="consumers"]) .g3.ms { grid-template-columns: repeat(2, minmax(0,1fr)); } }
 @media (max-width: 760px) { :where([data-view="consumers"]) .g3.ms { grid-template-columns: minmax(0,1fr); } :where([data-view="consumers"]) .kv { grid-template-columns: 1fr; gap: 2px 0; } :where([data-view="consumers"]) .kv dd { margin-bottom: 8px; } }
+}

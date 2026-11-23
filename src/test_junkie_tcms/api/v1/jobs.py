@@ -60,13 +60,15 @@ def get_job(db: Session, ctx: OrgContext, id_: str) -> Job:
 
 
 def claim(db: Session, consumer: Consumer, now) -> Job | None:
-    """The job this consumer already holds, else its oldest queued job, claimed with a conditional update
-    so two polls can't both take it."""
+    """The job this consumer already holds, else (unless it's paused) its oldest queued job, claimed with a
+    conditional update so two polls can't both take it."""
     held = db.scalar(
         select(Job).where(Job.consumer_id == consumer.id, Job.status.in_(HELD)).order_by(Job.claimed_at)
     )
     if held is not None:
         return held
+    if consumer.paused_at is not None:
+        return None
     queued = db.scalars(
         select(Job.id)
         .where(Job.consumer_id == consumer.id, Job.status == "queued")
@@ -131,8 +133,8 @@ def jobs_report(
     db: Session = Depends(get_db),
 ):
     """Results for the job's refs, matched to the cycle cases whose pinned version has that automation_ref,
-    and its state: `running` keeps it alive, `done` or `failed` ends it. A failed job cancels the cases it
-    didn't report."""
+    and its state: `running` keeps it alive, `done`, `failed` or `rejected` ends it. A failed or rejected
+    job cancels the cases it didn't report; `rejected` needs a `reason`, which the job keeps."""
     consumer = cc.consumer
     job = db.scalar(select(Job).where(Job.id == id, Job.consumer_id == consumer.id))
     if job is None:
@@ -165,10 +167,16 @@ def jobs_report(
     if body.state == "running":
         job.status = "running"
     else:
-        job.status, job.finished_at = body.state, now
+        job.status, job.finished_at, job.reason = body.state, now, body.reason
         release(db, job)
-        cancelled = cancel_open_cases(db, cc.ctx, job, "job failed") if body.state == "failed" else 0
+        # A rejecting machine won't run the cases, so they end now with its reason; people rerun them.
+        cancelled = 0
+        if body.state in ("failed", "rejected"):
+            comment = f"job {body.state}" + (f": {body.reason}" if body.reason else "")
+            cancelled = cancel_open_cases(db, cc.ctx, job, comment)
         changes = {"status": [None, job.status], "recorded": recorded, "cancelled": cancelled}
+        if body.reason is not None:
+            changes["reason"] = body.reason
         audit.record(db, cc.ctx, "job.finish", "job", job.id, changes)
     db.commit()
     return JobReportOut(job=job_out(job), recorded=recorded, unmatched=unmatched)
@@ -188,8 +196,8 @@ def jobs_list(
     cycle = get_cycle(db, ctx, id)
     if stall_check(db, ctx.org.id, utcnow()):
         db.commit()
-    rows, cursor = paginate(db, select(Job).where(Job.cycle_id == cycle.id), Job.id, params)
-    return Page[JobOut](items=[job_out(j) for j in rows], next_cursor=cursor)
+    rows, cursor, total = paginate(db, select(Job).where(Job.cycle_id == cycle.id), Job.id, params)
+    return Page[JobOut](items=[job_out(j) for j in rows], next_cursor=cursor, total=total)
 
 
 @router.post(JOB + "/cancel", response_model=JobOut, **op("jobs_cancel", WRITE_EXECUTION, "execution"))

@@ -1,5 +1,5 @@
 /* Consumers: the paired machines list, the pairing flow and one machine's detail. */
-import { I, crumbs, lnk, modal, dd, tg, tipA, pinTip, psearch, hl, esc } from "../ui.js";
+import { I, crumbs, lnk, modal, footBar, dd, tg, tipA, pinTip, psearch, hl, esc } from "../ui.js";
 
 const mst = (s) => `<span class="mst ${s}">${s}</span>`;
 const prods = (p) => p.map((x) => `<span class="chip mono">${esc(x)}</span>`).join(" ");
@@ -36,7 +36,7 @@ const pairCode = (d) => {
   <p class="muted">On the machine, run the command below. It prints an ${p.codeLength}-character code that works for ${p.ttlMin} minutes.</p>
   <div class="cmd">${I.code}<span>tj tcms pair ${esc(p.server)}</span><button class="icon-btn" aria-label="Copy">${I.copy}</button></div>
   <div class="field" style="margin-top:20px"><label>Pairing code</label><div class="code-in" aria-label="Pairing code">${ch.slice(0, half).join("")}<span class="dash">–</span>${ch.slice(half).join("")}</div></div>
-  </div><div class="foot-bar"><span class="l mono">POST /pair {"user_code":"${esc(p.typed.slice(0, half) + "-" + p.typed.slice(half))}…"}</span><a class="btn" href="#list">Cancel</a><a class="btn primary" href="#pair-approve">Continue</a></div></div></div>`;
+  </div>${footBar(`<a class="btn" href="#list">Cancel</a><a class="btn primary" href="#pair-approve">Continue</a>`)}</div></div>`;
 };
 const pairName = (d) => {
   const p = d.pair;
@@ -48,7 +48,7 @@ const pairName = (d) => {
   <dl class="kv" style="margin:6px 0 18px"><dt>System</dt><dd>${esc(p.os)}</dd><dt>Test Junkie</dt><dd class="mono">${esc(p.tj)} · Python ${esc(p.python)}</dd><dt>Projects found</dt><dd>${p.projects.length} (${esc(p.projects.join(", "))})</dd></dl>
   <div class="field"><label>Products it may run</label>${dd({ multi: true, value: p.products, options: opts, w: "100%", label: "Products" })}</div>
   ${tg(p.acceptNow, "Accept jobs right away", "Off: the machine pairs but stays paused until you resume it")}
-  </div><div class="foot-bar"><span class="l mono">POST /pair/approve {"name":"${esc(p.sentName)}"}</span><a class="btn" href="#pair">Back</a><a class="btn danger" href="#list">Deny</a><a class="btn primary" href="#paired">Approve machine</a></div></div></div>`;
+  </div>${footBar(`<a class="btn" href="#pair">Back</a><a class="btn danger" href="#list">Deny</a><a class="btn primary" href="#paired">Approve machine</a>`)}</div></div>`;
 };
 const pairedBanner = (d) => `<div class="banner info">${I.check}<div style="flex:1"><b>${esc(d.paired.name)} is paired.</b> It may run ${esc(d.paired.products.join(", "))} jobs. Its token went to the machine only; nobody sees it here.</div><span class="r"><a class="btn sm" href="#detail">Open machine</a></span></div>`;
 
@@ -88,7 +88,7 @@ function detail(d, banner = "") {
   <div class="card" style="margin-bottom:20px"><div class="hd"><h2>Heartbeat, last 24 hours</h2><span class="r legend"><span style="--c:var(--accent)">heartbeats</span><span style="--c:var(--st-error)">missed</span></span></div><div class="bd">${hbChart(m.hb)}</div></div>
   <div class="card"><div class="hd"><h2>Tests on this machine</h2><span class="r faint" style="font-size:12px">rescanned ${esc(m.rescanned)}</span></div>
     <div class="tbl-wrap"><table class="t"><thead><tr><th>Test</th><th>Case</th></tr></thead><tbody>${m.tests.map((t) => `<tr><td><code title="${esc(t.ref)}">${esc(t.ref)}</code></td><td>${t.caseKey ? `<a class="fx" href="${lnk("case.html")}">${I.doc}<b>${esc(t.caseKey)}</b></a>` : `<span class="chip">no case yet</span>`}</td></tr>`).join("")}</tbody></table></div>
-    <div class="foot-bar"><span class="l">Linked through each case's <span class="mono">automation_ref</span> · ${m.tests.length} of ${m.testsFound} shown</span><button class="btn sm">Show all</button></div></div>`;
+    ${footBar(`<button class="btn sm">Show all</button>`, `Linked to cases by their automation ref · ${m.tests.length} of ${m.testsFound} shown`)}</div>`;
 }
 
 const empty = () => listHead() + `<div class="card"><div class="hd"><h2>Paired machines</h2></div><div class="empty"><div class="ill">${I.server}</div><h3>No machines paired</h3><p class="muted" style="margin:0 auto 14px;max-width:460px">Run <span class="mono">tj tcms pair</span> on a machine with Test Junkie, enter its code here, and give it a name. Paired machines pull automated jobs for the products you allow.</p><a class="btn primary" href="#pair">${I.plus}Pair a machine</a></div></div>`;
@@ -106,9 +106,9 @@ export default { nav: "consumers", default: "list", states: {
   "paired": { render: (d) => list(d, pairedBanner(d)), after: segNav },
   "detail": { render: (d) => detail(d) },
   "detail-hover": { render: (d) => detail(d), after: (m, d) => pinTip(m.querySelectorAll(".chart .col")[d.hoverCol]) },
-  "rename": { render: (d) => detail(d) + modal("Rename machine", `<div class="field"><label for="rn">Machine name</label><input id="rn" class="in" value="${esc(d.renameTo)}" autofocus><small class="faint">Past runs and the audit log show the new name.</small></div>`, `<span class="l mono">PATCH /consumers/${esc(d.machine.id)} {"name":…}</span><a class="btn" href="#detail">Cancel</a><a class="btn primary" href="#detail">Save name</a>`) },
+  "rename": { render: (d) => detail(d) + modal("Rename machine", `<div class="field"><label for="rn">Machine name</label><input id="rn" class="in" value="${esc(d.renameTo)}" autofocus><small class="faint">Past runs and the audit log show the new name.</small></div>`, `<a class="btn" href="#detail">Cancel</a><a class="btn primary" href="#detail">Save name</a>`) },
   "job-rejected": { render: (d) => detail(d, `<div class="banner err">${I.warn}<div><b>Job rejected by ${esc(d.machine.name)}.</b> <span class="mono">${esc(d.machine.rejectError)}</span></div></div>`) },
   "offline": { render: (d) => { const open = d.machine.jobs.filter((j) => j.state !== "rejected").length; return detail(d, `<div class="banner warn">${I.warn}<div><b>${esc(d.machine.name)} is offline.</b> No heartbeat since ${esc(d.machine.lastHeartbeat)}. Its ${open} jobs wait; move them to another machine or wait for it to come back.</div><span class="r"><a class="btn sm" href="${lnk("start.html#offline-mid")}">Move jobs</a></span></div>`); } },
   "empty": { render: empty },
-  "revoke-confirm": { render: (d) => detail(d) + modal(`Revoke ${esc(d.machine.name)}?`, `<p style="margin-top:0">Its token stops working at once. The running job is cancelled and its queued job goes back to the cycle. Past results stay.</p>`, `<span class="l mono">DELETE /consumers/${esc(d.machine.id)}</span><a class="btn" href="#detail">Cancel</a><a class="btn danger" href="#list">Revoke machine</a>`) }
+  "revoke-confirm": { render: (d) => detail(d) + modal(`Revoke ${esc(d.machine.name)}?`, `<p style="margin-top:0">Its token stops working at once. The running job is cancelled and its queued job goes back to the cycle. Past results stay.</p>`, `<a class="btn" href="#detail">Cancel</a><a class="btn danger" href="#list">Revoke machine</a>`) }
 }};

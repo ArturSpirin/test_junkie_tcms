@@ -84,6 +84,7 @@ def record(
         org_id=ctx.org.id,
         cycle_case_id=cc.id,
         attempt=(last or 0) + 1,
+        case_version=cc.case_version,
         status=status,
         actor_id=ctx.actor.id,
         via=via,
@@ -108,6 +109,7 @@ def result_out(r: Result, mode: RichMode) -> ResultOut:
         id=r.id,
         cycle_case_id=r.cycle_case_id,
         attempt=r.attempt,
+        case_version=r.case_version,
         status=r.status,
         actor_id=r.actor_id,
         via=r.via,
@@ -204,8 +206,8 @@ def results_list(
     """Every attempt for the cycle case, oldest first."""
     cc, _ = get_cycle_case(db, ctx, id)
     query = select(Result).where(Result.org_id == ctx.org.id, Result.cycle_case_id == cc.id)
-    rows, cursor = paginate(db, query, Result.id, params)
-    return Page[ResultOut](items=[result_out(r, mode) for r in rows], next_cursor=cursor)
+    rows, cursor, total = paginate(db, query, Result.id, params)
+    return Page[ResultOut](items=[result_out(r, mode) for r in rows], next_cursor=cursor, total=total)
 
 
 @router.post(

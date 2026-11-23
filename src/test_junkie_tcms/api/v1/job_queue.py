@@ -71,7 +71,7 @@ def rosters(db: Session, consumer_ids: list[str]) -> dict[str, dict[str, set[str
 def check_consumers(db: Session, org_id: str, product_id: str, ids: list[str], now) -> list[Consumer]:
     """The chosen consumers in the given order.
 
-    404 not in the org, 422 not serving the product, 409 offline."""
+    404 not in the org, 422 not serving the product, 409 offline or paused."""
     found = []
     for consumer_id in dict.fromkeys(ids):
         row = db.scalar(select(Consumer).where(Consumer.org_id == org_id, Consumer.id == consumer_id))
@@ -81,6 +81,8 @@ def check_consumers(db: Session, org_id: str, product_id: str, ids: list[str], n
             raise HTTPException(422, f"Consumer {row.name!r} does not serve this product")
         if not online(row, now):
             raise ProblemError(409, f"Consumer {row.name!r} is offline", code="consumer_offline")
+        if row.paused_at is not None:
+            raise ProblemError(409, f"Consumer {row.name!r} is paused", code="consumer_paused")
         found.append(row)
     return found
 
@@ -187,7 +189,8 @@ def cancel_open_cases(db: Session, ctx, job: Job, comment: str) -> int:
 
 
 def pick_other(db: Session, job: Job, product_id: str, now) -> Consumer | None:
-    """Another online consumer that serves the product and lists the job's project, least busy first."""
+    """Another online, unpaused consumer that serves the product and lists the job's project, least busy
+    first."""
     rows = db.scalars(
         select(Consumer)
         .join(ConsumerProduct, ConsumerProduct.consumer_id == Consumer.id)
@@ -196,6 +199,7 @@ def pick_other(db: Session, job: Job, product_id: str, now) -> Consumer | None:
             Consumer.org_id == job.org_id,
             Consumer.id != job.consumer_id,
             Consumer.revoked_at.is_(None),
+            Consumer.paused_at.is_(None),
             ConsumerProduct.product_id == product_id,
             ConsumerInventory.project == job.project,
         )
@@ -222,7 +226,7 @@ def requeue_or_fail(db: Session, job: Job, now, reason: str = LOST) -> None:
             cc.consumer_id = target.id
         audit.record(db, ctx, "job.requeue", "job", job.id, {**changes, "reason": reason})
         return
-    job.status, job.finished_at = "failed", now
+    job.status, job.finished_at, job.reason = "failed", now, reason
     cancelled = cancel_open_cases(db, ctx, job, reason)
     audit.record(db, ctx, "job.fail", "job", job.id, {"reason": reason, "cancelled": cancelled})
 

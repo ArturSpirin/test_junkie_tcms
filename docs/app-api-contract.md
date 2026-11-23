@@ -13,8 +13,8 @@ app does not show them.
 | F3 | Case Description field, per-case Markdown, plan entry resolution counts |
 | F4 | Cycle and run extras: created/closed by, bulk naming, splits, retries, stop, step ignore, build under test |
 | F5 | Report periods, trend, org KPIs, product-wide and feature-history reports |
-| F6 | MCP tool descriptions and hints, recent calls, error-code breakdown |
-| F7 | Consumer jobs per machine, rejected reason, pause, deny pairing, pending-pairing preview, roster |
+| F6 | MCP tool descriptions and hints, recent calls, error-code breakdown (done) |
+| F7 | Consumer jobs per machine, rejected reason, pause, deny pairing, pending-pairing preview, roster (done) |
 | F8 | Name search (`q`) on lists, product owner, copy feature tree, ETA and manual case order on Start |
 
 ## Serving
@@ -66,8 +66,11 @@ reload from `current_version`.
 ### Paging
 
 List endpoints that page take `cursor` and `limit` (1-200, default 50) and return
-`{"items": [...], "next_cursor": "..." | null}`. Pass `next_cursor` back as `cursor` for the next page.
-Lists have no `total` yet: **not yet (F1)**.
+`{"items": [...], "next_cursor": "..." | null, "total": n}`. Pass `next_cursor` back as `cursor` for the next
+page. `total` counts the rows the list matches with its filters, across all pages ("12 of 64").
+
+A sort on a value that changes (`cases_list?sort=result` or `sort=updated`) pages by keyset, so a case whose
+result or update time changes between two page loads can be skipped or shown twice. Reload from page one to fix.
 
 All paths below are under `/api/v1/orgs/{org}` unless they start with `/api/v1/`.
 
@@ -77,7 +80,8 @@ Two kinds of search, and the app never filters a paged list itself (that misses 
 
 - **Case text:** `GET /orgs/{org}/search` (`search`) `?q&tag&product&feature&include_archived`, paged. It
   matches the current version's title, preconditions and steps, and needs `q` or `tag` (else 422). The Cases
-  list's own `q` (`cases_list?q=`) matches the title only.
+  list's own `q` (`cases_list?q=`) matches the case key (`PAY-12`) or number, and the current title, steps and
+  tag names.
 - **Names on other lists** (products, features, plans, members, consumers): a server-side `q` on each list,
   **not yet (F8)**. Until then those views show no search box.
 
@@ -114,7 +118,7 @@ also starts a session and sets the cookies. It returns the new `MemberOut`.
 |---|---|---|
 | list, create, edit, archive | `products_list`, `products_create`, `products_update`, `products_archive` | exists |
 | current version, latest results | `releases_list`, `reports_product` | exists |
-| card counts (features, cases) | | not yet (F1) |
+| card counts (features, cases) | `products_list`, `products_get`: `feature_count`, `case_count` (live features, live cases in them) | exists |
 | name search | | not yet (F8) |
 | owner, "copy feature tree from" | | not yet (F8) |
 
@@ -125,7 +129,7 @@ also starts a session and sets the cookies. It returns the new `MemberOut`.
 | list, new, detail KPIs, mark released | `releases_list`, `releases_create`, `releases_get`, `releases_update`, `reports_release` | exists |
 | set features | `PUT /releases/{id}/features` (`releases_set_features`) | exists |
 | plans and cycles of a version | `plans_list`, `cycles_list`, filtered on `release_id` in the app | exists |
-| feature case counts | | not yet (F1) |
+| feature case counts | `features_list`: `case_count`, `total_case_count` per node | exists |
 
 ### 3. Tree
 
@@ -137,8 +141,8 @@ also starts a session and sets the cookies. It returns the new `MemberOut`.
 | new, rename, describe, move, archive a feature | `features_create`, `features_update`, `features_move`, `features_archive` | exists |
 | move a case | `cases_move` | exists |
 | reports, import, viewer | `reports_feature`, `imports_create`, `cases_get` | exists |
-| case count per feature, last-result dot, filters, sort, key search | | not yet (F1) |
-| reorder a case within a feature | | not yet (F1) |
+| case count per feature, last-result dot, filters, sort, key search | `features_list` (`case_count` own, `total_case_count` with sub-features); `cases_list` (`last_result`, `last_result_at`; filters, `sort`, `q` as in Cases below) | exists |
+| reorder a case within a feature | `CaseOut.position`; `cases_move` `{feature_id, position?}` (no `position` appends; reordering keeps the other cases' `updated_at`) | exists |
 | "edited by agent via MCP on behalf of", "in cycles" | `cases_versions_list` (`via`, `token_id`, `on_behalf_of_user_id`), `actors_list`, `cases_cycles` | exists (F2) |
 
 ### 4. Cases
@@ -148,7 +152,13 @@ also starts a session and sets the cookies. It returns the new `MemberOut`.
 | table, paging, feature/status/automation filters | `cases_list` | exists |
 | title search | `cases_list?q=` | exists |
 | text search (title, preconditions, steps, tags) | `search?q&tag&product` (see Search) | exists |
-| result and priority filters, sort, total, key search | | not yet (F1) |
+| result and priority filters, sort, total, key search | `cases_list?result&priority&updated_since&edited_by&edited_by_kind&has_ref&sort&q`, `total` on the page | exists |
+
+`result` takes a last result (`fail`, `success`, ...) or `untested`, which means no result in any cycle (the
+mock's hint says "in an open cycle"; the app copy follows the API). `has_ref` reads the case's
+`automation_ref`. `edited_by` is an actor id, `edited_by_kind` is `user` or `agent`. `sort` is `manual` (the
+tree's pre-order, then position), `key`, `title`, `updated` (newest first), `result` (failures first) or
+`priority` (critical first). Per-tag case counts for the tag filter come from `tags_list` (`case_count`).
 | "No feature yet" option | | not in the API (a case always has a feature) |
 
 ### 5. Case editor
@@ -299,7 +309,7 @@ Action names are singular (`product.create`), not the mock's `products.create`.
 
 ### 15. MCP
 
-All five need the audit-read permission (admins).
+All six need the audit-read permission (admins).
 
 | Need | Operations | Status |
 |---|---|---|
@@ -309,7 +319,10 @@ All five need the audit-read permission (admins).
 | clients KPI (count and names) | `GET /mcp/clients` (`mcp_clients`) | added |
 | updates feed | `GET /mcp/updates` (`mcp_updates`) | added |
 | live usage | poll, see below | added |
-| tool description, hints, recent calls, error codes, "last call" in live mode | | not yet (F6) |
+| tool description, idempotent and destructive hints, errors by code | `McpToolOut.description`, `idempotent`, `destructive`, `errors_by_code` | added |
+| recent calls with status and latency, "last call" in live mode | `GET /mcp/calls` (`mcp_calls`) | added |
+| a call's target in its label (`cases_get PAY-101`, `search q=refund`) | | out of scope: arguments can carry case data, so they are not stored |
+| a failed call's error body or note | | out of scope: only the HTTP status is stored |
 | drift-guard CI results in the feed | | out of scope (v1, owner decision) |
 
 **Range.** `mcp_tools_list`, `mcp_usage` and `mcp_clients` take `since` and `until` (ISO 8601). `since` is
@@ -318,19 +331,24 @@ floored and `until` ceiled to the bucket. `since >= until`, or a span over 90 da
 `mcp_server_get`:
 
 ```json
-{"name": "...", "version": "...", "tool_count": 92, "tool_list_hash": "..."}
+{"name": "...", "version": "...", "tool_count": 99, "tool_list_hash": "..."}
 ```
 
 `mcp_tools_list?since&until` (default: the last 30 days):
 
 ```json
 {"since": "...", "until": "...", "total_def_tokens": 0,
- "items": [{"name": "...", "toolset": "...", "scope": "...", "read_only": true, "def_tokens": 0,
+ "items": [{"name": "...", "toolset": "...", "scope": "...", "description": "...",
+            "read_only": true, "idempotent": true, "destructive": false, "def_tokens": 0,
             "calls_7d": 0, "errors_7d": 0, "calls_30d": 0, "errors_30d": 0,
-            "calls": 0, "errors": 0, "p50_resp_tokens": 0, "p95_resp_tokens": 0}]}
+            "calls": 0, "errors": 0, "errors_by_code": {"404": 0, "422": 0},
+            "p50_resp_tokens": 0, "p95_resp_tokens": 0}]}
 ```
 
-`calls` and `errors` cover the chosen range; `calls_7d`/`calls_30d` are fixed windows.
+`calls` and `errors` cover the chosen range; `calls_7d`/`calls_30d` are fixed windows. `errors_by_code` splits
+`errors` by HTTP status (keys are strings, only codes that occurred); its values sum to `errors` for calls
+recorded since F6 (older hour rows have no codes). The mock's tool kind comes from `read_only`, `idempotent`
+and `destructive`.
 
 `mcp_usage?since&until&bucket=hour|day&tool&actor`:
 
@@ -357,7 +375,7 @@ as a read when it is a `GET`; a tool that is no longer in the running tool list 
 ```json
 {"items": [{"id": "...", "at": "...", "kind": "tools_changed", "version": "...", "tool_list_hash": "...",
             "added": ["..."], "removed": ["..."], "changed": ["..."]}],
- "next_cursor": null}
+ "next_cursor": null, "total": 0}
 ```
 
 `kind` is `server_started` or `tools_changed`. The feed is server-wide: every org sees the same rows, which
@@ -366,7 +384,20 @@ list hash differs from the newest row, else `server_started`. With several worke
 its own row, so one deploy can show several `server_started` rows; only the first worker after a change writes
 `tools_changed`.
 
-**Live.** The app polls `mcp_usage?bucket=hour` and `mcp_clients` every 15 seconds while live mode is on.
+`mcp_calls?since&until&tool&actor&cursor&limit` (paged, newest first; `limit` default 20, at most 100):
+
+```json
+{"items": [{"id": "...", "at": "...", "tool": "...", "actor_id": "...", "name": "...", "kind": "agent",
+            "status": 200, "ms": 0, "resp_tokens": 0}],
+ "next_cursor": null, "total": 0}
+```
+
+One row per call that reached a tool, kept 7 days. `status` is the HTTP status the tool got (an error when
+`>= 400`), `ms` the time spent in the tool, `resp_tokens` the response size in ≈ tokens (bytes ÷ 4). A tool's
+recent calls are `mcp_calls?tool=<name>`. The call's arguments and response body are not stored.
+
+**Live.** The app polls `mcp_usage?bucket=hour`, `mcp_clients` and `mcp_calls?limit=1` (the "last call") every
+15 seconds while live mode is on.
 There is no server push (no SSE, no `notifications/tools/list_changed`).
 
 ### 16. Consumers (machines)
@@ -380,20 +411,55 @@ There is no server push (no SSE, no `notifications/tools/list_changed`).
 | rename, set products | `PATCH /consumers/{id}` `{name?, product_ids?}` | exists |
 | revoke | `DELETE /consumers/{id}` | exists |
 | pair | `POST /pair/approve` (`pairings_approve`) | exists |
-| jobs per machine, rejected reason, pause, deny pairing, pending-pairing preview, roster | | not yet (F7) |
+| jobs per machine, with the rejected reason | `GET /consumers/{id}/jobs?status&cursor&limit` (`consumers_jobs`), `JobOut.reason` | added |
+| jobs today, rejected today | `ConsumerDetail.jobs_today`, `rejected_today` | added |
+| pause, resume | `POST /consumers/{id}/pause` (`consumers_pause`), `POST /consumers/{id}/resume` (`consumers_resume`) | added |
+| pair paused ("accept jobs now" off) | `pairings_approve` `{..., accept_jobs: false}` | added |
+| pending-pairing preview | `GET /pair/{user_code}` (`pairings_get`) | added |
+| deny pairing | `POST /pair/deny` `{user_code}` (`pairings_deny`) | added |
+| inventory roster, tests found and linked | `GET /consumers/{id}/roster?project&cursor&limit` (`consumers_roster`), `ConsumerDetail.tests_found`, `tests_linked` | added |
 
 `ConsumerOut`:
 
 ```json
 {"id": "...", "name": "...", "status": "online", "product_ids": ["..."], "project_count": 2,
  "last_heartbeat_at": "...", "busy_job_id": null, "tj_version": "...", "python": "...", "os": "...",
- "revoked_at": null, "created_at": "..."}
+ "paused_at": null, "revoked_at": null, "created_at": "..."}
 ```
 
 `status` is `online`, `offline`, `busy` or `revoked`. `project_count` is the number of inventoried projects.
+Paused is not a status: a paused consumer keeps its status and has `paused_at` set.
 
-`ConsumerDetail` adds `heartbeats: [{at, busy_job_id}]` (last 24 hours, newest first) and
-`inventory: [{project, hash, test_count, updated_at}]`.
+`ConsumerDetail` adds `heartbeats: [{at, busy_job_id}]` (last 24 hours, newest first),
+`inventory: [{project, hash, test_count, updated_at}]`, `jobs_today`, `rejected_today`, `tests_found` and
+`tests_linked`. `jobs_today` and `rejected_today` count jobs created for the consumer in the **last 24 hours**
+(a rolling window, not the calendar day), so the app labels them "last 24 h". `tests_found` counts the refs in
+its inventory across projects; `tests_linked` those that are the `automation_ref` of a case the caller can see.
+
+**Jobs.** `consumers_jobs` pages the consumer's jobs, newest first, limited to products the caller can see;
+`status` filters (`queued`, `running`, `done`, `failed`, `rejected`, ...). Each item is a `JobOut`, which now has
+`reason`: why the job was rejected (always set) or failed (`consumer lost` when it stalled twice), else `null`.
+
+**Rejected.** A machine that can't run a job reports `state: "rejected"` with a `reason` (required, 422 without
+it). The job ends `rejected` and is not requeued: its open cycle cases are cancelled with the comment
+`job rejected: <reason>`, as a failed job's are, so people see why and rerun them. The consumer stays online.
+
+**Pause.** `consumers_pause` and `consumers_resume` (admin) set and clear `paused_at`; a second call is a no-op
+with no audit row, and a revoked consumer is a 409. A paused consumer keeps and finishes the job it holds but
+`next_job` gives it no new one, starting a cycle that names it is a 409 `consumer_paused`, and a stalled job is
+not requeued onto it.
+
+**Pairing preview and deny.** The machine may send `{os, tj_version, python, projects}` with `POST /pair`
+(every field optional; an empty body is still fine). `pairings_get` (admin) returns
+`{user_code, status, expires_at, os, tj_version, python, projects}` for a request not yet tied to an org, or
+tied to this one; unknown (or another org's) is 404, an expired pending one is 410. `pairings_deny` (admin, 204) marks a pending request `denied`; the machine's
+next `POST /pair/token` gets 403 `access_denied`, and denying it again is a 409 `pairing_not_pending`.
+
+**Roster.** `consumers_roster` pages `{project, ref, case_key}` for the consumer's inventory, by project, then
+in the order the machine uploaded them; `project` filters. `case_key` (`PAY-12`) is the visible case whose `automation_ref` is the ref, else `null`.
+
+**Undo.** Migration `0014` adds only nullable columns and the `denied` pairing status. Its downgrade deletes
+`denied` pairing requests (short-lived, and the old schema has no such status); everything else is kept.
 
 For reference, the machine side (consumer token, not the app):
 

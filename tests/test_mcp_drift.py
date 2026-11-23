@@ -26,6 +26,8 @@ from test_junkie_tcms.plugins import PluginContext
 from tests import support
 
 SNAPSHOT = Path(__file__).parent / "snapshots" / "mcp_tools.json"
+# The one count of MCP tools; the other MCP suites import it.
+TOOL_COUNT = 103
 
 
 def _as_json(tools) -> list[dict]:
@@ -68,7 +70,7 @@ class McpDrift:
         assert unmarked_routes(app) == []
         tools = build_tools(app)
         assert drift(app, tools) == []
-        assert len(tools) == 96
+        assert len(tools) == TOOL_COUNT
 
     @test()
     def test_tools_match_the_snapshot(self, suite_parameter):

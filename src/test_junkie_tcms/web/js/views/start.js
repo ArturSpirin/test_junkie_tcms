@@ -1,5 +1,5 @@
 /* Start a cycle: the four-step wizard (what to test, how to run, who runs it) and the live cycle it starts. */
-import { I, crumbs, lnk, modal, dd, tg, bar, st, actor, toast, esc } from "../ui.js";
+import { I, crumbs, lnk, modal, footBar, dd, tg, bar, st, actor, esc } from "../ui.js";
 
 const mst = (s) => `<span class="mst ${s}">${s}</span>`;
 const head = (title, eyebrow, c, act) => `${c}<div class="ph"><div class="ttl"><span class="eyebrow">${eyebrow}</span><h1>${title}</h1></div><div class="actions">${act || ""}</div></div>`;
@@ -9,7 +9,8 @@ const prodLabel = (d) => esc(`${d.product.key} · ${d.product.name}`);
 const pageHead = (d, cur) => head("Start a cycle", `Run · ${prodLabel(d)}`, crumbs([[prodLabel(d), "products.html#detail"], ["Run"], ["Start a cycle"]]),
   `<a class="btn" href="${lnk("cycles.html")}">${I.cycle}All cycles</a>`) + steps(cur);
 const pick = (o) => { const tag = o.href ? "a" : "div"; return `<${tag}${o.href ? ` href="${o.href}"` : ""} class="pick${o.box ? " box" : ""}${o.on ? " on" : ""}${o.dis ? " dis" : ""}" role="${o.box ? "checkbox" : "radio"}" aria-checked="${!!o.on}"${o.dis ? ' aria-disabled="true"' : ""} tabindex="0"><span class="pi">${o.icon}</span><span class="m"><b>${o.t}</b><small>${o.s}</small></span><span class="ck">${I.check}</span></${tag}>`; };
-const card = (title, body, foot, r = "") => `<div class="card flowc"><div class="hd"><h2>${title}</h2>${r ? `<span class="r">${r}</span>` : ""}</div><div class="bd">${body}</div>${foot ? `<div class="foot-bar">${foot}</div>` : ""}</div>`;
+/* foot is a footBar(actions, note) */
+const card = (title, body, foot, r = "") => `<div class="card flowc"><div class="hd"><h2>${title}</h2>${r ? `<span class="r">${r}</span>` : ""}</div><div class="bd">${body}</div>${foot || ""}</div>`;
 const summary = (d, extra = "") => `<div class="summary"><span class="k">Product</span><b>${prodLabel(d)}</b><span class="faint">·</span><span class="k">Version</span><b>${esc(d.version)}</b><span class="faint">·</span><span class="k">Plan</span><b>${esc(d.plan.name)}</b><span class="faint">·</span><span class="k">Cases</span><b>${d.plan.cases}</b><span class="muted">${d.plan.automated} automated, ${d.plan.manual} manual</span>${extra}</div>`;
 const modeChip = (label) => `<span class="faint">·</span><span class="k">Mode</span><b>${label}</b>`;
 const tester = (d, h) => (d.testers.find((t) => t.handle === h) || { name: h }).name;
@@ -26,9 +27,9 @@ function scope(d, by) {
     ? `<div class="field"><label>Test plan for ${esc(d.version)}</label><div class="picks c2">${d.plans.map((p) => pick({ icon: I.flag, t: esc(p.name), s: p.cantRun ? esc(p.meta) + " · can’t run" : esc(p.meta), on: p.on, dis: p.cantRun })).join("")}</div></div>`
     : `<div class="field"><label>Features in ${esc(d.version)}</label><div class="picks c2">${d.features.map((f) => pick({ box: true, icon: I.folder, t: esc(f.path), s: f.cases + " cases", on: f.on })).join("")}</div></div>`;
   const on = d.features.filter((f) => f.on);
-  const n = by === "plan" ? `${esc(d.plan.name)} · ${d.plan.cases} cases` : `${on.length} features · ${on.reduce((a, f) => a + f.cases, 0)} cases`;
+  const n = by === "plan" ? `${d.plan.name} · ${d.plan.cases} cases` : `${on.length} features · ${on.reduce((a, f) => a + f.cases, 0)} cases`;
   return pageHead(d, 0) + card("What do you want to test?", prodVer + seg + picks,
-    `<span class="l">${n}</span><a class="btn" href="${lnk("plans.html")}">Cancel</a><a class="btn primary" href="#mode">Continue${I.chev}</a>`);
+    footBar(`<a class="btn" href="${lnk("plans.html")}">Cancel</a><a class="btn primary" href="#mode">Continue${I.chev}</a>`, n));
 }
 
 /* step 2: how to run */
@@ -39,7 +40,7 @@ function mode(d, sel) {
   const ms = [["manual", I.person, "Manual", `A person runs all ${p.cases} cases on the run screen, one by one.`, "#mode-manual"], ["auto", I.server, "Automated", `Paired machines run the ${p.automated} automated cases. The ${p.manual} manual cases stay untested.`, "#mode"], ["mixed", I.members, "Both", `Machines run the ${p.automated} automated cases; a person runs the ${p.manual} manual ones at the same time.`, "#mode-mixed"]];
   const next = sel === "manual" ? "#manual-ready" : sel === "mixed" ? "#mixed-pick" : "#auto-pick";
   return pageHead(d, 1) + card("How should it run?", summary(d) + env + `<div class="field"><label>Run mode</label><div class="picks">${ms.map((m) => pick({ icon: m[1], t: m[2], s: m[3], on: m[0] === sel, href: m[4] })).join("")}</div></div>`,
-    `<span class="l">Creates the cycle and pins ${p.cases} cases at their current version</span><a class="btn" href="#scope">Back</a><a class="btn primary" href="${next}">Continue${I.chev}</a>`);
+    footBar(`<a class="btn" href="#scope">Back</a><a class="btn primary" href="${next}">Continue${I.chev}</a>`, `Creates the cycle and pins ${p.cases} cases at their current version`));
 }
 
 /* step 3a: manual */
@@ -47,7 +48,7 @@ const manualReady = (d) => pageHead(d, 2) + card("Who runs it?", summary(d, mode
   `<div class="grid2"><div class="field"><label>Tester</label>${dd({ value: d.tester, options: [...d.testers.map(testerOpt), "-", { v: "none", label: "Leave unassigned", hint: "anyone with tester role can pick it up" }], w: "100%", label: "Tester" })}</div>
   <div class="field"><label>Order</label>${dd({ value: "feature", options: [{ v: "feature", label: "By feature, then priority" }, { v: "priority", label: "Priority first" }, { v: "plan", label: "As listed in the plan" }], w: "100%", label: "Order" })}</div></div>
   ${tg(true, "Notify the tester", `${esc(firstName(d, d.tester))} gets a notification with a link to the run screen`)}`,
-  `<span class="l mono">POST /cycles  ${esc(JSON.stringify({ plan_id: d.plan.id, environment: d.environment }))}</span><a class="btn" href="#mode-manual">Back</a><a class="btn primary" href="${lnk("run.html")}">${I.play}Start manual run</a>`);
+  footBar(`<a class="btn" href="#mode-manual">Back</a><a class="btn primary" href="${lnk("run.html")}">${I.play}Start manual run</a>`));
 
 /* step 3b: automated, pick machines */
 const allowed = (m) => m.allowed !== false;
@@ -57,8 +58,8 @@ const autoPick = (d, mixed) => {
   const none = !d.machines.some((m) => m.status !== "offline");
   const ban = none ? `<div class="banner warn" style="margin-bottom:16px">${I.wifioff}<div style="flex:1"><b>No machines online for ${key}.</b> Machines paired for ${key}: ${esc(d.machines.filter(allowed).map((m) => m.name).join(", "))}. None has sent a heartbeat in the last ${esc(d.heartbeatWindow)}.</div></div>` : "";
   const foot = none
-    ? `<span class="l">You can still create the cycle; its ${d.plan.automated} jobs wait until a machine comes online.</span><a class="btn" href="${lnk("consumers.html#pair")}">${I.plus}Pair a machine</a><a class="btn" href="#manual-ready">Run manually instead</a><a class="btn primary" href="#queued">Create cycle and queue jobs</a>`
-    : `<span class="l mono">POST /cycles/{id}/jobs</span><a class="btn" href="#mode">Back</a><a class="btn primary" href="#${mixed ? "mixed" : "live"}">${I.play}Start run on ${d.machines.filter((m) => m.on).length} machines</a>`;
+    ? footBar(`<a class="btn" href="${lnk("consumers.html#pair")}">${I.plus}Pair a machine</a><a class="btn" href="#manual-ready">Run manually instead</a><a class="btn primary" href="#queued">Create cycle and queue jobs</a>`, `You can still create the cycle; its ${d.plan.automated} jobs wait until a machine comes online.`)
+    : footBar(`<a class="btn" href="#mode">Back</a><a class="btn primary" href="#${mixed ? "mixed" : "live"}">${I.play}Start run on ${d.machines.filter((m) => m.on).length} machines</a>`);
   return pageHead(d, 2) + card("Which machines run it?", summary(d, modeChip(mixed ? "Both" : "Automated")) + ban +
     `<div class="field"><label>Machines paired for ${key}</label><div class="picks c2">${d.machines.map((m) => machPick(m, none)).join("")}</div></div>
     <div class="grid2"><div class="field"><label>Split cases</label>${dd({ value: "feature", options: [{ v: "feature", label: "By feature", hint: "each machine takes whole features" }, { v: "even", label: "Evenly by count" }, { v: "one", label: "All on the first free machine" }], w: "100%", label: "Split cases", dis: none })}</div>
@@ -108,10 +109,10 @@ function live(d) {
 const cancelCases = (d) => {
   const s = d.cycle.stalled, j = d.cycle.jobs.find((x) => x.machine === s.machine);
   return modal(esc(`Cancel ${s.waiting} cases on ${s.machine}?`), `<p style="margin-top:0">The ${s.waiting} cases waiting on this machine are marked <b>cancel</b> and nobody runs them. The ${j.done} finished results stay in the cycle. Start a new cycle later to run them.</p>`,
-    `<span class="l mono">POST /cycles/${esc(d.cycle.id)}/jobs:cancel</span><a class="btn" href="#offline-mid">Keep waiting</a><a class="btn danger" href="#live">Cancel ${s.waiting} cases</a>`);
+    `<a class="btn" href="#offline-mid">Keep waiting</a><a class="btn danger" href="#live">Cancel ${s.waiting} cases</a>`);
 };
 const stopConfirm = (d) => modal("Stop this run?", `<p style="margin-top:0">Running cases finish; the ${d.cycle.total - d.cycle.done} queued cases are cancelled and marked <b>cancel</b>. Results so far stay in the cycle.</p>`,
-  `<span class="l mono">POST /cycles/${esc(d.cycle.id)}/jobs:cancel</span><button class="btn" data-back>Keep running</button><button class="btn danger">Stop run</button>`);
+  `<button class="btn" data-back>Keep running</button><button class="btn danger">Stop run</button>`);
 
 /* the step 1 segmented control switches state */
 const after = (main) => main.querySelectorAll("[data-go]").forEach((b) => b.addEventListener("click", () => { location.hash = b.dataset.go; }));
@@ -129,7 +130,7 @@ export default { nav: "run", default: "scope", after, states: {
   "queued": { render: live },
   "live": { render: live },
   "offline-mid": { render: live },
-  "reassigned": { render: live, after: (m, d) => toast(`<div><b>${d.moved.count} cases moved to ${esc(d.moved.to)}.</b> <span class="muted">They run after its current job.</span></div>`) },
+  "reassigned": { render: live, toast: (d) => `<div><b>${d.moved.count} cases moved to ${esc(d.moved.to)}.</b> <span class="muted">They run after its current job.</span></div>` },
   "mixed": { render: live },
   "cancel-cases": { render: (d) => live(d) + cancelCases(d) },
   "stop-confirm": { render: (d) => live(d) + stopConfirm(d) },

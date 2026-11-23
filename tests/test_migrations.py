@@ -2,10 +2,11 @@
 
 from pathlib import Path
 
+from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, func, select, text
+from sqlalchemy import create_engine, func, inspect, select, text
 from sqlalchemy.exc import DBAPIError
 from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
 from test_junkie.shortcuts import skip
@@ -16,6 +17,8 @@ from test_junkie_tcms.db.migrate import alembic_config
 from test_junkie_tcms.db.models import AuditEvent
 from test_junkie_tcms.db.session import AuditAppendOnlyError, make_engine, make_sessionmaker
 from tests import support
+from tests.catalog_seed import ok, seed, url
+from tests.execution_seed import cycle_cases, edit_steps, make_cycle, record, run_seed
 
 
 def _count(engine) -> int:
@@ -106,6 +109,81 @@ class Migrations:
             migrate.upgrade(database_url)
             with engine.connect() as conn:
                 assert conn.scalar(text("SELECT status FROM test_plan WHERE id = 'T1'")) == "active"
+        finally:
+            engine.dispose()
+
+    @test()
+    def test_0014_backfills_result_case_version_from_the_pin(self, suite_parameter):
+        owner = self.env.owner
+        s = run_seed(owner)
+        ok(record(owner, s["cycle_case"]["id"], status="fail"), 201)
+        ok(record(owner, s["cycle_case"]["id"], status="success"), 201)
+        edit_steps(owner, s["case"])
+        later = make_cycle(owner, s["product"]["id"], case_ids=[s["case"]["id"]])
+        [cc2] = cycle_cases(owner, later["id"])
+        ok(record(owner, cc2["id"], status="success"), 201)
+
+        database_url = self.env.database_url
+        command.downgrade(alembic_config(database_url), "0013")
+        migrate.upgrade(database_url)
+        engine = create_engine(database_url)
+        try:
+            with engine.connect() as conn:
+                rows = conn.execute(
+                    text(
+                        "SELECT r.case_version, cc.case_version FROM result r JOIN cycle_case cc"
+                        " ON cc.org_id = r.org_id AND cc.id = r.cycle_case_id ORDER BY r.case_version"
+                    )
+                ).all()
+        finally:
+            engine.dispose()
+        assert [tuple(r) for r in rows] == [(1, 1), (1, 1), (2, 2)]
+
+    @test()
+    def test_0012_numbers_positions_in_key_order_and_downgrades(self, suite_parameter):
+        owner = self.env.owner
+        s = seed(owner)
+        p, card, parent = s["product"]["id"], s["child"]["id"], s["parent"]["id"]
+        for feature in (card, parent, card, card, parent):  # PAY-1 to PAY-5
+            ok(owner.post(url(f"/products/{p}/cases"), json={"feature_id": feature, "title": "t"}), 201)
+        database_url = self.env.database_url
+        engine = create_engine(database_url)
+        rows = "SELECT number, feature_id, position, updated_at FROM test_case ORDER BY number"
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("UPDATE test_case SET position = 7"))
+                before = [(n, f, u) for n, f, _, u in conn.execute(text(rows))]
+            command.downgrade(alembic_config(database_url), "0011")
+            with engine.connect() as conn:
+                assert "position" not in {c["name"] for c in inspect(conn).get_columns("test_case")}
+            migrate.upgrade(database_url)
+            with engine.connect() as conn:
+                after = list(conn.execute(text(rows)))
+            assert [(n, f, u) for n, f, _, u in after] == before  # updated_at is left as it was
+            assert [(n, pos) for n, _, pos, _ in after] == [(1, 0), (2, 0), (3, 1), (4, 2), (5, 1)]
+        finally:
+            engine.dispose()
+
+    @test()
+    def test_0014_keeps_pending_pairings_and_drops_denied_on_downgrade(self, suite_parameter):
+        owner, anon = self.env.owner, self.env.client()
+        kept = ok(anon.post("/api/v1/pair", json={"os": "Linux"}), 201)["user_code"]
+        denied = ok(anon.post("/api/v1/pair"), 201)["user_code"]
+        assert owner.post("/api/v1/orgs/acme/pair/deny", json={"user_code": denied}).status_code == 204
+        database_url = self.env.database_url
+        engine = create_engine(database_url)
+        rows = "SELECT user_code, status FROM pairing_request ORDER BY user_code"
+        try:
+            command.downgrade(alembic_config(database_url), "0013")
+            with engine.connect() as conn:
+                assert "machine" not in {c["name"] for c in inspect(conn).get_columns("pairing_request")}
+                assert "paused_at" not in {c["name"] for c in inspect(conn).get_columns("consumer")}
+                assert "reason" not in {c["name"] for c in inspect(conn).get_columns("job")}
+                assert list(conn.execute(text(rows))) == [(kept, "pending")]
+            migrate.upgrade(database_url)
+            with engine.connect() as conn:
+                assert list(conn.execute(text(rows))) == [(kept, "pending")]
+                assert conn.scalar(text("SELECT machine FROM pairing_request")) is None
         finally:
             engine.dispose()
 

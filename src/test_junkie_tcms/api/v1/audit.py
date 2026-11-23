@@ -64,8 +64,8 @@ def audit_list(
                 AuditEvent.actor_id.in_(named),
             )
         )
-    rows, cursor = paginate(db, query, AuditEvent.id, params)
-    return Page[AuditOut](items=rows, next_cursor=cursor)
+    rows, cursor, total = paginate(db, query, AuditEvent.id, params)
+    return Page[AuditOut](items=rows, next_cursor=cursor, total=total)
 
 
 @router.get(

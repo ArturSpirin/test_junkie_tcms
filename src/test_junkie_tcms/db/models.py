@@ -392,7 +392,7 @@ class IdempotencyRecord(TenantMixin, Base):
 
 # Consumers: a machine running the test_junkie daemon, paired by device code.
 
-PAIRING_STATUSES = ("pending", "approved", "claimed")
+PAIRING_STATUSES = ("pending", "approved", "claimed", "denied")
 
 
 class Consumer(TenantMixin, Base):
@@ -416,6 +416,8 @@ class Consumer(TenantMixin, Base):
     tj_version: Mapped[str | None] = mapped_column(String(64))
     python: Mapped[str | None] = mapped_column(String(64))
     os: Mapped[str | None] = mapped_column(String(200))
+    # Paused: claims return no job and new cycles can't pick it; a job it already holds runs to the end.
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
@@ -448,6 +450,8 @@ class PairingRequest(IdMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     consumer_id: Mapped[str | None] = mapped_column(String(26))
     client_ip: Mapped[str | None] = mapped_column(String(64))
+    # What the machine says about itself on POST /pair, shown to the admin before approving.
+    machine: Mapped[dict[str, Any] | None] = mapped_column(JSON(none_as_null=True))
 
 
 class ConsumerHeartbeat(TenantMixin, Base):
@@ -594,6 +598,8 @@ class Job(TenantMixin, UpdatedMixin, Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Cancelled while claimed: the id goes in the consumer's next heartbeat reply, then this is set.
     cancel_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Why it ended rejected or failed: the consumer's words, or the server's (consumer lost / revoked).
+    reason: Mapped[str | None] = mapped_column(String(500))
 
 
 class Result(TenantMixin, Base):

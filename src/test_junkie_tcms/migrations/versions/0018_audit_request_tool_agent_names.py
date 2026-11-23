@@ -5,8 +5,8 @@ its org. Names that already meet the rule keep theirs first; the rest are lowerc
 characters becomes a dash, and a duplicate gets -2, -3, ... in created order. The rename is one-way:
 downgrade drops the two columns and keeps the new names.
 
-Revision ID: 0017
-Revises: 0016
+Revision ID: 0018
+Revises: 0017
 Create Date: 2026-11-23 04:00:00.000000
 """
 
@@ -15,8 +15,8 @@ import re
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0017"
-down_revision = "0016"
+revision = "0018"
+down_revision = "0017"
 branch_labels = None
 depends_on = None
 

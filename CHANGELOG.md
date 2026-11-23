@@ -1,7 +1,7 @@
 # Changelog
 
 ## Unreleased
-- Every response carries an `X-Request-ID`, and audit rows record it as `request_id`, plus `tool` for rows an MCP tool call wrote; `q` finds both. Agent names are lowercase letters, digits and single dashes, unique among an org's agents (409); migration `0017` renames existing agents to fit.
+- Every response carries an `X-Request-ID`, and audit rows record it as `request_id`, plus `tool` for rows an MCP tool call wrote; `q` finds both. Agent names are lowercase letters, digits and single dashes, unique among an org's agents (409); migration `0018` renames existing agents to fit.
 - Cases have a versioned `description`, in CSV and md-bundle files and in text search; `GET`/`PUT /cases/{case}/markdown` read and save one case as a Markdown file; each plan entry shows `cases` and `new_cases`. Migration `0017`. Two new MCP tools.
 - Members can read an actor directory (`GET /actors`: names of users, agents, consumers and tokens); case versions record `via`, token and on-behalf-of; `GET /cases/{case}/cycles` lists a case's cycles; members and agents show `last_active_at`; agents take a `description` and can be re-enabled; audit filters by `actor_kind` and `q`, and `GET /audit/retention` states the policy and the oldest row kept.
 - Every API time input (`since`, `until`, `updated_since`, `expires_at`, `released_at`) given in another zone is read as the same instant in UTC, so MCP stats buckets start at UTC midnight and echo `Z`; org, member, agent, token and audit times also come back in UTC on SQLite.

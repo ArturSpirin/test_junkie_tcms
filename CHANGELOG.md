@@ -2,6 +2,7 @@
 
 ## Unreleased
 - Members can read an actor directory (`GET /actors`: names of users, agents, consumers and tokens); case versions record `via`, token and on-behalf-of; `GET /cases/{case}/cycles` lists a case's cycles; members and agents show `last_active_at`; agents take a `description` and can be re-enabled; audit filters by `actor_kind` and `q`, and `GET /audit/retention` states the policy and the oldest row kept.
+- Every API time input (`since`, `until`, `updated_since`, `expires_at`, `released_at`) given in another zone is read as the same instant in UTC, so MCP stats buckets start at UTC midnight and echo `Z`; org, member, agent, token and audit times also come back in UTC on SQLite.
 - Migrations: `result_case_version` is now revision `0015` on top of `0014_consumer_f7`, so `upgrade head` has one head again.
 - Web app: the narrow-width Menu button says whether the menu is open (`aria-expanded`) and which nav it opens (`aria-controls`).
 - Reports take a period (`from`, `to`, `tz`; default the last 30 days) and return a daily `trend`; release and feature rows add KPIs, drift and a `verdict`; the org report adds KPIs and per-product rows; the product report adds `whole`, the product as it stands; the feature report adds `last_result`, defects and the last 5 cycles as `history`. All additive to `/api/v1`.

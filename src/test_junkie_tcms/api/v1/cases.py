@@ -3,7 +3,7 @@
 
 import json
 import re
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -42,6 +42,7 @@ from test_junkie_tcms.api.v1.schemas import (
     RichMode,
     StepOut,
     TagOut,
+    UtcDateTime,
 )
 from test_junkie_tcms.auth.deps import OrgContext, get_db, require_scope
 from test_junkie_tcms.auth.scopes import READ, WRITE_CASES
@@ -265,11 +266,6 @@ def _check_values(name: str, values: list[str], allowed: tuple[str, ...]) -> Non
     bad = sorted(set(values) - set(allowed))
     if bad:
         raise HTTPException(422, f"{name} must be one of {', '.join(allowed)}; got {', '.join(bad)}")
-
-
-def _utc(value: datetime) -> datetime:
-    """A query time as stored: UTC; a time without a zone is taken as UTC."""
-    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 ## Content: what a version holds
@@ -599,7 +595,7 @@ def cases_list(
         [], description="Repeatable; the last result in any cycle, `untested` when the case has none"
     ),
     priority: list[str] = Query([], description="Repeatable"),
-    updated_since: datetime | None = Query(None, description="Cases changed at or after this time"),
+    updated_since: UtcDateTime | None = Query(None, description="Cases changed at or after this time"),
     edited_by: list[str] = Query([], description="Repeatable actor ids; who made the current version"),
     edited_by_kind: Literal["user", "agent"] | None = Query(None, description="Who made the current version"),
     has_ref: bool | None = Query(None, description="Whether the case has an automation_ref"),
@@ -640,7 +636,7 @@ def cases_list(
         _check_values("priority", priority, PRIORITIES)
         query = query.where(CaseVersion.priority.in_(priority))
     if updated_since is not None:
-        query = query.where(TestCase.updated_at >= _utc(updated_since))
+        query = query.where(TestCase.updated_at >= updated_since)
     if edited_by:
         query = query.where(CaseVersion.created_by_actor_id.in_(edited_by))
     if edited_by_kind is not None:

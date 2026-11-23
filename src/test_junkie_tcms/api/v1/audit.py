@@ -1,4 +1,3 @@
-from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -7,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
-from test_junkie_tcms.api.v1.schemas import AuditOut, AuditRetentionOut, Page
+from test_junkie_tcms.api.v1.schemas import AuditOut, AuditRetentionOut, Page, UtcDateTime
 from test_junkie_tcms.auth.deps import OrgContext, get_db, require_any_scope
 from test_junkie_tcms.auth.scopes import ADMIN, AUDIT_READ
 from test_junkie_tcms.db.models import Actor, AuditEvent, Consumer
@@ -20,8 +19,8 @@ def audit_list(
     entity_type: str | None = Query(None),
     entity_id: str | None = Query(None),
     actor_id: str | None = Query(None),
-    since: datetime | None = Query(None, description="From this time, inclusive"),
-    until: datetime | None = Query(None, description="Up to this time, exclusive"),
+    since: UtcDateTime | None = Query(None, description="From this time, inclusive"),
+    until: UtcDateTime | None = Query(None, description="Up to this time, exclusive"),
     via: Literal["ui", "api", "mcp"] | None = Query(None),
     action: str | None = Query(None, description="Exact action, e.g. invite.create"),
     actor_kind: Literal["user", "agent", "token", "consumer"] | None = Query(

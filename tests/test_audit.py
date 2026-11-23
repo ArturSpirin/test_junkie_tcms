@@ -1,6 +1,6 @@
 """The audit log names the person, the agent and the token behind every change, and feeds the outbox."""
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
@@ -218,6 +218,19 @@ class Audit:
         viewer = self.env.client()
         login(viewer, "vic@example.com")
         assert viewer.get("/api/v1/orgs/acme/audit/retention").status_code == 403
+
+    @test()
+    def test_audit_range_in_another_zone_is_the_same_instant(self, suite_parameter):
+        owner = self.env.owner
+        app = self.env.app
+        add_member(owner, "vic@example.com", "viewer")
+        owner.post("/api/v1/orgs/acme/tokens", json={"name": "t", "scopes": ["read"]})
+        with app.state.sessionmaker() as db:
+            times = {e.action: aware(e.created_at) for e in db.scalars(select(AuditEvent))}
+        pacific = timezone(timedelta(hours=-8))
+        t = times["token.create"].astimezone(pacific).isoformat()
+        assert [e["action"] for e in _events(owner, until=t)] == ["member.add"]
+        assert [e["action"] for e in _events(owner, since=t)] == ["token.create"]
 
     @test()
     def test_audit_rejects_an_unknown_via(self, suite_parameter):

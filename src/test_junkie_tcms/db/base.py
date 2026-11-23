@@ -36,10 +36,13 @@ def utcnow() -> datetime:
 
 
 def aware(value: datetime | None) -> datetime | None:
-    """SQLite returns naive datetimes; every stored time is UTC."""
-    if value is not None and value.tzinfo is None:
+    """The one UTC rule: every time in or out of the API and DB is UTC. A naive value (SQLite returns them) is
+    tagged UTC; an aware one is converted to UTC, the same instant with offset 0."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
-    return value
+    return value.astimezone(UTC)
 
 
 class Base(DeclarativeBase):

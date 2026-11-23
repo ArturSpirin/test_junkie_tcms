@@ -44,7 +44,7 @@ function table(list, q) {
   return `<div class="tbl-wrap mswap"><table class="t"><thead><tr><th>Key</th><th>Title and feature</th><th>Version</th><th>Status</th><th>Last result</th><th class="hide-m">Automation</th><th class="hide-m">Priority</th><th class="hide-m">Updated</th></tr></thead><tbody>${rowsH}</tbody></table></div><div class="mlist">${mrows}</div>`;
 }
 
-const noHits = (d, q) => `<div class="empty"><div class="ill">${I.search}</div><h3>No cases match “${esc(q)}”</h3><p class="muted" style="margin:0 auto 14px;max-width:440px">Search looks at case keys, titles, steps and tags in ${esc(d.product.key)}. Try a key such as “${esc(d.product.key)}-101” or a word from a title.</p><a class="btn" href="#search-cleared">Clear search</a></div>`;
+const noHits = (d, q) => `<div class="empty"><div class="ill">${I.search}</div><h3>No cases match “${esc(q)}”</h3><p class="muted" style="margin:0 auto 14px;max-width:440px">Search looks at case keys, titles, steps and tags in ${esc(d.product.key)}. Try a key such as “${esc(d.product.key)}-101” or a word from a title.</p><a class="btn" href="${lnk("cases.html#search-cleared")}">Clear search</a></div>`;
 
 function list(d) {
   const q = d.q;
@@ -60,7 +60,7 @@ function list(d) {
   const shown = q || v ? rows.length : d.total;
   const cnt = rows.length + (rows.length === 1 ? " case" : " cases");
   return head(d) + `<div class="sub" style="margin-bottom:16px">Every test case in ${P}, across all features. Pick a case to open it in the editor.</div>` +
-    psearch({ q, ph: "Search cases by key, title, step or tag", cnt, clear: "#search-cleared" }) + filters(d) +
+    psearch({ q, ph: "Search cases by key, title, step or tag", cnt, clear: lnk("cases.html#search-cleared") }) + filters(d) +
     `<div class="card"><div class="hd"><h2>Cases in ${P}</h2><span class="r faint" style="font-size:12px">${q || v ? `${shown} of ${d.total}` : `showing ${rows.length} of ${d.total}`}</span></div>${rows.length ? table(rows, q) : noHits(d, q)}${rows.length && !q && !v ? footBar(`<button class="btn sm">Load 50 more</button>`, `${rows.length} of ${d.total} cases`) : ""}</div>`;
 }
 

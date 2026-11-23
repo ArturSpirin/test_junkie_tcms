@@ -41,7 +41,29 @@ const ORGS = (ctx) => [
   { v: "new", label: "Create org…", icon: I.plus }
 ];
 
-export function shell(nav, ctx) {
+/* The top-bar search sends its query to the cases view, which filters by it. */
+export const searchHref = (q) => {
+  const t = (q || "").trim();
+  return t ? `?view=cases&q=${encodeURIComponent(t)}` : "?view=cases";
+};
+
+/* "/" focuses the top-bar search, unless a modifier is held, the key goes to an editable field,
+   a dialog is open or the search is hidden (at narrow widths). Returns whether it acted. */
+const EDITABLE = "input, textarea, select, [contenteditable]:not([contenteditable='false'])";
+export function slashKey(e, doc) {
+  if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return false;
+  const t = e.target;
+  if (t && typeof t.closest === "function" && t.closest(EDITABLE)) return false;
+  if (doc.querySelector('[aria-modal="true"]')) return false;
+  const box = doc.querySelector("[data-search] input");
+  if (!box || !box.getClientRects().length) return false;
+  e.preventDefault();
+  box.focus();
+  box.select();
+  return true;
+}
+
+export function shell(nav, ctx, q = "") {
   const all = NAVS(ctx).flatMap((s) => s[1]);
   const cur = all.find((l) => l[0] === nav);
   const parent = cur && cur[4];
@@ -56,7 +78,7 @@ export function shell(nav, ctx) {
   <button class="burger" aria-label="Menu" data-nav-toggle>${I.menu}</button>
   <a class="brand" href="${lnk("tree.html")}"><span class="mark">TJ</span><span class="hide-n">Test Junkie</span> <small>TCMS</small></a>
   ${dd({ value: ctx.org.id, options: ORGS(ctx), cls: "org sm hide-n", label: "Switch org" })}
-  <div class="search">${I.search}<span class="ell">Search cases, cycles, releases</span><kbd>/</kbd></div>
+  <form class="search" role="search" data-search>${I.search}<input type="search" name="q" aria-label="Search cases" placeholder="Search cases" value="${esc(q)}" autocomplete="off" enterkeyhint="search"><kbd aria-hidden="true">/</kbd></form>
   <div class="spacer"></div>
   <div class="me">${me.replace(/<span>([^<]*)<\/span><\/span>$/, '<span class="who">$1</span></span>')}<span class="chip hide-n">${esc(ctx.user.role)}</span></div>
 </header>
@@ -76,9 +98,15 @@ export const stateOf = (view, hash) => {
   return view.states[id] ? id : first;
 };
 
-/* Mount one view: draw the shell, then render the state in the hash, loading its data through load(state). */
-export function mount(name, view, ctx, load) {
-  document.body.insertAdjacentHTML("afterbegin", shell(view.nav, ctx));
+/* Mount one view: draw the shell, then render the state in the hash, loading its data through load(state).
+   q is the URL's search query (main.js reads it), shown in the top-bar search. */
+export function mount(name, view, ctx, load, q = "") {
+  document.body.insertAdjacentHTML("afterbegin", shell(view.nav, ctx, q));
+  document.addEventListener("keydown", (e) => slashKey(e, document));
+  document.querySelector("[data-search]").addEventListener("submit", (e) => {
+    e.preventDefault();
+    location.href = searchHref(e.currentTarget.elements.q.value);
+  });
   const main = document.getElementById("main");
   main.dataset.view = name;
   if (view.flush) main.classList.add("flush");

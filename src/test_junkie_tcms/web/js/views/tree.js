@@ -237,9 +237,15 @@ function moveModal(d) {
     <div class="field mb0"><label>Position</label><div class="seg"><button class="on">Inside, at the end</button><button>Inside, at the top</button></div></div>`,
     `<button class="btn" data-back>Cancel</button><button class="btn primary">Move here</button>`);
 }
+/* The move toast's text, for the live drop and the dropped state: before/after on a reorder within the same parent, "into" otherwise. */
+function movedMsg(s, same, dest, z, t, product) {
+  const dl = esc(dest ? dest.name : product), sn = esc(name(s));
+  const where = !same ? `into '${dl}'` : z === "in" ? `to the end of '${dl}'` : `${z} '${esc(name(t))}'`;
+  return `<div><b>Moved '${sn}' ${where}.</b> <span class="muted">${s.t === "f" ? `${count(s)} cases moved with it` : "Its versions and results stay with it"}</span></div>`;
+}
 function droppedToast(d) {
   const m = find(d.tree, d.moved);
-  return `<div class="toast" role="status"><div><b>Moved '${esc(name(m.node))}' into '${esc(m.parent ? m.parent.name : d.product.name)}'.</b> <span class="muted">${count(m.node)} cases moved with it</span></div><button class="btn sm" data-hash="default">Undo</button></div>`;
+  return `<div class="toast" role="status">${movedMsg(m.node, false, m.parent, "in", null, d.product.name)}<button class="btn sm" data-hash="default">Undo</button></div>`;
 }
 const loading = (d) => head(d) + `<div class="split"><div class="card"><div class="bd stack">${"<span class='skel'></span>".repeat(8)}</div></div><div class="card"><div class="bd stack">${"<span class='skel' style='height:18px'></span>".repeat(6)}</div></div></div>`;
 const error = (d) => head(d) + `<div class="banner err">${I.warn}<div style="min-width:0;flex:1"><b>Couldn't load the tree.</b> The server said:
@@ -267,7 +273,7 @@ function clearMarks() { document.querySelectorAll("#tree .n.drop, #tree .n.ins-b
 function move(src, tgt, z) {
   UNDO = JSON.parse(JSON.stringify(MODEL));
   const a = find(MODEL, src); a.list.splice(a.i, 1);
-  const s = a.node, t = find(MODEL, tgt);
+  const s = a.node, from = a.parent, t = find(MODEL, tgt);
   let dest;
   if (z === "in") {
     const k = t.node.kids, first = k.findIndex((x) => x.t === "c");
@@ -276,8 +282,7 @@ function move(src, tgt, z) {
   } else { t.list.splice(z === "before" ? t.i : t.i + 1, 0, s); dest = t.parent; }
   CUR = { ...CUR, model: MODEL, cls: { [src]: "just" }, ext: {} };
   paint();
-  const dl = dest ? dest.name : CUR.d.product.name;
-  toast(`<div><b>Moved '${esc(name(s))}' into '${esc(dl)}'.</b> <span class="muted">${s.t === "f" ? `${count(s)} cases moved with it` : "Its versions and results stay with it"}</span></div><button class="btn sm" data-undo>Undo</button>`, false, true);
+  toast(`${movedMsg(s, from === dest, dest, z, t.node, CUR.d.product.name)}<button class="btn sm" data-undo>Undo</button>`, false, true);
   clearTimeout(move.t); move.t = setTimeout(() => document.querySelectorAll(".toast.live-t").forEach((x) => x.remove()), 7000);
 }
 function wire() {

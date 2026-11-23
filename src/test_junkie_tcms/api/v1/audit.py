@@ -26,7 +26,9 @@ def audit_list(
     actor_kind: Literal["user", "agent", "token", "consumer"] | None = Query(
         None, description="user: a member in the app; token: a member through a token; agent; consumer"
     ),
-    q: str | None = Query(None, max_length=200, description="Text in the action, entity or actor name"),
+    q: str | None = Query(
+        None, max_length=200, description="Text in the action, entity, actor name, request id or tool"
+    ),
     ctx: OrgContext = Depends(require_any_scope(AUDIT_READ, ADMIN)),
     params: PageParams = Depends(page_params),
     db: Session = Depends(get_db),
@@ -60,6 +62,8 @@ def audit_list(
                 has(AuditEvent.action),
                 has(AuditEvent.entity_type),
                 has(AuditEvent.entity_id),
+                has(AuditEvent.request_id),
+                has(AuditEvent.tool),
                 AuditEvent.actor_id.in_(named),
             )
         )

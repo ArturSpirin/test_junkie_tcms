@@ -24,6 +24,9 @@ Role = Literal["viewer", "tester", "editor", "admin", "owner"]
 # cycle, consumer; API, bulk, CSV and Markdown import, MCP): stripped first, so a name of only spaces is
 # refused like an empty one.
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+# An agent's name is a Name, and also lowercase letters and digits with single dashes between them, as the
+# audit log shows it. Unique among the org's agents: orgs.check_agent_name_free.
+AgentName = Annotated[Name, StringConstraints(pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$")]
 
 
 class Out(BaseModel):
@@ -105,7 +108,7 @@ class AgentOut(Out):
 
 
 class AgentCreate(BaseModel):
-    name: Name
+    name: AgentName
     role: Role
     description: str | None = Field(None, max_length=500)
     # Defaults to the calling user.
@@ -113,7 +116,7 @@ class AgentCreate(BaseModel):
 
 
 class AgentUpdate(BaseModel):
-    name: Name | None = None
+    name: AgentName | None = None
     role: Role | None = None
     # An empty string clears it.
     description: str | None = Field(None, max_length=500)
@@ -631,6 +634,8 @@ class AuditOut(Out):
     entity_type: str
     entity_id: str
     changes: dict[str, Any] | None
+    request_id: str | None = Field(description="The request that wrote it (X-Request-ID); null on older rows")
+    tool: str | None = Field(description="The MCP tool that made the change, when via is mcp")
 
 
 class AuditRetentionOut(BaseModel):

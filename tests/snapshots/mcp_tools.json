@@ -93,6 +93,7 @@
     "name": {
      "maxLength": 200,
      "minLength": 1,
+     "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
      "type": "string"
     },
     "org": {
@@ -353,6 +354,7 @@
       {
        "maxLength": 200,
        "minLength": 1,
+       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
        "type": "string"
       },
       {
@@ -611,7 +613,7 @@
        "type": "null"
       }
      ],
-     "description": "Text in the action, entity or actor name"
+     "description": "Text in the action, entity, actor name, request id or tool"
     },
     "since": {
      "anyOf": [

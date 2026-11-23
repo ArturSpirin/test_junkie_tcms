@@ -213,6 +213,17 @@ def _get_agent(db: Session, ctx: OrgContext, agent_id: str) -> Actor:
     return agent
 
 
+def check_agent_name_free(db: Session, org_id: str, name: str, but: str | None = None) -> None:
+    """A disabled agent keeps its name: the audit log still shows it."""
+    query = select(Actor.id).where(
+        Actor.org_id == org_id, Actor.kind == "agent", _NOT_CONSUMER, Actor.name == name
+    )
+    if but is not None:
+        query = query.where(Actor.id != but)
+    if db.scalar(query) is not None:
+        raise HTTPException(409, f"An agent is already named {name!r}")
+
+
 def _check_agent_role(db: Session, ctx: OrgContext, owner_user_id: str, role: str) -> None:
     owner_role = member_role(db, ctx.org.id, owner_user_id)
     if owner_role is None:
@@ -241,6 +252,7 @@ def agents_create(
 ):
     owner = body.owner_user_id or ctx.actor.user_id or ctx.actor.owner_user_id
     _check_agent_role(db, ctx, owner, body.role)
+    check_agent_name_free(db, ctx.org.id, body.name)
     agent = Actor(
         org_id=ctx.org.id,
         kind="agent",
@@ -273,6 +285,7 @@ def agents_update(
         changes["role"] = [agent.role, body.role]
         agent.role = body.role
     if body.name is not None and body.name != agent.name:
+        check_agent_name_free(db, ctx.org.id, body.name, but=agent.id)
         changes["name"] = [agent.name, body.name]
         agent.name = body.name
     description = (body.description or None) if body.description is not None else agent.description

@@ -189,7 +189,7 @@ class Audit:
     def test_audit_q_matches_action_entity_and_actor_name(self, suite_parameter):
         owner = self.env.owner
         member = add_member(owner, "vic@example.com", "viewer")
-        agent = owner.post("/api/v1/orgs/acme/agents", json={"name": "Nightly Bot", "role": "admin"}).json()
+        agent = owner.post("/api/v1/orgs/acme/agents", json={"name": "nightly-bot", "role": "admin"}).json()
         agent_token = owner.post(
             "/api/v1/orgs/acme/tokens",
             json={"name": "bot", "scopes": ["read", "admin"], "actor_id": agent["id"]},

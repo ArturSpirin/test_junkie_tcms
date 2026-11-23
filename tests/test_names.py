@@ -8,8 +8,9 @@ from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, tes
 
 from test_junkie_tcms.api.v1 import execution_schemas, schemas
 from tests import support
-from tests.catalog_seed import make_release, ok, seed, url
+from tests.catalog_seed import make_product, make_release, ok, seed, url
 from tests.execution_seed import activate, make_case, make_cycle
+from tests.test_consumers import FakeConsumer, approve
 
 BLANK = ("", "   ", "\t \n")
 
@@ -123,6 +124,40 @@ class Names:
         long = " " + "x" * 200 + " "
         # The length limit counts after stripping.
         assert make_release(owner, p, "9.1", name=long)["name"] == "x" * 200
+
+    @test()
+    def test_an_agent_name_is_lowercase_letters_digits_and_single_dashes(self, suite_parameter):
+        owner = self.env.owner
+        agent = ok(owner.post(url("/agents"), json={"name": "  ci-bot  ", "role": "viewer"}), 201)
+        assert agent["name"] == "ci-bot"  # stripped first, like every name
+        for bad in ("Bad Name", "a_b", "-a", "a--b", "a-", "   "):
+            for method, path in (("POST", "/agents"), ("PATCH", f"/agents/{agent['id']}")):
+                r = owner.request(method, url(path), json={"name": bad, "role": "viewer"})
+                assert r.status_code == 422, (method, bad, r.text)
+        assert ok(owner.patch(url(f"/agents/{agent['id']}"), json={"name": "ci-bot-2"}))["name"] == "ci-bot-2"
+
+    @test()
+    def test_an_agent_name_is_unique_among_the_orgs_agents_even_disabled_ones(self, suite_parameter):
+        owner = self.env.owner
+        first = ok(owner.post(url("/agents"), json={"name": "nightly", "role": "viewer"}), 201)
+        ok(owner.post(url(f"/agents/{first['id']}/disable")))
+        taken = owner.post(url("/agents"), json={"name": "nightly", "role": "viewer"})
+        assert (taken.status_code, taken.json()["detail"]) == (409, "An agent is already named 'nightly'")
+        second = ok(owner.post(url("/agents"), json={"name": "weekly", "role": "viewer"}), 201)
+        renamed = owner.patch(url(f"/agents/{second['id']}"), json={"name": "nightly"})
+        assert renamed.status_code == 409, renamed.text
+        assert ok(owner.patch(url(f"/agents/{first['id']}"), json={"name": "nightly"}))["name"] == "nightly"
+        globex = self.env.client()
+        support.login(globex, "other@example.com")  # another org may use the same name
+        ok(globex.post(url("/agents", "globex"), json={"name": "nightly", "role": "viewer"}), 201)
+
+    @test()
+    def test_a_consumer_with_the_same_name_doesnt_block_an_agent_name(self, suite_parameter):
+        owner = self.env.owner
+        fake = FakeConsumer(self.env)
+        fake.start()
+        ok(approve(owner, fake.pairing["user_code"], "build-box", [make_product(owner)["id"]]), 201)
+        ok(owner.post(url("/agents"), json={"name": "build-box", "role": "viewer"}), 201)
 
     @test()
     def test_every_request_name_field_refuses_only_spaces(self, suite_parameter):

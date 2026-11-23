@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from test_junkie_tcms.api import request_context
 from test_junkie_tcms.auth.deps import OrgContext
 from test_junkie_tcms.db.base import new_id
 from test_junkie_tcms.db.models import AuditEvent, Outbox
@@ -23,6 +24,7 @@ def record(
         org_id=ctx.org.id,
         actor_id=ctx.actor.id,
         **ctx.provenance(),
+        **request_context.current(),
         action=action,
         entity_type=entity_type,
         entity_id=entity_id,

@@ -11,20 +11,25 @@ from urllib.parse import quote
 
 import httpx2
 
-from test_junkie_tcms.auth.deps import MCP_VIA_KEY
+from test_junkie_tcms.api.request_context import MCP_TOOL_KEY, REQUEST_ID_KEY
 from test_junkie_tcms.mcp_server.generator import ToolSpec
 
 BASE_URL = "http://tcms.internal"
 
 
 class _Marked:
-    """Marks the in-process request as coming over MCP. A client can't set an ASGI scope key."""
+    """Marks the in-process request as coming over MCP, with the tool that made it and the id of the `/mcp`
+    request. A client can't set an ASGI scope key."""
 
-    def __init__(self, app) -> None:
+    def __init__(self, app, tool: str, request_id: str | None) -> None:
         self.app = app
+        self.tool = tool
+        self.request_id = request_id
 
     async def __call__(self, scope, receive, send) -> None:
-        scope = {**scope, MCP_VIA_KEY: True}
+        scope = {**scope, MCP_TOOL_KEY: self.tool}
+        if self.request_id:
+            scope[REQUEST_ID_KEY] = self.request_id
         await self.app(scope, receive, send)
 
 
@@ -102,13 +107,15 @@ def envelope(response) -> dict:
     return result
 
 
-async def dispatch(app, tool: ToolSpec, arguments: dict, token: str) -> dict:
-    """Call the API for one tool and return its envelope; `status` >= 400 means the call failed."""
+async def dispatch(app, tool: ToolSpec, arguments: dict, token: str, request_id: str | None = None) -> dict:
+    """Call the API for one tool and return its envelope; `status` >= 400 means the call failed.
+
+    `request_id` is the `/mcp` request's id: the audit rows the call writes carry it."""
     bad = check_args(tool, arguments)
     if bad is not None:
         return bad
     request = build_request(tool, arguments, token)
-    transport = httpx2.ASGITransport(app=_Marked(app), raise_app_exceptions=False)
+    transport = httpx2.ASGITransport(app=_Marked(app, tool.name, request_id), raise_app_exceptions=False)
     async with httpx2.AsyncClient(transport=transport, base_url=BASE_URL) as client:
         response = await client.request(**request)
     return envelope(response)

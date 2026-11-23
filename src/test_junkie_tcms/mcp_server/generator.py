@@ -262,7 +262,9 @@ def def_tokens(tool: ToolSpec) -> int:
 
 def tool_hash(tool: ToolSpec) -> str:
     """sha256 of one tool definition as canonical JSON: changes when its name, schema or hints do."""
-    return hashlib.sha256(json.dumps(definition(tool), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return hashlib.sha256(
+        json.dumps(definition(tool), sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
 
 
 def tool_list_hash(tools: list[ToolSpec]) -> str:

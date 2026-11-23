@@ -285,7 +285,9 @@ class McpStats:
             return listed, {i["name"]: i for i in listed["items"]}
 
         listed, by_name = tools()
-        assert listed["since"].startswith("2026-10-25T11:00:00") and listed["until"].startswith("2026-11-24T11")
+        assert listed["since"].startswith("2026-10-25T11:00:00") and listed["until"].startswith(
+            "2026-11-24T11"
+        )
         assert (by_name["me_get"]["calls"], by_name["orgs_get"]["errors"]) == (2, 1)
         listed, by_name = tools(since="2026-11-14T11:30:00Z", until="2026-11-30T00:00:00Z")
         assert listed["since"].startswith("2026-11-14T11:00:00")
@@ -336,7 +338,9 @@ class McpStats:
         assert (first["calls"], first["errors"], second["calls"], second["errors"]) == (2, 1, 1, 0)
         for item in (first, second):
             assert (item["name"], item["kind"]) == names[item["actor_id"]]
-        assert first["last_hour"].startswith("2026-11-14T12") and second["last_hour"].startswith("2026-11-14T10")
+        assert first["last_hour"].startswith("2026-11-14T12") and second["last_hour"].startswith(
+            "2026-11-14T10"
+        )
         later = ok(api.get(url("/mcp/clients"), params={"since": "2026-11-14T11:00:00Z"}))["items"]
         assert [i["actor_id"] for i in later] == [first["actor_id"]]
         assert api.get(url("/mcp/clients"), params={"since": "2026-01-01T00:00:00Z"}).status_code == 422

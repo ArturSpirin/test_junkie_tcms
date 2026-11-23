@@ -198,4 +198,6 @@ def pairings_approve(
     changes = {"name": body.name, "product_ids": product_ids, "actor_id": actor.id}
     audit.record(db, ctx, "consumer.pair", "consumer", consumer.id, changes)
     db.commit()
-    return consumer_out(consumer, product_ids, consumer_project_counts(db, [consumer.id])[consumer.id], utcnow())
+    return consumer_out(
+        consumer, product_ids, consumer_project_counts(db, [consumer.id])[consumer.id], utcnow()
+    )

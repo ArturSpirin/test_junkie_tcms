@@ -123,8 +123,9 @@ def _ceil(value: datetime, bucket: str) -> datetime:
 def _range(
     since: datetime | None, until: datetime | None, bucket: str, default_span: timedelta | None = None
 ) -> tuple[datetime, datetime]:
-    """The [since, until) a stats call covers: rounded out to whole buckets, `default_span` (else the bucket's)
-    back from `until` when `since` is left out, at most 90 days. Every stats call uses it, so they can't drift."""
+    """The [since, until) a stats call covers: rounded out to whole buckets, `default_span` (else the
+    bucket's) back from `until` when `since` is left out, at most 90 days. Every stats call uses it, so
+    they can't drift."""
     until = _ceil(until or stats.now(), bucket)
     since = _floor(since, bucket) if since else until - (default_span or DEFAULT_SPAN[bucket])
     if since >= until:

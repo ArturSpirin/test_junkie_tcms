@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- CI: the test job runs the suites even when its lint step fails (the job still fails), and skips them only when install failed.
 - `python scripts/check.py` runs the CI gate (ruff check, ruff format --check with the locked ruff, then every suite); CI's test job calls it, and `--lint` runs only the ruff steps.
 - Products, features, plans, members and consumers lists take a `q` name search that holds across pages; a product has an owner (`owner_actor_id`, an active member) and can copy another product's feature tree on create (`copy_features_from`); starting a cycle takes an `eta`, an `order` and a manual `case_order`, read back on the cycle, and `cycle_cases_list?sort=position` lists the run order. Migration `0018`.
 - Every response carries an `X-Request-ID`, and audit rows record it as `request_id`, plus `tool` for rows an MCP tool call wrote; `q` finds both. Agent names are lowercase letters, digits and single dashes, unique among an org's agents (409); migration `0018` renames existing agents to fit.

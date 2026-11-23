@@ -79,8 +79,8 @@ All paths below are under `/api/v1/orgs/{org}` unless they start with `/api/v1/`
 Two kinds of search, and the app never filters a paged list itself (that misses rows past page one):
 
 - **Case text:** `GET /orgs/{org}/search` (`search`) `?q&tag&product&feature&include_archived`, paged. It
-  matches the current version's title, preconditions and steps, and needs `q` or `tag` (else 422). The Cases
-  list's own `q` (`cases_list?q=`) matches the case key (`PAY-12`) or number, and the current title, steps and
+  matches the current version's title, description, preconditions and steps, and needs `q` or `tag` (else 422). The
+  Cases list's own `q` (`cases_list?q=`) matches the case key (`PAY-12`) or number, and the current title, steps and
   tag names.
 - **Names on other lists** (products, features, plans, members, consumers): a server-side `q` on each list,
   **not yet (F8)**. Until then those views show no search box.
@@ -151,7 +151,7 @@ also starts a session and sets the cookies. It returns the new `MemberOut`.
 |---|---|---|
 | table, paging, feature/status/automation filters | `cases_list` | exists |
 | title search | `cases_list?q=` | exists |
-| text search (title, preconditions, steps, tags) | `search?q&tag&product` (see Search) | exists |
+| text search (title, description, preconditions, steps, tags) | `search?q&tag&product` (see Search) | exists |
 | result and priority filters, sort, total, key search | `cases_list?result&priority&updated_since&edited_by&edited_by_kind&has_ref&sort&q`, `total` on the page | exists |
 
 `result` takes a last result (`fail`, `success`, ...) or `untested`, which means no result in any cycle (the
@@ -168,7 +168,8 @@ tree's pre-order, then position), `key`, `title`, `updated` (newest first), `res
 | read, edit fields and steps, reorder steps, change note | `cases_get`, `cases_update` (with `If-Match`) | exists |
 | new case | `cases_create` | exists |
 | tags | `tags_list` | exists |
-| separate Description field, Markdown get/put | | not yet (F3) |
+| separate Description field | `description` on `cases_get`, `cases_create`, `cases_update`; versioned and restored with the other fields | exists (F3) |
+| Markdown get/put | `GET`/`PUT /cases/{case}/markdown` (`cases_markdown_get`, `cases_markdown_put`): one md-bundle file; `ETag` is the version, `PUT` takes `If-Match`. A file without a Description section keeps the stored one | exists (F3) |
 | version provenance (via, on behalf of), "in cycles" | `cases_get` / `cases_version_get` (`via`, `token_id`, `on_behalf_of_user_id`), `cases_cycles` | exists (F2) |
 
 ### 6. Version history
@@ -199,7 +200,7 @@ can't see is a 404.
 | filter by version and status | in the app, from `plans_list` | exists |
 | name search | | not yet (F8) |
 | cycle from plan | `cycles_create` with `plan_id` (the plan must be `active`) | exists |
-| per-entry resolution counts | | not yet (F3) |
+| per-entry resolution counts | each entry on `plans_list`/`plans_get` has `cases` (live cases it selects) and `new_cases` (those no earlier entry did; they sum to the `plans_resolve` total) | exists (F3) |
 
 Add entries, 1 to 500 per call; each entry has exactly one of the four keys:
 
@@ -339,7 +340,7 @@ floored and `until` ceiled to the bucket. `since >= until`, or a span over 90 da
 `mcp_server_get`:
 
 ```json
-{"name": "...", "version": "...", "tool_count": 99, "tool_list_hash": "..."}
+{"name": "...", "version": "...", "tool_count": 105, "tool_list_hash": "..."}
 ```
 
 `mcp_tools_list?since&until` (default: the last 30 days):

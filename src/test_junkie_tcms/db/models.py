@@ -335,6 +335,8 @@ class CaseVersion(TenantMixin, Base):
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     title_text: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    description_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     preconditions: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     preconditions_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     # [{"id", "action": doc, "expected": doc}], in order.

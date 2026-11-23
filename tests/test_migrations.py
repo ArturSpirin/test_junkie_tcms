@@ -1,12 +1,16 @@
 """Migrations build the models' schema, and the database itself keeps audit_event append-only."""
 
 import json
+import shutil
+import tempfile
+import warnings
 from pathlib import Path
 
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
+from alembic.util import CommandError
 from sqlalchemy import create_engine, func, inspect, select, text
 from sqlalchemy.exc import DBAPIError
 from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
@@ -27,6 +31,61 @@ def _count(engine) -> int:
         return conn.scalar(select(func.count()).select_from(AuditEvent))
 
 
+def _chain_problems(location) -> list[str]:
+    """Every way the migrations at location fail to be one chain 0001…N, each file named for its revision."""
+    problems = []
+    script = ScriptDirectory(str(location))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        try:
+            revisions = list(script.walk_revisions())
+            heads = script.get_heads()
+        except CommandError as error:
+            # A branched or overlapping map can stop alembic walking it at all; that is a problem too.
+            problems.append(f"alembic can't walk the revisions: {error}")
+            revisions, heads = [], []
+    # Alembic keeps one file per revision id and only warns, so a duplicate shows as a lost file.
+    problems += [str(w.message) for w in caught if "more than once" in str(w.message)]
+    files = sorted(path.name for path in Path(script.versions).glob("[0-9][0-9][0-9][0-9]_*.py"))
+    if len(files) != len(revisions):
+        problems.append(f"{len(files)} files but {len(revisions)} revisions")
+    if revisions and len(heads) != 1:
+        problems.append(f"heads {sorted(heads)}, want one")
+    for revision in revisions:
+        name = Path(revision.path).name
+        if not name.startswith(f"{revision.revision}_"):
+            problems.append(f"{name} has revision {revision.revision}")
+        number = int(revision.revision)
+        expected = None if number == 1 else f"{number - 1:04d}"
+        if revision.down_revision != expected:
+            problems.append(f"{revision.revision} revises {revision.down_revision}, want {expected}")
+    numbers = sorted(int(revision.revision) for revision in revisions)
+    if numbers != list(range(1, len(numbers) + 1)):
+        problems.append(f"numbers {numbers} have a gap")
+    return problems
+
+
+def _bad_chain(case: str, head: int) -> tuple[str, str, str, str]:
+    """A file another branch might add when the real head is head: file, revision, down_revision, problem."""
+    before, last, after, later = (f"{head + offset:04d}" for offset in (-1, 0, 1, 2))
+    return {
+        # Another branch took the head's number off the same parent.
+        "duplicate_id": (f"{last}_other_branch.py", last, before, "present more than once"),
+        # Another branch took the next number, but off the head's parent.
+        "two_heads": (f"{after}_other_branch.py", after, before, f"heads ['{last}', '{after}'], want one"),
+        "prefix_mismatch": (
+            f"{after}_other_branch.py",
+            later,
+            last,
+            f"{after}_other_branch.py has revision {later}",
+        ),
+        "gap": (f"{later}_other_branch.py", later, last, "have a gap"),
+    }[case]
+
+
+_BAD_CHAINS = ["duplicate_id", "two_heads", "prefix_mismatch", "gap"]
+
+
 @Suite()
 class MigrationScripts:
     @test()
@@ -37,18 +96,29 @@ class MigrationScripts:
 
     @test()
     def test_migrations_form_one_numbered_chain(self):
-        # Two branches can each add "0011" off 0010; Alembic then keeps only one file per id, so the
-        # duplicate is lost silently. Each file's prefix is its id, and each revises the number before it.
+        # Parallel branches each take "the next" number off the staging they started from; merging
+        # origin/staging into a branch that clashes fails here, before review.
         script = ScriptDirectory.from_config(alembic_config("sqlite://"))
-        revisions = list(script.walk_revisions())
-        prefixes = sorted(Path(revision.path).name.split("_", 1)[0] for revision in revisions)
-        files = sorted(path.name.split("_", 1)[0] for path in Path(script.versions).glob("[0-9]*.py"))
-        assert files == prefixes, (files, prefixes)
-        for revision in revisions:
-            assert Path(revision.path).name.startswith(f"{revision.revision}_"), revision.path
-            number = int(revision.revision)
-            expected = None if number == 1 else f"{number - 1:04d}"
-            assert revision.down_revision == expected, (revision.revision, revision.down_revision)
+        problems = _chain_problems(script.dir)
+        assert problems == [], problems
+
+    @test(parameters=_BAD_CHAINS)
+    def test_chain_check_catches(self, parameter):
+        script = ScriptDirectory.from_config(alembic_config("sqlite://"))
+        # The bad file goes on top of the real head, so the case still holds after the next migration lands.
+        heads = script.get_heads()
+        assert len(heads) == 1, f"the real migrations need one head first: {heads}"
+        name, revision, down_revision, problem = _bad_chain(parameter, int(heads[0]))
+        with tempfile.TemporaryDirectory() as tmp:
+            copy = Path(tmp) / "migrations"
+            shutil.copytree(script.dir, copy, ignore=shutil.ignore_patterns("__pycache__"))
+            (copy / "versions" / name).write_text(
+                f'revision = "{revision}"\ndown_revision = "{down_revision}"\n\n\n'
+                "def upgrade():\n    pass\n\n\ndef downgrade():\n    pass\n",
+                encoding="utf-8",
+            )
+            problems = _chain_problems(copy)
+        assert any(problem in found for found in problems), problems
 
 
 @Suite(parameters=support.DATABASES)

@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- A migrations test fails when two branches take the same revision number: one head, one file per revision id, each file named for its revision, and each revising the number before it.
 - Feature tree works by keyboard: one tab stop, arrows move between rows and open or close features, Enter opens a case; Space picks a row up, arrows move the drop bar, Enter drops and Esc cancels, with the same toast, and Ctrl+Z undoes while it shows. Focused rows show the focus ring.
 - Cycle and run extras: cycles and batches show `created_by` and `closed_by`; `GET /cycles/{id}/features` counts per feature; bulk create takes `name_pattern`, per-cycle `assignees` and `skip_drafts`; a released release refuses new cycles (409 `release_closed`); cycles take `split`, `retries` (0-2) and `queue_when_offline`, and `POST /cycles/{id}/stop` stops one; steps take `ignore` and `cancel`; results take `skip_reason` and `build`, listed by `GET /cycles/{id}/builds`.
 - Web app: `/assets` files are served with `Cache-Control: no-cache`, so browsers revalidate them (a 304 when unchanged) and never run stale JS after an upgrade.

@@ -8,7 +8,7 @@ and reports come next.
 
 ## Try it (SQLite, one command)
 
-Python 3.11 or newer:
+Python 3.11 or newer, in a bash shell (Git Bash on Windows):
 
 ```sh
 pip install -r requirements.lock && pip install --no-deps .
@@ -44,7 +44,8 @@ count plus normal traffic.
 
 - `test-junkie-tcms serve [--host H] [--port P]`: applies migrations, then serves.
 - `test-junkie-tcms migrate`: applies migrations.
-- `test-junkie-tcms create-admin ...`: the first user, their org and the owner role.
+- `test-junkie-tcms create-admin ...`: the first user, their org and the owner role. It applies migrations first,
+  so it works on a new database; so does `sweep-idempotency`.
 - `test-junkie-tcms sweep-idempotency [--batch-size N] [--max-batches M]`: deletes `Idempotency-Key` records
   past their 24 h window, `N` (default 1000) per commit. A record still pending is kept an hour longer. Run it
   hourly, e.g. from cron: `0 * * * * test-junkie-tcms sweep-idempotency`.
@@ -65,6 +66,10 @@ pip install -r requirements.lock && pip install --no-deps -e .
 ruff check . && ruff format --check .
 PYTHONPATH=. python -m test_junkie run -s tests
 ```
+
+`requirements.lock` is made by `python scripts/lock.py` (uv, one lock for every platform, with markers). Never edit
+it by hand: after changing a pin in `pyproject.toml`, run the script and commit both. CI runs
+`python scripts/lock.py --check`.
 
 The tests are [Test Junkie](https://github.com/ArturSpirin/test_junkie) suites, one per file under `tests/`, and
 the run exits non-zero on any failed or errored test. They run on SQLite. To run them on Postgres too, set

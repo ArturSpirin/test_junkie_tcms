@@ -60,6 +60,7 @@ class ProductIndex:
     org_id: str
     product_id: str
     cases: list[TestCase] = field(default_factory=list)
+    by_id: dict[str, TestCase] = field(default_factory=dict)
     by_feature: dict[str, list[TestCase]] = field(default_factory=dict)
     children: dict[str | None, list[str]] = field(default_factory=dict)
     _current: dict[str, tuple[str, str, str, set[str]]] | None = None
@@ -68,6 +69,7 @@ class ProductIndex:
     def load(cls, db: Session, org_id: str, product_id: str) -> "ProductIndex":
         index = cls(db, org_id, product_id, product_cases(db, org_id, product_id))
         for c in index.cases:
+            index.by_id[c.id] = c
             index.by_feature.setdefault(c.feature_id, []).append(c)
         index.children = feature_children(db, org_id, product_id)
         return index
@@ -118,7 +120,8 @@ def entry_cases(index: ProductIndex, entry: PlanEntry) -> list[TestCase]:
     """The cases one entry selects, live or not, by number: its case, its feature subtree's cases, or the
     cases whose current version matches its query."""
     if entry.case_id is not None:
-        return [c for c in index.cases if c.id == entry.case_id]
+        case = index.by_id.get(entry.case_id)
+        return [case] if case is not None else []
     if entry.feature_id is not None:
         features = index.subtree([entry.feature_id])
         return sorted((c for f in features for c in index.by_feature.get(f, [])), key=lambda c: c.number)

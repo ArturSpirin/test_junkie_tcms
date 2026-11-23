@@ -38,12 +38,16 @@ jobs:
         with:
           node-version: "22"
       - run: pip install -r requirements.lock
-      - run: pip install --no-deps -e .
+      - id: install
+        run: pip install --no-deps -e .
       # The gate authors run before review: python scripts/check.py. Its two halves run as two steps here,
       # so a lint failure shows as its own failing step. tests/test_check_script.py keeps this in step.
+      # Tests run even when Lint failed (a red lint must not hide test results), but not when install failed.
+      # A failed Lint still fails the job: no continue-on-error.
       - name: Lint (ruff check, ruff format --check)
         run: python scripts/check.py --lint
       - name: Tests (Test Junkie, SQLite and Postgres)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: python scripts/check.py --tests
 
   # requirements.lock is made only by scripts/lock.py; a hand edit or a stale lock fails here.

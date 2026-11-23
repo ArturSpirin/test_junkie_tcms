@@ -66,3 +66,19 @@ class CheckScript:
         assert "python scripts/check.py --tests" in runs, runs
         direct = [r for r in runs if "ruff" in r or "test_junkie" in r]
         assert not direct, f"CI's test job bypasses scripts/check.py: {direct}"
+
+    @test()
+    def tests_run_after_a_lint_failure_but_not_after_a_failed_install(self):
+        steps = yaml.safe_load(CI.read_text(encoding="utf-8"))["jobs"]["test"]["steps"]
+        runs = [s.get("run", "").strip() for s in steps]
+        install = next((i for i, s in enumerate(steps) if s.get("id") == "install"), None)
+        assert install is not None, "no step has id: install"
+        assert runs[install] == "pip install --no-deps -e .", runs[install]
+        lint = runs.index("python scripts/check.py --lint")
+        tests = runs.index("python scripts/check.py --tests")
+        assert install < lint < tests, (install, lint, tests)
+        assert "if" not in steps[lint], steps[lint]
+        expected = "${{ !cancelled() && steps.install.outcome == 'success' }}"
+        assert steps[tests].get("if") == expected, steps[tests].get("if")
+        loose = [s for s in steps if "continue-on-error" in s]
+        assert not loose, f"a step sets continue-on-error, so a failure can't fail the job: {loose}"

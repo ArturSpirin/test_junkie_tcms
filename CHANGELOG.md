@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- CI: the test job runs the suites even when its lint step fails (the job still fails), and skips them only when install failed.
 - `python scripts/check.py` runs the CI gate (ruff check, ruff format --check with the locked ruff, then every suite); CI's test job calls it, and `--lint` runs only the ruff steps.
 - Products, features, plans, members and consumers lists take a `q` name search that holds across pages; a product has an owner (`owner_actor_id`, an active member) and can copy another product's feature tree on create (`copy_features_from`); starting a cycle takes an `eta`, an `order` and a manual `case_order`, read back on the cycle, and `cycle_cases_list?sort=position` lists the run order. Migration `0018`.
 - Cases have a versioned `description`, in CSV and md-bundle files and in text search; `GET`/`PUT /cases/{case}/markdown` read and save one case as a Markdown file; each plan entry shows `cases` and `new_cases`. Migration `0017`. Two new MCP tools.

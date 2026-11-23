@@ -17,6 +17,7 @@ from test_junkie_tcms.api.if_match import if_match, stale
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, SortKey, count, page_params, paginate
 from test_junkie_tcms.api.v1.catalog import (
+    contains_ci,
     get_product,
     product_features,
     require_active_product,
@@ -687,8 +688,8 @@ def _search(p: Product, q: str):
         .exists()
     )
     match = [
-        func.lower(CaseVersion.title).contains(text, autoescape=True),
-        func.lower(CaseVersion.steps_text).contains(text, autoescape=True),
+        contains_ci(CaseVersion.title, text),
+        contains_ci(CaseVersion.steps_text, text),
         tag,
     ]
     m = CASE_KEY.match(q.upper())

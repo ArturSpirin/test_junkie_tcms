@@ -2777,6 +2777,10 @@
     "location": "query",
     "wire": "product"
    },
+   "q": {
+    "location": "query",
+    "wire": "q"
+   },
    "status": {
     "location": "query",
     "wire": "status"
@@ -2817,6 +2821,18 @@
       }
      ],
      "description": "Only consumers that serve this product id"
+    },
+    "q": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A case-insensitive part of the name"
     },
     "status": {
      "anyOf": [
@@ -3378,6 +3394,10 @@
     "location": "query",
     "wire": "rich"
    },
+   "sort": {
+    "location": "query",
+    "wire": "sort"
+   },
    "status": {
     "location": "query",
     "wire": "status"
@@ -3429,6 +3449,15 @@
       "markdown",
       "doc",
       "both"
+     ],
+     "type": "string"
+    },
+    "sort": {
+     "default": "id",
+     "description": "position: the cycle's run order",
+     "enum": [
+      "id",
+      "position"
      ],
      "type": "string"
     },
@@ -3718,6 +3747,10 @@
     "location": "body",
     "wire": "case_ids"
    },
+   "case_order": {
+    "location": "body",
+    "wire": "case_order"
+   },
    "consumer_ids": {
     "location": "body",
     "wire": "consumer_ids"
@@ -3729,6 +3762,10 @@
    "environment": {
     "location": "body",
     "wire": "environment"
+   },
+   "eta": {
+    "location": "body",
+    "wire": "eta"
    },
    "feature_ids": {
     "location": "body",
@@ -3745,6 +3782,10 @@
    "name": {
     "location": "body",
     "wire": "name"
+   },
+   "order": {
+    "location": "body",
+    "wire": "order"
    },
    "org": {
     "location": "path",
@@ -3772,6 +3813,20 @@
    "additionalProperties": false,
    "properties": {
     "case_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 1000,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "case_order": {
      "anyOf": [
       {
        "items": {
@@ -3820,6 +3875,17 @@
       }
      ]
     },
+    "eta": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
     "feature_ids": {
      "anyOf": [
       {
@@ -3858,6 +3924,15 @@
     "name": {
      "maxLength": 200,
      "minLength": 1,
+     "type": "string"
+    },
+    "order": {
+     "default": "source",
+     "enum": [
+      "source",
+      "feature",
+      "priority"
+     ],
      "type": "string"
     },
     "org": {
@@ -4237,6 +4312,10 @@
     "location": "body",
     "wire": "environment"
    },
+   "eta": {
+    "location": "body",
+    "wire": "eta"
+   },
    "id": {
     "location": "path",
     "wire": "id"
@@ -4268,6 +4347,17 @@
      "anyOf": [
       {
        "maxLength": 64,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "eta": {
+     "anyOf": [
+      {
+       "format": "date-time",
        "type": "string"
       },
       {
@@ -4683,6 +4773,10 @@
     "location": "path",
     "wire": "product"
    },
+   "q": {
+    "location": "query",
+    "wire": "q"
+   },
    "rich": {
     "location": "query",
     "wire": "rich"
@@ -4702,6 +4796,18 @@
     },
     "product": {
      "type": "string"
+    },
+    "q": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A case-insensitive part of the name; the tree keeps each match's parents, so it still nests"
     },
     "rich": {
      "default": "markdown",
@@ -6033,6 +6139,10 @@
    "org": {
     "location": "path",
     "wire": "org"
+   },
+   "q": {
+    "location": "query",
+    "wire": "q"
    }
   },
   "description": "Members List",
@@ -6059,6 +6169,18 @@
     "org": {
      "description": "Org slug",
      "type": "string"
+    },
+    "q": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A case-insensitive part of the name or email"
     }
    },
    "required": [
@@ -6853,6 +6975,10 @@
     "location": "path",
     "wire": "product"
    },
+   "q": {
+    "location": "query",
+    "wire": "q"
+   },
    "rich": {
     "location": "query",
     "wire": "rich"
@@ -6889,6 +7015,18 @@
     },
     "product": {
      "type": "string"
+    },
+    "q": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A case-insensitive part of the name"
     },
     "rich": {
      "default": "markdown",
@@ -7311,6 +7449,10 @@
    "read_only_hint": false
   },
   "args": {
+   "copy_features_from": {
+    "location": "body",
+    "wire": "copy_features_from"
+   },
    "description": {
     "location": "body",
     "wire": "description"
@@ -7330,6 +7472,10 @@
    "org": {
     "location": "path",
     "wire": "org"
+   },
+   "owner_actor_id": {
+    "location": "body",
+    "wire": "owner_actor_id"
    },
    "rich": {
     "location": "query",
@@ -7373,6 +7519,17 @@
    },
    "additionalProperties": false,
    "properties": {
+    "copy_features_from": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A product (id or key) in this org whose live feature tree the new product copies"
+    },
     "description": {
      "anyOf": [
       {
@@ -7411,6 +7568,17 @@
     "org": {
      "description": "Org slug",
      "type": "string"
+    },
+    "owner_actor_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "An active member's actor id; else 422"
     },
     "rich": {
      "default": "markdown",
@@ -7513,6 +7681,10 @@
     "location": "path",
     "wire": "org"
    },
+   "q": {
+    "location": "query",
+    "wire": "q"
+   },
    "rich": {
     "location": "query",
     "wire": "rich"
@@ -7546,6 +7718,18 @@
     "org": {
      "description": "Org slug",
      "type": "string"
+    },
+    "q": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A case-insensitive part of the name"
     },
     "rich": {
      "default": "markdown",
@@ -7587,6 +7771,10 @@
    "org": {
     "location": "path",
     "wire": "org"
+   },
+   "owner_actor_id": {
+    "location": "body",
+    "wire": "owner_actor_id"
    },
    "product": {
     "location": "path",
@@ -7662,6 +7850,17 @@
     "org": {
      "description": "Org slug",
      "type": "string"
+    },
+    "owner_actor_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "An active member's actor id; null clears it"
     },
     "product": {
      "type": "string"

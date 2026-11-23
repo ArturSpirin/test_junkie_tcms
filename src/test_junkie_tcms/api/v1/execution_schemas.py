@@ -31,12 +31,18 @@ class CycleCreate(CycleSource):
     environment: str | None = Environment
     release_id: str | None = None
     default_assignee_actor_id: str | None = None
+    eta: UtcDateTime | None = None
+    # source keeps the source's order; feature walks the feature tree; priority puts critical first.
+    order: Literal["source", "feature", "priority"] = "source"
+    # Cases (keys or ids) to run first, in this order; the rest follow in `order`. Stores order manual.
+    case_order: list[str] | None = Field(None, max_length=1000)
 
 
 class CycleUpdate(Patch):
     name: Name | None = None
     environment: str | None = Environment
     default_assignee_actor_id: str | None = None
+    eta: UtcDateTime | None = None
 
 
 class CycleOut(BaseModel):
@@ -50,6 +56,8 @@ class CycleOut(BaseModel):
     environment: str | None
     status: str
     mode: str
+    order: str
+    eta: UtcDateTime | None
     default_assignee_actor_id: str | None
     started_at: UtcDateTime
     closed_at: UtcDateTime | None

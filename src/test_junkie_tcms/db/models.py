@@ -192,12 +192,17 @@ ONE_TARGET = (
 
 class Product(TenantMixin, UpdatedMixin, Base):
     __tablename__ = "product"
-    __table_args__ = tenant_args(UniqueConstraint("org_id", "key"))
+    __table_args__ = tenant_args(
+        UniqueConstraint("org_id", "key"),
+        ForeignKeyConstraint(["org_id", "owner_actor_id"], ["actor.org_id", "actor.id"]),
+    )
 
     key: Mapped[str] = mapped_column(String(10), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     description_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # An active user member's actor (F8); products_create/update check it.
+    owner_actor_id: Mapped[str | None] = mapped_column(String(26))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # The last case number given out; cases_create bumps it with UPDATE ... RETURNING (T3).
     case_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
@@ -504,6 +509,8 @@ CYCLE_STATUSES = ("open", "closed")
 BATCH_MODES = ("features", "plans")
 RESULT_VIAS = ("ui", "api", "mcp", "consumer")
 CYCLE_MODES = ("manual", "automated", "both")
+# How a cycle's cases were ordered at Start; manual is set by a given case_order, never asked for.
+CYCLE_ORDERS = ("source", "feature", "priority", "manual")
 RUNNERS = ("person", "consumer")
 JOB_STATUSES = ("queued", "claimed", "running", "done", "failed", "cancelled", "rejected")
 
@@ -537,6 +544,7 @@ class Cycle(TenantMixin, UpdatedMixin, Base):
         ForeignKeyConstraint(["org_id", "created_by_actor_id"], ["actor.org_id", "actor.id"]),
         CheckConstraint(f"status IN {CYCLE_STATUSES}", name="status"),
         CheckConstraint(f"mode IN {CYCLE_MODES}", name="mode"),
+        CheckConstraint(f'"order" IN {CYCLE_ORDERS}', name="order"),
         Index("ix_cycle_org_id_batch_id", "org_id", "batch_id"),
     )
 
@@ -551,6 +559,9 @@ class Cycle(TenantMixin, UpdatedMixin, Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="open")
     # automated and both send cases with a known automation_ref to consumers as jobs (T8).
     mode: Mapped[str] = mapped_column(String(10), nullable=False, default="manual", server_default="manual")
+    order: Mapped[str] = mapped_column(String(10), nullable=False, default="source", server_default="source")
+    # When the run is expected to finish, given at Start.
+    eta: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     default_assignee_actor_id: Mapped[str | None] = mapped_column(String(26))
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

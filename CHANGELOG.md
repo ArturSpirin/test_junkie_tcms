@@ -10,6 +10,7 @@
 - Bulk results take `comment` as `{"markdown"}` or `{"doc"}`, like a single result; a plain string is now a 422. Each bulk comment's cap moves from 20,000 characters to the single-result limit (200,000 for Markdown).
 - README lists what this release has and documents the MCP endpoint and toolsets; a test keeps it in step with the toolsets and settings.
 - Case titles are stripped of leading and trailing spaces, and a title of only spaces is a 422 on create, update, bulk, CSV and Markdown import, and MCP.
+- Names (products, features, releases, plans, cycles, orgs, members, agents, tokens, invites, consumers) are stripped the same way, and a name of only spaces is a 422; CSV and Markdown import strip each feature path segment, so a path with extra spaces finds the existing feature.
 - Quick start works on Windows: `requirements.lock` is now made by `scripts/lock.py` (uv, universal, with platform markers, checked in CI), and `create-admin` and `sweep-idempotency` apply migrations first.
 - Scaffold: orgs, users, roles, scoped API tokens, session login with CSRF, append-only audit log and outbox; Docker Compose and CI.
 - Catalog: products, feature trees, releases and test plans over the API, with rich text read and written as Markdown.

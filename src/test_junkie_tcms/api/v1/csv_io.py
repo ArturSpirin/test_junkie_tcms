@@ -15,7 +15,7 @@ import json
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Response
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -26,7 +26,7 @@ from test_junkie_tcms.api.v1.cases import CASE_KEY, case_key, content_of, subtre
 from test_junkie_tcms.api.v1.catalog import get_feature, get_product, require_active_product
 from test_junkie_tcms.api.v1.md_bundle import FileError, md_to_row, read_bundle, write_bundle
 from test_junkie_tcms.api.v1.report_schemas import ExportIn, ImportIn, ImportOut
-from test_junkie_tcms.api.v1.schemas import CaseBulkItem
+from test_junkie_tcms.api.v1.schemas import CaseBulkItem, Name
 from test_junkie_tcms.auth.deps import OrgContext, get_db, require_scope
 from test_junkie_tcms.auth.scopes import READ, WRITE_CASES
 from test_junkie_tcms.db.models import CaseVersion, Feature, Product, TestCase
@@ -54,6 +54,7 @@ COLUMNS = (
 )
 TARGETS = {*COLUMNS, "step_action", "step_expected"}
 SEP = " > "
+FEATURE_NAME = TypeAdapter(Name)
 MAX_IMPORT = 5 * 1024 * 1024
 JSON_COLUMNS = {"steps": list, "tags": list, "links": list, "custom": dict}
 
@@ -204,8 +205,14 @@ def _json(row: dict[str, str], column: str) -> Any:
     return value
 
 
+def _feature_path(raw: str) -> str:
+    """The row's feature path with each name stripped as `Name` stores it, so `Pay >  Card ` is `Pay > Card`.
+    The lookup and `_create_path` both use this one form, so a second import finds what the first created."""
+    return SEP.join(name.strip() for name in raw.split(SEP))
+
+
 def _create_path(db: Session, ctx: OrgContext, p: Product, path: str, paths: dict[str, str]) -> str:
-    """Create the missing features of `path`, top down; returns the leaf's id."""
+    """Create the missing features of `path` (a `_feature_path`), top down; returns the leaf's id."""
     by_path = {v: k for k, v in reversed(list(paths.items()))}
     parent_id: str | None = None
     names = path.split(SEP)
@@ -214,8 +221,11 @@ def _create_path(db: Session, ctx: OrgContext, p: Product, path: str, paths: dic
         if here in by_path:
             parent_id = by_path[here]
             continue
-        if not name.strip():
-            raise RowError("feature", "a feature name in the path is empty")
+        try:
+            name = FEATURE_NAME.validate_python(name)
+        except ValidationError as e:
+            msg = "is empty" if not name else f"is over {e.errors()[0]['ctx']['max_length']} characters"
+            raise RowError("feature", f"a feature name in the path {msg}") from e
         siblings = db.scalar(
             select(func.count())
             .select_from(Feature)
@@ -261,7 +271,7 @@ def _item(
     given = set(row)
     row = {c: "" for c in COLUMNS} | row
     key = row["key"].strip() or None
-    path = row["feature"].strip()
+    path = _feature_path(row["feature"])
     by_path = {v: k for k, v in reversed(list(paths.items()))}
     feature_id = by_path.get(path)
     if key is not None:

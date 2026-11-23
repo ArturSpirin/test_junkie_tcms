@@ -27,14 +27,14 @@ class CycleSource(BaseModel):
 
 
 class CycleCreate(CycleSource):
-    name: str = Name
+    name: Name
     environment: str | None = Environment
     release_id: str | None = None
     default_assignee_actor_id: str | None = None
 
 
 class CycleUpdate(Patch):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     environment: str | None = Environment
     default_assignee_actor_id: str | None = None
 
@@ -123,7 +123,7 @@ class BulkCycleCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     mode: Literal["features", "plans"] = "features"
     plan_ids: list[str] | None = Field(None, max_length=200)
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     environment: str | None = Environment
 
 

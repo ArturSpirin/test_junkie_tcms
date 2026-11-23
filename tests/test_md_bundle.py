@@ -144,6 +144,33 @@ class MdBundle:
         assert cases_count(owner, p) == 2
 
     @test()
+    def test_feature_names_in_the_path_are_stripped_and_never_only_spaces(self, suite_parameter):
+        owner = self.env.owner
+        s = source(owner)
+        p = s["product"]["id"]
+        new = keyless(bundle(owner, p)["PAY-1.md"])
+
+        def with_feature(path: str) -> str:
+            return to_zip({"NEW.md": new.replace('feature: "Checkout > Card"', f'feature: "{path}"', 1)})
+
+        tree = ok(owner.get(url(f"/products/{p}/features")))["items"]
+        r = do_import(owner, p, with_feature("Checkout >    > New"), create_features=True)
+        assert r.status_code == 422, r.text
+        assert [e["column"] for e in r.json()["errors"]] == ["feature"]
+        assert ok(owner.get(url(f"/products/{p}/features")))["items"] == tree
+        for path in (" Checkout  >  Card ", "  Refunds >  Partial ", "Refunds  > Partial  "):
+            assert ok(do_import(owner, p, with_feature(path), create_features=True))["created"] == 1, path
+        [refunds] = [
+            f for f in ok(owner.get(url(f"/products/{p}/features")))["items"] if f["name"] == "Refunds"
+        ]
+        assert [c["name"] for c in refunds["children"]] == ["Partial"]  # the third import reused it
+        cases = ok(owner.get(url(f"/products/{p}/cases"), params={"limit": 200}))["items"]
+        imported = [c for c in cases if c["key"] not in ("PAY-1", "PAY-2")]
+        assert sorted(c["feature_id"] for c in imported) == sorted(
+            [s["child"]["id"]] + [refunds["children"][0]["id"]] * 2
+        )
+
+    @test()
     def test_boundary_collision_still_round_trips(self, suite_parameter):
         owner = self.env.owner
         s = source(owner)

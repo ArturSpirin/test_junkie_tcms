@@ -192,6 +192,47 @@ class CsvIo:
         assert cases_count(owner, s["product"]["id"]) == 2
 
     @test()
+    def test_a_feature_name_of_only_spaces_in_the_path_is_a_row_error(self, suite_parameter):
+        owner = self.env.owner
+        s = source(owner)
+        p = s["product"]["id"]
+        tree = ok(owner.get(url(f"/products/{p}/features")))
+        new = {**rows(export(owner, p))[0], "key": "", "version": ""}
+        for path in ("Checkout >    > New", "  \t  ", "Refunds > \t "):
+            r = do_import(owner, p, to_csv([{**new, "feature": path}]), create_features=True)
+            assert r.status_code == 422, (path, r.text)
+            [error] = r.json()["errors"]
+            assert error["column"] == "feature", (path, error)
+        assert "is empty" in error["detail"], error
+        assert ok(owner.get(url(f"/products/{p}/features"))) == tree
+        assert cases_count(owner, p) == 2
+
+    @test()
+    def test_spaces_around_feature_names_in_the_path_find_the_same_feature(self, suite_parameter):
+        owner = self.env.owner
+        s = source(owner)
+        p = s["product"]["id"]
+        new = {**rows(export(owner, p))[0], "key": "", "version": ""}
+
+        def feature_of(path: str) -> str:
+            [key] = ok(do_import(owner, p, to_csv([{**new, "feature": path}]), create_features=True))["keys"]
+            return ok(owner.get(url(f"/cases/{key}")))["feature_id"]
+
+        def shape(nodes: list[dict]) -> list:
+            return [(f["id"], f["name"], shape(f["children"])) for f in nodes]
+
+        def features() -> list:
+            return shape(ok(owner.get(url(f"/products/{p}/features")))["items"])
+
+        assert feature_of(" Checkout  >  Card ") == s["child"]["id"]
+        first = feature_of("  Refunds >  Partial ")
+        tree = features()
+        [refunds] = [f for f in tree if f[1] == "Refunds"]
+        assert refunds[2] == [(first, "Partial", [])]
+        assert feature_of("Refunds  > Partial  ") == first  # the second import reuses what the first made
+        assert features() == tree
+
+    @test()
     def test_duplicate_key_is_a_row_error(self, suite_parameter):
         owner = self.env.owner
         s = source(owner)

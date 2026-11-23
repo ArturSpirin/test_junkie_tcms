@@ -9,6 +9,10 @@ from test_junkie_tcms.db.base import aware
 UtcDateTime = Annotated[datetime, AfterValidator(aware)]
 
 Role = Literal["viewer", "tester", "editor", "admin", "owner"]
+# The one name check for every write (org, member, agent, token, invite, product, feature, release, plan,
+# cycle, consumer; API, bulk, CSV and Markdown import, MCP): stripped first, so a name of only spaces is
+# refused like an empty one.
+Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 
 
 class Out(BaseModel):
@@ -53,7 +57,7 @@ class OrgOut(Out):
 
 
 class OrgUpdate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
+    name: Name
 
 
 class MemberOut(BaseModel):
@@ -67,7 +71,7 @@ class MemberOut(BaseModel):
 
 class MemberAdd(BaseModel):
     email: str = Field(min_length=3, max_length=320)
-    name: str = Field(min_length=1, max_length=200)
+    name: Name
     role: Role
     # Only used when the email has no account yet.
     password: str | None = Field(None, min_length=8, max_length=1000)
@@ -87,14 +91,14 @@ class AgentOut(Out):
 
 
 class AgentCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
+    name: Name
     role: Role
     # Defaults to the calling user.
     owner_user_id: str | None = None
 
 
 class AgentUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     role: Role | None = None
 
 
@@ -112,7 +116,7 @@ class TokenOut(Out):
 
 
 class TokenCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
+    name: Name
     scopes: list[str] = Field(min_length=1)
     # Defaults to the caller's own actor.
     actor_id: str | None = None
@@ -153,9 +157,7 @@ class InviteCreated(InviteOut):
 class InviteAccept(BaseModel):
     token: str = Field(min_length=1, max_length=200)
     # Both or neither: with them, an invitee with no account signs up and is signed in.
-    name: str | None = Field(
-        None, min_length=1, max_length=200, description="Signup only: the new user's name"
-    )
+    name: Name | None = Field(None, description="Signup only: the new user's name")
     password: str | None = Field(
         None, min_length=8, max_length=1000, description="Signup only: the new user's password"
     )
@@ -186,7 +188,6 @@ class DocIn(BaseModel):
 
 
 RichIn = MarkdownIn | DocIn
-Name = Field(min_length=1, max_length=200)
 
 
 class Patch(BaseModel):
@@ -209,12 +210,12 @@ class ProductOut(BaseModel):
 
 class ProductCreate(BaseModel):
     key: str = Field(pattern=r"^[A-Z][A-Z0-9]{1,9}$", description="Short key, e.g. PAY; can't change later")
-    name: str = Name
+    name: Name
     description: RichIn | None = None
 
 
 class ProductUpdate(Patch):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     description: RichIn | None = None
 
 
@@ -250,14 +251,14 @@ class FeatureTree(BaseModel):
 
 
 class FeatureCreate(BaseModel):
-    name: str = Name
+    name: Name
     description: RichIn | None = None
     parent_id: str | None = None
     owner_actor_id: str | None = None
 
 
 class FeatureUpdate(Patch):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     description: RichIn | None = None
     owner_actor_id: str | None = None
 
@@ -286,7 +287,7 @@ class ReleaseOut(BaseModel):
 
 class ReleaseCreate(BaseModel):
     version: str = Field(min_length=1, max_length=64)
-    name: str = Name
+    name: Name
     status: ReleaseStatus = "planned"
     target_date: date | None = None
     released_at: datetime | None = None
@@ -295,7 +296,7 @@ class ReleaseCreate(BaseModel):
 
 class ReleaseUpdate(Patch):
     version: str | None = Field(None, min_length=1, max_length=64)
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     status: ReleaseStatus | None = None
     target_date: date | None = None
     released_at: datetime | None = None
@@ -362,13 +363,13 @@ class PlanOut(BaseModel):
 
 
 class PlanCreate(BaseModel):
-    name: str = Name
+    name: Name
     description: RichIn | None = None
     release_id: str | None = None
 
 
 class PlanUpdate(Patch):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     description: RichIn | None = None
     release_id: str | None = None
     status: PlanStatus | None = None
@@ -585,7 +586,7 @@ class PairingToken(BaseModel):
 
 class PairingApprove(BaseModel):
     user_code: str = Field(min_length=8, max_length=9)
-    name: str = Field(min_length=1, max_length=200, description="User-given; never the machine's hostname")
+    name: Name = Field(description="User-given; never the machine's hostname")
     product_ids: list[str] = Field(min_length=1)
 
 
@@ -622,7 +623,7 @@ class ConsumerDetail(ConsumerOut):
 
 
 class ConsumerUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     product_ids: list[str] | None = Field(None, min_length=1)
 
 

@@ -9,7 +9,7 @@ from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
 from test_junkie_tcms.api.selection import feature_candidates, plan_candidates, product_cases, split
-from test_junkie_tcms.api.v1.cases import _steps_out, case_key, db_current
+from test_junkie_tcms.api.v1.cases import _steps_out, case_key, db_current, resolve_cases
 from test_junkie_tcms.api.v1.catalog import (
     _get,
     get_plan,
@@ -134,18 +134,9 @@ def resolve_source(
         product_features(db, ctx, product.id, body.feature_ids)
         return feature_candidates(db, ctx.org.id, product.id, body.feature_ids), None
     if body.case_ids is not None:
-        wanted = list(dict.fromkeys(body.case_ids))
-        found = {
-            c.id: c
-            for c in db.scalars(
-                select(TestCase).where(TestCase.org_id == ctx.org.id, TestCase.id.in_(wanted))
-            )
-            if c.product_id == product.id
-        }
-        missing = [i for i in wanted if i not in found]
-        if missing:
-            raise HTTPException(422, f"case_id {missing[0]} is not a case of this product")
-        return [found[i] for i in wanted], None
+        found = resolve_cases(db, ctx, product, list(dict.fromkeys(body.case_ids)))
+        # A key and the id of the same case pin it once.
+        return list({c.id: c for c in found.values()}.values()), None
     return [], None
 
 
@@ -464,7 +455,8 @@ def cycle_cases_add(
     idem: Idem = Depends(idempotency),
     db: Session = Depends(get_db),
 ):
-    """Adds live cases at their current version; a case already in the cycle is listed, not added again."""
+    """Adds live cases (each a case key like PAY-12, or an id) at their current version; a case already in the
+    cycle is listed, not added again."""
     cycle = get_cycle(db, ctx, id)
     require_open(cycle)
     found, _ = resolve_source(db, ctx, db.get(Product, cycle.product_id), CycleSource(case_ids=body.case_ids))

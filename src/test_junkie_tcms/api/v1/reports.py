@@ -95,6 +95,16 @@ def newest_results(db: Session, org_id: str, release: Release) -> dict[str, tupl
     return {cc_id: (version, status) for cc_id, version, status in rows}
 
 
+def release_feature_ids(db: Session, org_id: str, release: Release) -> list[str]:
+    return list(
+        db.scalars(
+            select(ReleaseFeature.feature_id).where(
+                ReleaseFeature.org_id == org_id, ReleaseFeature.release_id == release.id
+            )
+        )
+    )
+
+
 def release_status(db: Session, org_id: str, release: Release) -> dict[str, CaseStatus]:
     """Each case's status in the release, by case id."""
     newest = newest_results(db, org_id, release)
@@ -122,13 +132,7 @@ def release_status(db: Session, org_id: str, release: Release) -> dict[str, Case
         s.status, s.stale, s.cycle_id = cc.status, False, cc.cycle_id
         s.last_result_at, s.last_result_status = cc.last_result_at, last_status
         decided.add(case.id)
-    feature_ids = list(
-        db.scalars(
-            select(ReleaseFeature.feature_id).where(
-                ReleaseFeature.org_id == org_id, ReleaseFeature.release_id == release.id
-            )
-        )
-    )
+    feature_ids = release_feature_ids(db, org_id, release)
     if feature_ids:
         for case in feature_candidates(db, org_id, release.product_id, feature_ids):
             if is_live(case) and case.id not in out:
@@ -154,9 +158,73 @@ def release_out(r: Release) -> ReportRelease:
     return ReportRelease(id=r.id, version=r.version, name=r.name, status=r.status, product_id=r.product_id)
 
 
+@dataclass
+class ReleaseRows:
+    counts: ReportCounts
+    ready: bool
+    features: list[FeatureCounts]
+
+
+def release_rows(db: Session, org_id: str, release: Release) -> ReleaseRows:
+    """The release's totals, `ready`, and one row per feature: the one source for every report's `ready`.
+
+    Rows start from the release's features, so a release feature with no case has a row (`total: 0`).
+    A case counts once, in the row of its nearest release feature at or above its own feature; a case
+    under no release feature (pulled in by a cycle of the release) counts in its own feature's row,
+    with `in_release: false`. A row's `ready` looks at every case under the feature, so a release
+    feature whose cases all sit in a listed sub-feature's row is covered. The release is `ready` when
+    its totals are and every release feature has at least one case under it. A release feature that
+    has since been archived is retired: it needs no case, and gets a row only when a case counts in it.
+    """
+    statuses = list(release_status(db, org_id, release).values())
+    wanted = set(release_feature_ids(db, org_id, release))
+    features = {
+        f.id: f
+        for f in db.scalars(
+            select(Feature).where(Feature.org_id == org_id, Feature.product_id == release.product_id)
+        )
+    }
+
+    def chain(f_id: str | None) -> list[str]:
+        """The feature and every feature above it, nearest first."""
+        out: list[str] = []
+        while f_id is not None and f_id not in out:
+            out.append(f_id)
+            f = features.get(f_id)
+            f_id = f.parent_id if f else None
+        return out
+
+    required = [f_id for f_id in wanted if f_id in features and features[f_id].archived_at is None]
+    rows: dict[str, list[CaseStatus]] = {f_id: [] for f_id in required}
+    under: dict[str, list[CaseStatus]] = {f_id: [] for f_id in wanted}
+    for s in statuses:
+        above = [f_id for f_id in chain(s.case.feature_id) if f_id in wanted]
+        rows.setdefault(above[0] if above else s.case.feature_id, []).append(s)
+        for f_id in above:
+            under[f_id].append(s)
+
+    def row(f_id: str, cases: list[CaseStatus]) -> FeatureCounts:
+        f = features.get(f_id)
+        listed = f_id in wanted
+        return FeatureCounts(
+            feature_id=f_id,
+            name=f.name if f else "",
+            in_release=listed,
+            counts=tally(cases),
+            ready=is_ready(tally(under[f_id] if listed else cases)),
+        )
+
+    out = sorted(
+        (row(f_id, cases) for f_id, cases in rows.items()),
+        key=lambda r: (not r.in_release, r.name, r.feature_id),
+    )
+    c = tally(statuses)
+    return ReleaseRows(counts=c, ready=is_ready(c) and all(under[f_id] for f_id in required), features=out)
+
+
 def release_totals(db: Session, org_id: str, r: Release) -> ReleaseTotals:
-    c = tally(list(release_status(db, org_id, r).values()))
-    return ReleaseTotals(release=release_out(r), counts=c, ready=is_ready(c))
+    rr = release_rows(db, org_id, r)
+    return ReleaseTotals(release=release_out(r), counts=rr.counts, ready=rr.ready)
 
 
 def product_releases(db: Session, org_id: str, product_id: str, statuses: tuple[str, ...]) -> list[Release]:
@@ -179,19 +247,12 @@ def reports_release(
     ctx: OrgContext = Depends(require_scope(READ)),
     db: Session = Depends(get_db),
 ):
-    """Release readiness: the counts, `ready`, and the counts per feature (by the case's current feature)."""
+    """Release readiness: the counts, `ready`, one row per release feature (`in_release: true`, even with
+    no cases), then rows for cases of features outside the release (`in_release: false`). Not ready while
+    a release feature has no case."""
     r = get_release(db, ctx, release_id)
-    statuses = list(release_status(db, ctx.org.id, r).values())
-    by_feature: dict[str, list[CaseStatus]] = {}
-    for s in statuses:
-        by_feature.setdefault(s.case.feature_id, []).append(s)
-    names = dict(db.execute(select(Feature.id, Feature.name).where(Feature.id.in_(list(by_feature)))).all())
-    features = [
-        FeatureCounts(feature_id=f_id, name=names.get(f_id, ""), counts=tally(rows))
-        for f_id, rows in sorted(by_feature.items(), key=lambda kv: (names.get(kv[0], ""), kv[0]))
-    ]
-    c = tally(statuses)
-    return ReleaseReport(release=release_out(r), counts=c, ready=is_ready(c), features=features)
+    rr = release_rows(db, ctx.org.id, r)
+    return ReleaseReport(release=release_out(r), counts=rr.counts, ready=rr.ready, features=rr.features)
 
 
 @router.get(

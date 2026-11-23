@@ -3,7 +3,7 @@
 from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
 
 from tests import support
-from tests.catalog_seed import make_product, make_release, ok, seed, url
+from tests.catalog_seed import make_feature, make_product, make_release, ok, seed, url
 from tests.execution_seed import cycle_cases, make_case, make_cycle, record
 from tests.support import PASSWORD, login
 
@@ -192,6 +192,78 @@ class Reports:
         [cc] = cycle_cases(owner, other["id"])
         ok(record(owner, cc["id"], status="fail"), 201)
         assert counts(report(owner, s["release"]["id"]), "fail", "untested") == (0, 1)
+
+    @test()
+    def test_release_feature_with_no_cases_has_a_row_and_blocks_ready(self, suite_parameter):
+        owner = self.env.owner
+        s = release_seed(owner, n=1)
+        ok(record(owner, s["cc"][0], status="success"), 201)
+        empty = make_feature(owner, s["product"]["id"], "Empty")
+        features = url(f"/releases/{s['release']['id']}/features")
+        ok(owner.put(features, json={"feature_ids": [s["child"]["id"], empty["id"]]}))
+        r = report(owner, s["release"]["id"])
+        assert [(f["name"], f["in_release"], f["counts"]["total"], f["ready"]) for f in r["features"]] == [
+            ("Card", True, 1, True),
+            ("Empty", True, 0, False),
+        ]
+        assert r["ready"] is False
+        product = ok(owner.get(url(f"/products/{s['product']['id']}/report")))
+        assert product["releases"][0]["ready"] is False
+        ok(owner.put(features, json={"feature_ids": [s["child"]["id"]]}))
+        assert report(owner, s["release"]["id"])["ready"] is True
+
+    @test()
+    def test_cycle_case_of_a_feature_outside_the_release_is_flagged(self, suite_parameter):
+        owner = self.env.owner
+        s = release_seed(owner, n=1)
+        basket = make_feature(owner, s["product"]["id"], "Basket")
+        case = make_case(owner, s["product"]["id"], basket["id"], "Add to basket")
+        regression = make_cycle(
+            owner, s["product"]["id"], name="Regression", release_id=s["release"]["id"], case_ids=[case["id"]]
+        )
+        [cc] = cycle_cases(owner, regression["id"])
+        ok(record(owner, s["cc"][0], status="success"), 201)
+        ok(record(owner, cc["id"], status="success"), 201)
+        r = report(owner, s["release"]["id"])
+        assert [(f["name"], f["in_release"], f["counts"]["total"]) for f in r["features"]] == [
+            ("Card", True, 1),
+            ("Basket", False, 1),
+        ]
+        assert (r["counts"]["total"], r["ready"]) == (2, True)
+        ok(record(owner, cc["id"], status="fail"), 201)
+        r = report(owner, s["release"]["id"])
+        assert (r["features"][1]["ready"], r["ready"]) == (False, False)
+
+    @test()
+    def test_sub_feature_cases_count_once_in_the_nearest_release_feature(self, suite_parameter):
+        owner = self.env.owner
+        s = release_seed(owner, n=2)
+        for cc in s["cc"]:
+            ok(record(owner, cc, status="success"), 201)
+        features = url(f"/releases/{s['release']['id']}/features")
+        ok(owner.put(features, json={"feature_ids": [s["parent"]["id"]]}))
+        r = report(owner, s["release"]["id"])
+        assert [(f["name"], f["counts"]["total"]) for f in r["features"]] == [("Checkout", 2)]
+        assert r["ready"] is True
+        ok(owner.put(features, json={"feature_ids": [s["parent"]["id"], s["child"]["id"]]}))
+        r = report(owner, s["release"]["id"])
+        rows = [(f["name"], f["in_release"], f["counts"]["total"], f["ready"]) for f in r["features"]]
+        assert rows == [("Card", True, 2, True), ("Checkout", True, 0, True)]
+        assert (r["counts"]["total"], r["ready"]) == (2, True)
+
+    @test()
+    def test_archived_release_feature_needs_no_case(self, suite_parameter):
+        owner = self.env.owner
+        s = release_seed(owner, n=1)
+        ok(record(owner, s["cc"][0], status="success"), 201)
+        old = make_feature(owner, s["product"]["id"], "Old")
+        features = url(f"/releases/{s['release']['id']}/features")
+        ok(owner.put(features, json={"feature_ids": [s["child"]["id"], old["id"]]}))
+        assert report(owner, s["release"]["id"])["ready"] is False
+        ok(owner.post(url(f"/features/{old['id']}/archive")))
+        r = report(owner, s["release"]["id"])
+        assert [f["name"] for f in r["features"]] == ["Card"]
+        assert r["ready"] is True
 
     @test()
     def test_product_report_lists_releases_but_not_cancelled(self, suite_parameter):

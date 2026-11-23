@@ -33,13 +33,21 @@ class ReportRelease(BaseModel):
 
 
 class FeatureCounts(BaseModel):
+    """One feature's row. A case counts in its nearest release feature; `in_release: false` rows hold
+    cases a cycle of the release pulled in from features outside it. `ready`: the cases under the
+    feature (sub-features included) number at least one, and none is `fail`, `error` or `untested`."""
+
     feature_id: str
     name: str
+    in_release: bool
     counts: ReportCounts
+    ready: bool
 
 
 class ReleaseReport(BaseModel):
-    """`ready`: at least one case, and none `fail`, `error` or `untested`."""
+    """`ready`: at least one case, none `fail`, `error` or `untested`, and every release feature (not
+    archived) has at least one case under it. `features` lists the release's features first, a feature
+    with no case included, then any features outside the release."""
 
     release: ReportRelease
     counts: ReportCounts
@@ -48,6 +56,8 @@ class ReleaseReport(BaseModel):
 
 
 class ReleaseTotals(BaseModel):
+    """`ready` as in `ReleaseReport`."""
+
     release: ReportRelease
     counts: ReportCounts
     ready: bool

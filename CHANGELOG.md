@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Web app: `/assets` files are served with `Cache-Control: no-cache`, so browsers revalidate them (a 304 when unchanged) and never run stale JS after an upgrade.
 - Migrations: `audit_request_tool_agent_names` is now revision `0019` on top of `0018_product_owner_cycle_eta_order`, so `upgrade head` has one head again.
 - CI: the test job runs the suites even when its lint step fails (the job still fails), and skips them only when install failed.
 - `python scripts/check.py` runs the CI gate (ruff check, ruff format --check with the locked ruff, then every suite); CI's test job calls it, and `--lint` runs only the ruff steps.

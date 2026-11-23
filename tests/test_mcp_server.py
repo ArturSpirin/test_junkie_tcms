@@ -38,8 +38,8 @@ def tool_names(client, value: str, query: str = "") -> set[str]:
     return {tool["name"] for tool in response.json()["result"]["tools"]}
 
 
-def call(client, value: str, tool: str, **arguments) -> dict:
-    response = rpc(client, value, "tools/call", {"name": tool, "arguments": arguments})
+def call(client, value: str, tool: str, query: str = "", **arguments) -> dict:
+    response = rpc(client, value, "tools/call", {"name": tool, "arguments": arguments}, query=query)
     assert response.status_code == 200, response.text
     result = response.json()["result"]
     assert result["isError"] == (result["structuredContent"]["status"] >= 400)
@@ -75,18 +75,18 @@ class McpServer:
     # Listing
 
     @test()
-    def test_default_toolsets_list_27_tools_and_all_lists_92(self, suite_parameter):
+    def test_default_toolsets_list_27_tools_and_all_lists_93(self, suite_parameter):
         app = self.env.app
         with mcp_client(app) as mcp:
             owner = self.env.owner
             admin_token = make_admin_token(owner)
             assert len(tool_names(mcp, admin_token)) == 27
-            assert len(tool_names(mcp, admin_token, "?toolsets=all")) == 92
+            assert len(tool_names(mcp, admin_token, "?toolsets=all")) == 93
             all_but_admin = ",".join(t for t in TOOLSETS if t != "admin")
             assert len(tool_names(mcp, admin_token, f"?toolsets={all_but_admin}")) == 71
             assert tool_names(mcp, admin_token, "?toolsets=cases") <= tool_names(mcp, admin_token)
             app.state.settings.mcp_default_toolsets = "all"
-            assert len(tool_names(mcp, admin_token)) == 92
+            assert len(tool_names(mcp, admin_token)) == 93
 
     @test()
     def test_an_unknown_toolset_is_a_400(self, suite_parameter):
@@ -118,10 +118,48 @@ class McpServer:
             ok(owner.patch(f"/api/v1/orgs/acme/members/{member['user_id']}", json={"role": "viewer"}))
             names = tool_names(mcp, value)
             assert "cases_list" in names and "cases_create" not in names  # the token still says write:cases
-            assert (
-                call(mcp, value, "cases_create", org="acme", product="x", feature_id="y", title="t")["status"]
-                == 404
+            refused = call(mcp, value, "cases_create", org="acme", product="x", feature_id="y", title="t")
+            assert refused["status"] == 403 and refused["error"]["detail"] == "Needs scope write:cases"
+
+    # Refusals: a tool hidden by scope or toolset says why; only a name that isn't a tool is unknown
+
+    @test()
+    def test_a_tool_hidden_by_scope_is_a_403_naming_the_scope(self, suite_parameter):
+        with mcp_client(self.env.app) as mcp:
+            owner = self.env.owner
+            cc = run_seed(owner)["cycle_case"]["id"]
+            read_only = token(owner, "read")
+            refused = call(mcp, read_only, "results_create", org="acme", id=cc, status="success")
+            assert refused["status"] == 403 and refused["error"]["status"] == 403
+            assert refused["error"]["detail"] == "Needs scope write:execution"
+            execution = token(owner, "read", "write:execution")
+            refused = call(mcp, execution, "cases_update", org="acme", case="PAY-1", expected_version=1)
+            assert refused["status"] == 403 and refused["error"]["detail"] == "Needs scope write:cases"
+            # scope comes before toolset: the admin toolset is off here, but the missing scope is what blocks
+            stats = call(mcp, read_only, "mcp_usage", org="acme")
+            assert stats["status"] == 403 and stats["error"]["detail"] == "Needs scope admin or audit:read"
+
+    @test()
+    def test_a_tool_hidden_by_toolset_is_a_403_naming_the_toolset(self, suite_parameter):
+        with mcp_client(self.env.app) as mcp:
+            owner = self.env.owner
+            admin_token = make_admin_token(owner)
+            cycle = run_seed(owner)["cycle"]["id"]
+            refused = call(mcp, admin_token, "reports_cycle", org="acme", cycle_id=cycle)
+            assert refused["status"] == 403 and refused["error"]["detail"] == (
+                "reports_cycle is in toolset reports: connect with ?toolsets=reports or ?toolsets=all"
             )
+            for query in ("?toolsets=reports", "?toolsets=all"):
+                report = call(mcp, admin_token, "reports_cycle", query=query, org="acme", cycle_id=cycle)
+                assert report["status"] == 200, (query, report)
+
+    @test()
+    def test_a_name_that_is_not_a_tool_is_a_404(self, suite_parameter):
+        with mcp_client(self.env.app) as mcp:
+            admin_token = make_admin_token(self.env.owner)
+            for query in ("", "?toolsets=all"):
+                unknown = call(mcp, admin_token, "nope_tool", query=query)
+                assert unknown["status"] == 404 and unknown["error"]["detail"] == "Unknown tool nope_tool"
 
     # Auth
 

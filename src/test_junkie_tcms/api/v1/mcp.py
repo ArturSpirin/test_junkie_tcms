@@ -4,6 +4,7 @@ Token figures are bytes ÷ 4. Response p50/p95 come from each row's log2 histogr
 bounds, at most 2x the true size. Read-only and not audited, like `audit_list`; the UI polls them.
 """
 
+import math
 from datetime import datetime, timedelta
 from typing import Literal
 
@@ -19,7 +20,7 @@ from test_junkie_tcms.api.v1.schemas import Page
 from test_junkie_tcms.auth.deps import OrgContext, get_db, require_any_scope
 from test_junkie_tcms.auth.scopes import ADMIN, AUDIT_READ
 from test_junkie_tcms.db.base import aware
-from test_junkie_tcms.db.models import Actor, McpServerEvent, McpToolStat
+from test_junkie_tcms.db.models import Actor, McpServerEvent, McpToolCall, McpToolStat
 from test_junkie_tcms.mcp_server import stats
 from test_junkie_tcms.mcp_server.generator import ToolSpec, build_tools, def_tokens, tool_list_hash
 
@@ -27,6 +28,7 @@ router = APIRouter(tags=["mcp"])
 
 SERVER_NAME = "test-junkie-tcms"
 MAX_SPAN = timedelta(days=90)
+MAX_CALLS = 100
 BUCKETS = {"hour": timedelta(hours=1), "day": timedelta(days=1)}
 DEFAULT_SPAN = {"hour": timedelta(hours=24), "day": timedelta(days=30)}
 
@@ -35,7 +37,10 @@ class McpToolOut(BaseModel):
     name: str
     toolset: str
     scope: str | None
+    description: str
     read_only: bool
+    idempotent: bool
+    destructive: bool
     def_tokens: int
     calls_7d: int
     errors_7d: int
@@ -43,6 +48,7 @@ class McpToolOut(BaseModel):
     errors_30d: int
     calls: int
     errors: int
+    errors_by_code: dict[str, int]
     p50_resp_tokens: int | None
     p95_resp_tokens: int | None
 
@@ -105,6 +111,18 @@ class McpUpdateOut(BaseModel):
     changed: list[str]
 
 
+class McpCallOut(BaseModel):
+    id: str
+    at: datetime
+    tool: str
+    actor_id: str
+    name: str
+    kind: Literal["user", "agent"]
+    status: int
+    ms: int
+    resp_tokens: int
+
+
 def _tools(request: Request) -> list[ToolSpec]:
     """The tools the running MCP server serves; built from the routes when it isn't running."""
     return getattr(request.app.state, "mcp_tools", None) or build_tools(request.app)
@@ -157,9 +175,10 @@ def mcp_tools_list(
     ctx: OrgContext = Depends(require_any_scope(ADMIN, AUDIT_READ)),
     db: Session = Depends(get_db),
 ):
-    """Every MCP tool with its definition cost in ≈ tokens (bytes ÷ 4), its calls and errors over the last 7
-    and 30 days, and its `calls`, `errors` and p50/p95 response cost (an upper bound, ≤2x; null with no calls)
-    over `since`..`until`: by default the last 30 days, at most 90."""
+    """Every MCP tool with its description, its read-only, idempotent and destructive hints, its definition
+    cost in ≈ tokens (bytes ÷ 4), its calls and errors over the last 7 and 30 days, and its `calls`, `errors`
+    (`errors_by_code` splits them by HTTP status) and p50/p95 response cost (an upper bound, ≤2x; null with no
+    calls) over `since`..`until`: by default the last 30 days, at most 90."""
     since, until = _range(since, until, "hour", timedelta(days=30))
     now = stats.now()
     week = now - timedelta(days=7)
@@ -175,12 +194,19 @@ def mcp_tools_list(
         recent = [row for row in rows if aware(row.hour) >= stats.hour_of(week)]
         ranged = in_range.get(tool.name, [])
         p50, p95 = stats.percentiles(stats.merge(row.resp_bytes_hist for row in ranged))
+        codes: dict[str, int] = {}
+        for row in ranged:
+            for code, count in (row.error_codes or {}).items():
+                codes[code] = codes.get(code, 0) + count
         items.append(
             McpToolOut(
                 name=tool.name,
                 toolset=tool.toolset,
                 scope=tool.scope,
+                description=tool.description,
                 read_only=tool.annotations["read_only_hint"],
+                idempotent=tool.annotations["idempotent_hint"],
+                destructive=tool.annotations["destructive_hint"],
                 def_tokens=def_tokens(tool),
                 calls_7d=sum(row.calls for row in recent),
                 errors_7d=sum(row.errors for row in recent),
@@ -188,6 +214,7 @@ def mcp_tools_list(
                 errors_30d=sum(row.errors for row in rows),
                 calls=sum(row.calls for row in ranged),
                 errors=sum(row.errors for row in ranged),
+                errors_by_code=dict(sorted(codes.items())),
                 p50_resp_tokens=p50,
                 p95_resp_tokens=p95,
             )
@@ -288,6 +315,58 @@ def mcp_clients(
     ]
     items.sort(key=lambda item: (-item.calls, item.name, item.actor_id))
     return McpClientsOut(since=since, until=until, items=items)
+
+
+@router.get("/orgs/{org}/mcp/calls", response_model=Page[McpCallOut], **op("mcp_calls", AUDIT_READ, "admin"))
+def mcp_calls(
+    since: datetime | None = Query(None, description="From this time, inclusive"),
+    until: datetime | None = Query(None, description="Up to this time, exclusive"),
+    tool: str | None = Query(None, description="Exact tool name"),
+    actor: str | None = Query(None, description="Actor id"),
+    cursor: str | None = Query(None, description="next_cursor from the previous page"),
+    limit: int = Query(20, ge=1, le=MAX_CALLS),
+    ctx: OrgContext = Depends(require_any_scope(ADMIN, AUDIT_READ)),
+    db: Session = Depends(get_db),
+):
+    """The org's MCP calls over the last 7 days, newest first: each call's tool, caller (a member, `user`, or
+    an AI agent, `agent`), HTTP status, latency in ms and response cost in ≈ tokens (bytes ÷ 4). `tool=` gives
+    one tool's recent calls; `limit=1` the latest call. Calls are kept 7 days; arguments are not stored."""
+    query = select(McpToolCall).where(McpToolCall.org_id == ctx.org.id)
+    if since:
+        query = query.where(McpToolCall.at >= since)
+    if until:
+        query = query.where(McpToolCall.at < until)
+    if tool:
+        query = query.where(McpToolCall.tool == tool)
+    if actor:
+        query = query.where(McpToolCall.actor_id == actor)
+    rows, next_cursor, total = paginate(
+        db, query, McpToolCall.id, PageParams(cursor=cursor, limit=limit), newest_first=True
+    )
+    actors = {
+        a.id: a
+        for a in db.scalars(
+            select(Actor).where(Actor.org_id == ctx.org.id, Actor.id.in_({row.actor_id for row in rows}))
+        )
+    }
+    return Page[McpCallOut](
+        items=[
+            McpCallOut(
+                id=row.id,
+                at=aware(row.at),
+                tool=row.tool,
+                actor_id=row.actor_id,
+                name=actors[row.actor_id].name,
+                kind=actors[row.actor_id].kind,
+                status=row.status,
+                ms=row.ms,
+                resp_tokens=math.ceil(row.resp_bytes / 4),
+            )
+            for row in rows
+        ],
+        next_cursor=next_cursor,
+        total=total,
+    )
 
 
 @router.get(

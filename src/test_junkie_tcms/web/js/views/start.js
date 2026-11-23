@@ -1,5 +1,5 @@
 /* Start a cycle: the four-step wizard (what to test, how to run, who runs it) and the live cycle it starts. */
-import { I, crumbs, lnk, modal, footBar, dd, tg, bar, st, actor, toast, esc } from "../ui.js";
+import { I, crumbs, lnk, modal, footBar, dd, tg, bar, st, actor, esc } from "../ui.js";
 
 const mst = (s) => `<span class="mst ${s}">${s}</span>`;
 const head = (title, eyebrow, c, act) => `${c}<div class="ph"><div class="ttl"><span class="eyebrow">${eyebrow}</span><h1>${title}</h1></div><div class="actions">${act || ""}</div></div>`;
@@ -130,7 +130,7 @@ export default { nav: "run", default: "scope", after, states: {
   "queued": { render: live },
   "live": { render: live },
   "offline-mid": { render: live },
-  "reassigned": { render: live, after: (m, d) => toast(`<div><b>${d.moved.count} cases moved to ${esc(d.moved.to)}.</b> <span class="muted">They run after its current job.</span></div>`) },
+  "reassigned": { render: live, toast: (d) => `<div><b>${d.moved.count} cases moved to ${esc(d.moved.to)}.</b> <span class="muted">They run after its current job.</span></div>` },
   "mixed": { render: live },
   "cancel-cases": { render: (d) => live(d) + cancelCases(d) },
   "stop-confirm": { render: (d) => live(d) + stopConfirm(d) },

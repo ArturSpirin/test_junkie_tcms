@@ -1,5 +1,5 @@
 /* Test plans: the product's plan list, one plan's detail, the new-plan and edit-entries forms and making a cycle. */
-import { I, bar, crumbs, lnk, modal, dd, tg, ver, psearch, hl, toast, esc } from "../ui.js";
+import { I, bar, crumbs, lnk, modal, dd, tg, ver, psearch, hl, esc } from "../ui.js";
 
 const pillOf = (s) => `<span class="pill ${s === "archived" ? "closed" : s}">${s}</span>`;
 const head = (title, eyebrow, c, act) => `${c}<div class="ph"><div class="ttl"><span class="eyebrow">${eyebrow}</span><h1>${title}</h1></div><div class="actions">${act || ""}</div></div>`;
@@ -90,7 +90,7 @@ export default { nav: "plans", default: "list", states: {
   "list": { render: list },
   "search": { render: list },
   "search-empty": { render: list },
-  "search-cleared": { render: list, after: (m, d) => toast(`<div><b>Search cleared.</b> <span class="muted">Showing all ${d.plans.length} plans.</span></div>`) },
+  "search-cleared": { render: list, toast: (d) => `<div><b>Search cleared.</b> <span class="muted">Showing all ${d.plans.length} plans.</span></div>` },
   "detail": { render: (d) => detail(d) },
   "new": { render: (d) => list(d) + newPlan(d) },
   "edit": { render: (d) => detail(d) + edit(d) },

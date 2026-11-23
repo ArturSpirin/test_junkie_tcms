@@ -1,5 +1,5 @@
 /* Members: the org's member list with roles, pending invites, inviting, changing a role and removing a member. */
-import { I, crumbs, lnk, modal, dd, tg, psearch, hl, toast, esc, actor, person } from "../ui.js";
+import { I, crumbs, lnk, modal, dd, tg, psearch, hl, esc, actor, person } from "../ui.js";
 
 const nm = (h) => person(h)[0];
 const first = (h) => nm(h).split(" ")[0];
@@ -75,10 +75,10 @@ export default { nav: "members", default: "list",
     "invite-error": { render: (d) => list(d) + invite(d) },
     "invite-sent": { render: pending },
     "pending": { render: pending },
-    "invite-revoked": { render: pending, after: () => toast(`<div><b>Invite revoked.</b> <span class="muted">The link no longer works.</span></div>`) },
+    "invite-revoked": { render: pending, toast: () => `<div><b>Invite revoked.</b> <span class="muted">The link no longer works.</span></div>` },
     "change-role": { render: list },
-    "role-changed": { render: list, after: (m, d) => { const r = d.roleChange; const u = d.members.find((x) => x.handle === r.handle); toast(`<div><b>${esc(nm(r.handle))} is now a ${r.role}.</b> <span class="muted">PATCH /members/${esc(u.userId)} · applies to ${esc(first(r.handle))}'s agents at once</span></div>`); } },
+    "role-changed": { render: list, toast: (d) => { const r = d.roleChange; return `<div><b>${esc(nm(r.handle))} is now a ${r.role}.</b> <span class="muted">Applies to ${esc(first(r.handle))}'s agents at once.</span></div>`; } },
     "remove-confirm": { render: (d) => list(d) + removeM(d) },
-    "removed": { render: list, after: (m, d) => toast(`<div><b>${esc(nm(d.removed))} was removed.</b> <span class="muted">Recorded in the audit log.</span></div>`) }
+    "removed": { render: list, toast: (d) => `<div><b>${esc(nm(d.removed))} was removed.</b> <span class="muted">Recorded in the audit log.</span></div>` }
   }
 };

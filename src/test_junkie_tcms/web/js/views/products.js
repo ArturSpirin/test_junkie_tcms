@@ -1,5 +1,5 @@
 /* Products: the catalog list, one product's detail and the new-product form. */
-import { I, bar, crumbs, lnk, modal, dd, tg, toast, psearch, hl, esc, person } from "../ui.js";
+import { I, bar, crumbs, lnk, modal, dd, tg, psearch, hl, esc, person } from "../ui.js";
 
 const pcard = (p, q) => `<a class="card pc" href="${lnk("products.html#detail")}">
   <div class="pc-h"><span class="mark ${p.markCls}">${esc(p.key[0])}</span><div style="min-width:0"><h2>${hl(esc(p.key + " · " + p.name), q)}</h2><small class="ell">${hl(esc(p.desc), q)}</small></div></div>
@@ -60,10 +60,10 @@ export default { nav: "products", default: "list", states: {
   "list": { render: list },
   "search": { render: list },
   "search-empty": { render: list },
-  "search-cleared": { render: list, after: (m, d) => toast(`Search cleared. <span class="muted">Showing all ${d.products.length} products.</span>`) },
+  "search-cleared": { render: list, toast: (d) => `Search cleared. <span class="muted">Showing all ${d.products.length} products.</span>` },
   "detail": { render: detail },
   "new": { render: (d) => list(d) + form(d) },
-  "created": { render: list, after: (m, d) => toast(`<b>${esc(d.created.key)} created.</b> <span class="muted">Add features, then cases. Audit: products.create by ${esc(person(d.ctx.user.handle)[0])}.</span>`, false, true) },
+  "created": { render: list, toastKeep: true, toast: (d) => `<b>${esc(d.created.key)} created.</b> <span class="muted">Add features, then cases. Recorded in the audit log.</span>` },
   "empty": { render: empty },
   "new-first": { render: (d) => catalog(d) + form(d) }
 }};

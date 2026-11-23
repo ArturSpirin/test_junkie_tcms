@@ -14,9 +14,10 @@ HERE = Path(__file__).parent
 MOCK_STATES = json.loads((HERE / "mock_states.json").read_text(encoding="utf-8"))
 # Leaks of a missing or wrong value into the markup.
 SUSPECT = re.compile(r"undefined|NaN|\[object |null<")
-# What a footer must never show a tester or PM: an HTTP call ("PUT /releases/..."), or an MCP tool name. Plain
-# one-word tools ("search") are left out: they are ordinary words in copy.
-HTTP_CALL = re.compile(r"\b(?:GET|POST|PUT|PATCH|DELETE)\s+/")
+# What no view may show a tester or PM (an API op is a builder note, not UI): an HTTP call
+# ("PUT /releases/..."), or an MCP tool name. Plain one-word tools ("search") are left out: they are
+# ordinary words in copy.
+HTTP_CALL = re.compile(r"\b(?:GET|POST|PUT|PATCH|DELETE)\s+/[^\s<>\"']*")
 MCP_TOOLS = sorted(
     t["name"]
     for t in json.loads((HERE.parent / "snapshots" / "mcp_tools.json").read_text(encoding="utf-8"))
@@ -31,7 +32,58 @@ KNOWN_FOOTERS = {
     "consumers": ["pair", "pair-approve", "detail"],
     "cases": ["list"],
 }
+# Toasts the guard must find: each state that shows one (state.toast in its view).
+KNOWN_TOASTS = {
+    "tree": ["desc-saved", "search-cleared"],
+    "members": ["role-changed", "removed", "invite-revoked"],
+    "products": ["created", "search-cleared"],
+    "cases": ["search-cleared"],
+    "plans": ["search-cleared"],
+    "start": ["reassigned"],
+}
 VOID = {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
+# Attributes a person sees or hears: tooltips, labels, placeholders. A tooltip may itself hold markup.
+SHOWN_ATTRS = ("title", "aria-label", "placeholder", "alt", "value", "data-tip")
+
+
+class Shown(HTMLParser):
+    """Collects everything a page shows a person: its text (not script or style) and the shown attributes."""
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts: list[str] = []
+        self.hidden = 0  # inside <script> or <style>
+
+    def handle_starttag(self, tag, attrs):
+        if tag in ("script", "style"):
+            self.hidden += 1
+        for name, value in attrs:
+            if name in SHOWN_ATTRS and value:
+                self.parts.append(shown(value))
+
+    def handle_endtag(self, tag):
+        if tag in ("script", "style") and self.hidden:
+            self.hidden -= 1
+
+    def handle_data(self, data):
+        if not self.hidden:
+            self.parts.append(data)
+
+
+def shown(html: str) -> str:
+    """The text a person sees in the markup, elements as separate words: "<b>PUT</b> /x" reads "PUT /x"."""
+    parser = Shown()
+    parser.feed(html)
+    parser.close()
+    return " ".join(" ".join(parser.parts).split())
+
+
+def op_names(text: str, data: list[str]) -> list[str]:
+    """The API or MCP op names the text shows that are not the state's own data. Data is what the server or a
+    user wrote (an error message, an audit event's tool, a run note) and always shows raw, word for word."""
+    raw = [" ".join(s.split()) for s in data]
+    hits = [m.group(0).rstrip(".,;:)]·") for m in HTTP_CALL.finditer(text)] + MCP_TOOL.findall(text)
+    return [h for h in hits if not any(h in s for s in raw)]
 
 
 class Footers(HTMLParser):
@@ -107,14 +159,31 @@ class WebViews:
             assert result["again"], f"{where} rendered different HTML from the same data"
 
     @test(parameters=sorted(MOCK_STATES))
-    def test_no_footer_shows_an_op_name(self, parameter):
+    def test_no_view_shows_an_op_name(self, parameter):
+        found = []
+        for state, result in rendered()[parameter].items():
+            for part in ("html", "toast"):
+                ops = op_names(shown(result.get(part, "")), result.get("data", []))
+                found += [
+                    f"{parameter}#{state} {'toast' if part == 'toast' else 'page'}: {op!r}" for op in ops
+                ]
+        assert not found, "views show API or MCP op names (say it in plain words, or drop it):\n" + "\n".join(
+            found
+        )
+
+    @test(parameters=sorted(MOCK_STATES))
+    def test_no_footer_is_monospace(self, parameter):
         for state, result in rendered()[parameter].items():
             for n, f in enumerate(footers(result.get("html", "")), 1):
                 where = f"{parameter}#{state} footer {n} ({' '.join(f['text'].split())[:80]!r})"
-                assert not HTTP_CALL.search(f["text"]), f"{where} shows an HTTP call"
-                tool = MCP_TOOL.search(f["text"])
-                assert tool is None, f"{where} shows the MCP tool {tool.group(0) if tool else ''!r}"
                 assert not f["mono"], f"{where} has monospace text: footers say plain words (ui.js foot())"
+
+    @test(parameters=sorted(KNOWN_TOASTS))
+    def test_the_op_guard_sees_the_known_toasts(self, parameter):
+        for state in KNOWN_TOASTS[parameter]:
+            assert shown(rendered()[parameter][state]["toast"]), (
+                f"{parameter}#{state}: the guard found no toast"
+            )
 
     @test(parameters=sorted(KNOWN_FOOTERS))
     def test_the_footer_guard_sees_the_known_footers(self, parameter):

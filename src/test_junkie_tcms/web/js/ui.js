@@ -337,10 +337,13 @@ function dr(c = {}) {
 </div></div>`;
 }
 
-/* ---------- toast ---------- */
+/* ---------- toast ----------
+   A state's own toast is declarative (state.toast(d), state.toastKeep), so the shell shows it after render and
+   the render tests see its markup; toastHtml() is that markup. */
+const toastHtml = (html, err) => `<div class="toast live-t${err ? " err" : ""}" role="status">${html}</div>`;
 function toast(html, err, keep) {
   document.querySelectorAll(".toast.live-t").forEach((t) => t.remove());
-  document.body.insertAdjacentHTML("beforeend", `<div class="toast live-t${err ? " err" : ""}" role="status">${html}</div>`);
+  document.body.insertAdjacentHTML("beforeend", toastHtml(html, err));
   if (!keep) setTimeout(() => document.querySelectorAll(".toast.live-t").forEach((t) => t.remove()), 3200);
 }
 
@@ -497,5 +500,5 @@ const crumbs = (items) => `<div class="crumbs">${[[esc(orgName)]].concat(items).
 const psearch = (o) => `<div class="psearch"><label class="in-ic">${I.search}<input class="in" value="${esc(o.q || "")}" placeholder="${o.ph}" aria-label="${o.ph}">${o.q ? `<a class="x" href="${lnk(o.clear)}" aria-label="Clear search">${I.x}</a>` : ""}</label>${o.q ? `<span class="cnt">${o.cnt}</span>` : ""}${o.extra || ""}</div>`;
 const hl = (s, q) => (q ? s.replace(new RegExp("(" + q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "ig"), "<mark>$1</mark>") : s);
 
-export { psearch, hl, I, actor, st, disc, ver, bar, legend, counts, tipH, tipA, pinTip, crumbs, lnk, STATUS, dd, ddFit, tg, rte, toMd, dr, toast, modal, footBar, esc };
+export { psearch, hl, I, actor, st, disc, ver, bar, legend, counts, tipH, tipA, pinTip, crumbs, lnk, STATUS, dd, ddFit, tg, rte, toMd, dr, toast, toastHtml, modal, footBar, esc };
 

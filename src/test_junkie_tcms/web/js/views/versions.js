@@ -61,7 +61,7 @@ const page = (d, right, o = {}) => {
 
 function compare(d) {
   const { a, b } = d.pick;
-  return page(d, `<div class="banner info">${I.info}<div>Comparing two picked versions, <b>v${a}</b> and <b>v${b}</b> (<code>GET /cases/${esc(d.case.key)}/versions?compare=${a},${b}</code>). Pick any two in the list or in From and To.</div></div>` + cbar(d, a, b, "a") + diff(d, a, b));
+  return page(d, `<div class="banner info">${I.info}<div>Comparing two picked versions, <b>v${a}</b> and <b>v${b}</b>. Pick any two in the list or in From and To.</div></div>` + cbar(d, a, b, "a") + diff(d, a, b));
 }
 function restoreConfirm(d) {
   const a = d.pick.a, next = d.versions[0].n + 1;

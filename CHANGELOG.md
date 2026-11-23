@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Web app: toasts, hints, query lines and the reports header no longer show API or MCP operation names; they use plain words, and server error text still shows as sent. The render test that guarded dialog footers now checks every rendered view state.
 - Feature tree: the drag-and-drop hint bar now overlays the search row instead of pushing the tree down, so a drop lands on the row under the pointer.
 - MCP `tools/call` on a tool the caller can't use now says why: 403 `Needs scope <scope>`, or 403 naming its toolset and `?toolsets=`; only a name that isn't a tool is 404 `Unknown tool`.
 - MCP tools list each tool's description, its idempotent and destructive hints and its errors by HTTP status (`errors_by_code`); new `mcp_calls` lists the org's recent MCP calls (kept 7 days) with status and latency.

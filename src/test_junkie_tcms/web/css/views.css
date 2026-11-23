@@ -75,7 +75,6 @@
 :where([data-view="tree"]) .dnd-bar[hidden] { display: none; }
 :where([data-view="tree"]) .tfoot { display: flex; gap: 10px; align-items: flex-start; padding: 14px 20px 16px; border-top: 1px solid var(--edge); font-size: 12px; color: var(--faint); }
 :where([data-view="tree"]) .filters .sp { flex: 1; }
-:where([data-view="tree"]) .qline { font-size: 11.5px; margin: -6px 0 16px; overflow-wrap: anywhere; }
 :where([data-view="tree"]) .t .gh { color: var(--faint); cursor: grab; display: grid; opacity: .55; }
 :where([data-view="tree"]) .t tr:hover .gh { opacity: 1; }
 :where([data-view="tree"]) .t td.g { width: 28px; padding-right: 0; }
@@ -95,7 +94,6 @@
 :where([data-view="cases"]) .t td .ell { display: block; color: var(--text); font-weight: 500; }
 :where([data-view="cases"]) .t tbody tr { cursor: pointer; }
 :where([data-view="cases"]) .t td .fpath { font-size: 12px; color: var(--faint); }
-:where([data-view="cases"]) .qline { font-size: 11.5px; margin: -6px 0 16px; overflow-wrap: anywhere; }
 :where([data-view="cases"]) .mlist .it { color: var(--text); }
 :where([data-view="cases"]) .mlist .it:hover { background: var(--hov); }
 
@@ -266,7 +264,6 @@
 :where([data-view="audit"]) .afbar .in-ic .in { height: 32px; border-radius: 9px; font-size: 13px; }
 :where([data-view="audit"]) .afbar .dr { margin-left: auto; }
 :where([data-view="audit"]) .afmeta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0 2px 16px; font-size: 12px; color: var(--muted); }
-:where([data-view="audit"]) .afmeta .mono { margin-left: auto; color: var(--faint); font-size: 11.5px; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 :where([data-view="audit"]) .atbl td { padding-top: 14px; padding-bottom: 14px; }
 :where([data-view="audit"]) .atbl tbody tr.ev { cursor: pointer; }
 :where([data-view="audit"]) .atbl tr.ev.open td { background: var(--raise2); }
@@ -295,7 +292,6 @@ html.light :where([data-view="audit"]) .xpanel { background: var(--panel); }
   :where([data-view="audit"]) .afbar { padding: 10px; } :where([data-view="audit"]) .afbar .dd { flex: 1 1 140px; } :where([data-view="audit"]) .afbar .dr { margin-left: 0; }
   :where([data-view="audit"]) .xpanel .kv { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   :where([data-view="audit"]) .xpanel .drow { grid-template-columns: minmax(0, 1fr); gap: 6px; }
-  :where([data-view="audit"]) .afmeta .mono { margin-left: 0; }
 }
 
 /* mcp */

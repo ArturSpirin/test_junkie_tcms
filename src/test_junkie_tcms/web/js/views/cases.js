@@ -1,5 +1,5 @@
 /* Test cases: every case in a product across features, with search, filters and sort. */
-import { I, st, ver, dd, esc, psearch, hl, crumbs, lnk, toast } from "../ui.js";
+import { I, st, ver, dd, esc, psearch, hl, crumbs, lnk, toast, footBar } from "../ui.js";
 
 const PRI_COL = { critical: "var(--fail)", high: "var(--blocked)", medium: "var(--retest)", low: "var(--faint)" };
 const AUTO_IC = { manual: I.person, automated: I.bolt, to_automate: I.spark };
@@ -62,7 +62,7 @@ function list(d) {
   const cnt = rows.length + (rows.length === 1 ? " case" : " cases");
   return head(d) + `<div class="sub" style="margin-bottom:16px">Every test case in ${P}, across all features. Pick a case to open it in the editor.</div>` +
     psearch({ q, ph: "Search cases by key, title, step or tag", cnt, clear: "#search-cleared" }) + filters(d) +
-    `<div class="card"><div class="hd"><h2>Cases in ${P}</h2><span class="r faint" style="font-size:12px">${q || v ? `${shown} of ${d.total}` : `showing ${rows.length} of ${d.total}`}</span></div>${rows.length ? table(rows, q) : noHits(d, q)}${rows.length && !q && !v ? `<div class="foot-bar"><span class="l">${rows.length} of ${d.total} cases</span><button class="btn sm">Load 50 more</button></div>` : ""}</div>`;
+    `<div class="card"><div class="hd"><h2>Cases in ${P}</h2><span class="r faint" style="font-size:12px">${q || v ? `${shown} of ${d.total}` : `showing ${rows.length} of ${d.total}`}</span></div>${rows.length ? table(rows, q) : noHits(d, q)}${rows.length && !q && !v ? footBar(`<button class="btn sm">Load 50 more</button>`, `${rows.length} of ${d.total} cases`) : ""}</div>`;
 }
 
 const empty = (d) => {

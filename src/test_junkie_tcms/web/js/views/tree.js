@@ -236,7 +236,7 @@ function moveModal(d) {
     `<p style="margin-top:0">Moving <b>${esc(s.name)}</b> (${count(s)} cases) under <b>${esc(t.name)}</b>. Saves with <code>features_move</code>; its cases and their versions move with it.</p>
     <div class="field"><label>Destination feature</label>${dd({ value: d.move.dest, options: destOpts(d), cls: "block", search: "Find a feature", open: true, label: "Destination feature" })}</div>
     <div class="field mb0"><label>Position</label><div class="seg"><button class="on">Inside, at the end</button><button>Inside, at the top</button></div></div>`,
-    `<span class="l mono">features_move</span><button class="btn" data-back>Cancel</button><button class="btn primary">Move here</button>`);
+    `<button class="btn" data-back>Cancel</button><button class="btn primary">Move here</button>`);
 }
 function droppedToast(d) {
   const m = find(d.tree, d.moved);

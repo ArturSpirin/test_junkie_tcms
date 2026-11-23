@@ -96,7 +96,7 @@ class Migrations:
             engine.dispose()
 
     @test()
-    def test_0013_backfills_result_case_version_from_the_pin(self, suite_parameter):
+    def test_0014_backfills_result_case_version_from_the_pin(self, suite_parameter):
         owner = self.env.owner
         s = run_seed(owner)
         ok(record(owner, s["cycle_case"]["id"], status="fail"), 201)
@@ -107,7 +107,7 @@ class Migrations:
         ok(record(owner, cc2["id"], status="success"), 201)
 
         database_url = self.env.database_url
-        command.downgrade(alembic_config(database_url), "0012")
+        command.downgrade(alembic_config(database_url), "0013")
         migrate.upgrade(database_url)
         engine = create_engine(database_url)
         try:

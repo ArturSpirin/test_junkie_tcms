@@ -1,4 +1,5 @@
-"""Per-tool MCP usage: one `mcp_tool_stat` row per org, tool, actor and UTC hour.
+"""Per-tool MCP usage: one `mcp_tool_stat` row per org, tool, actor and UTC hour, and one `mcp_tool_call` row
+per call (its status and latency), kept 7 days.
 
 `call_tool` records each call after its result is built, in a worker thread with its own session, outside
 the API call's transaction. Response sizes go into a fixed log2 histogram, so p50/p95 are bucket upper
@@ -14,12 +15,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms.db.base import utcnow
-from test_junkie_tcms.db.models import McpToolStat
+from test_junkie_tcms.db.models import McpToolCall, McpToolStat
 
 log = logging.getLogger(__name__)
 
 HIST_BUCKETS = 24
 RETENTION = timedelta(days=90)
+CALL_RETENTION = timedelta(days=7)
 
 
 def now() -> datetime:
@@ -75,9 +77,12 @@ def _find(db: Session, org_id: str, tool: str, actor_id: str, hour: datetime) ->
     ).one_or_none()
 
 
-def record(sessionmaker, org_id: str, actor_id: str, tool: str, error: bool, size: int) -> None:
-    """Add one call to its hour's row. A new row also deletes the org's rows past retention."""
-    hour = hour_of(now())
+def record(sessionmaker, org_id: str, actor_id: str, tool: str, status: int, size: int, ms: int) -> None:
+    """Add one call to its hour's row and insert its call row, in one transaction. A new hour row also deletes
+    the org's hour rows past `RETENTION` and its call rows past `CALL_RETENTION`."""
+    at = now()
+    hour = hour_of(at)
+    error = status >= 400
     for attempt in range(2):
         db = sessionmaker()
         try:
@@ -86,6 +91,11 @@ def record(sessionmaker, org_id: str, actor_id: str, tool: str, error: bool, siz
                 db.execute(
                     delete(McpToolStat).where(
                         McpToolStat.org_id == org_id, McpToolStat.hour < hour - RETENTION
+                    )
+                )
+                db.execute(
+                    delete(McpToolCall).where(
+                        McpToolCall.org_id == org_id, McpToolCall.at < at - CALL_RETENTION
                     )
                 )
                 row = McpToolStat(
@@ -97,6 +107,7 @@ def record(sessionmaker, org_id: str, actor_id: str, tool: str, error: bool, siz
                     errors=0,
                     resp_bytes_sum=0,
                     resp_bytes_hist=[0] * HIST_BUCKETS,
+                    error_codes={},
                 )
                 db.add(row)
             hist = list(row.resp_bytes_hist)
@@ -105,6 +116,15 @@ def record(sessionmaker, org_id: str, actor_id: str, tool: str, error: bool, siz
             row.errors += int(error)
             row.resp_bytes_sum += size
             row.resp_bytes_hist = hist
+            if error:
+                codes = dict(row.error_codes or {})  # reassigned, so the JSON change is flushed
+                codes[str(status)] = codes.get(str(status), 0) + 1
+                row.error_codes = codes
+            db.add(
+                McpToolCall(
+                    org_id=org_id, at=at, tool=tool, actor_id=actor_id, status=status, ms=ms, resp_bytes=size
+                )
+            )
             db.commit()
             return
         except IntegrityError:
@@ -116,9 +136,9 @@ def record(sessionmaker, org_id: str, actor_id: str, tool: str, error: bool, siz
             db.close()
 
 
-def safe_record(sessionmaker, org_id: str, actor_id: str, tool: str, error: bool, size: int) -> None:
+def safe_record(sessionmaker, org_id: str, actor_id: str, tool: str, status: int, size: int, ms: int) -> None:
     """`record`, but stats never fail a tool call."""
     try:
-        record(sessionmaker, org_id, actor_id, tool, error, size)
+        record(sessionmaker, org_id, actor_id, tool, status, size, ms)
     except Exception:
         log.exception("MCP stats: could not record a call to %s", tool)

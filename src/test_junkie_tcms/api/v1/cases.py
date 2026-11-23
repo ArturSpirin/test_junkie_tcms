@@ -14,6 +14,7 @@ from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.if_match import if_match, stale
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
+from test_junkie_tcms.api.selection import descendants, feature_children
 from test_junkie_tcms.api.v1.catalog import (
     get_product,
     product_features,
@@ -43,7 +44,7 @@ from test_junkie_tcms.api.v1.schemas import (
 from test_junkie_tcms.auth.deps import OrgContext, get_db, require_scope
 from test_junkie_tcms.auth.scopes import READ, WRITE_CASES
 from test_junkie_tcms.db.base import new_id, utcnow
-from test_junkie_tcms.db.models import CaseVersion, CaseVersionTag, Feature, Product, Tag, TestCase
+from test_junkie_tcms.db.models import CaseVersion, CaseVersionTag, Product, Tag, TestCase
 from test_junkie_tcms.richtext import doc_to_md, doc_to_text, empty_doc
 
 router = APIRouter(tags=["cases"])
@@ -142,21 +143,7 @@ def version_tags(db: Session, version_ids: list[str]) -> dict[str, list[str]]:
 
 def subtree(db: Session, org_id: str, product_id: str, feature_ids: list[str]) -> set[str]:
     """The features and every feature under them."""
-    children: dict[str | None, list[str]] = {}
-    for f_id, parent in db.execute(
-        select(Feature.id, Feature.parent_id).where(
-            Feature.org_id == org_id, Feature.product_id == product_id
-        )
-    ):
-        children.setdefault(parent, []).append(f_id)
-    seen: set[str] = set()
-    todo = list(feature_ids)
-    while todo:
-        f_id = todo.pop()
-        if f_id not in seen:
-            seen.add(f_id)
-            todo.extend(children.get(f_id, []))
-    return seen
+    return descendants(feature_children(db, org_id, product_id), feature_ids)
 
 
 ## Content: what a version holds
@@ -165,6 +152,7 @@ def subtree(db: Session, org_id: str, product_id: str, feature_ids: list[str]) -
 def content_of(v: CaseVersion, tags: list[str]) -> dict[str, Any]:
     return {
         "title": v.title,
+        "description": v.description,
         "preconditions": v.preconditions,
         "steps": v.steps,
         "priority": v.priority,
@@ -196,6 +184,8 @@ def apply_fields(body: CaseFields, current: dict[str, Any]) -> dict[str, Any]:
     title = getattr(body, "title", None)
     if title is not None:
         new["title"] = title
+    if body.description is not None:
+        new["description"] = _to_doc("description", body.description)
     if body.preconditions is not None:
         new["preconditions"] = _to_doc("preconditions", body.preconditions)
     if body.steps is not None:
@@ -237,7 +227,7 @@ def _steps_md(steps: list[dict[str, Any]]) -> list[dict[str, str]]:
 
 
 def _printable(field: str, value: Any) -> Any:
-    if field == "preconditions":
+    if field in ("description", "preconditions"):
         return doc_to_md(value)
     if field == "steps":
         return _steps_md(value)
@@ -292,6 +282,8 @@ def add_version(
         version=number,
         title=content["title"],
         title_text=content["title"],
+        description=content["description"],
+        description_text=doc_to_text(content["description"]),
         preconditions=content["preconditions"],
         preconditions_text=doc_to_text(content["preconditions"]),
         steps=content["steps"],
@@ -323,7 +315,10 @@ def create_case(
 ) -> tuple[TestCase, CaseVersion, dict[str, Any]]:
     require_active_product(db, product.id)
     product_features(db, ctx, product.id, [feature_id])
-    content = apply_fields(body, {"title": title, "preconditions": empty_doc(), "steps": [], **DEFAULTS})
+    content = apply_fields(
+        body,
+        {"title": title, "description": empty_doc(), "preconditions": empty_doc(), "steps": [], **DEFAULTS},
+    )
     content["title"] = title
     number = db.execute(
         update(Product)
@@ -401,6 +396,7 @@ def case_out(db: Session, case: TestCase, v: CaseVersion, tags: list[str], mode:
         feature_id=case.feature_id,
         current_version=case.current_version,
         title=v.title,
+        description=rich_out(v.description, mode),
         preconditions=rich_out(v.preconditions, mode),
         steps=_steps_out(v.steps, mode),
         priority=v.priority,
@@ -431,6 +427,7 @@ def version_out(db: Session, case: TestCase, v: CaseVersion, mode: RichMode) -> 
         key=case_key(product, case),
         version=v.version,
         title=v.title,
+        description=rich_out(v.description, mode),
         preconditions=rich_out(v.preconditions, mode),
         steps=_steps_out(v.steps, mode),
         priority=v.priority,

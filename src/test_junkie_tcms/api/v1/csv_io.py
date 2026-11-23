@@ -21,12 +21,25 @@ from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
 from test_junkie_tcms.api.idempotency import Idem, idempotency
+from test_junkie_tcms.api.if_match import if_match
 from test_junkie_tcms.api.operations import op
-from test_junkie_tcms.api.v1.cases import CASE_KEY, case_key, content_of, subtree, upsert_item, version_tags
-from test_junkie_tcms.api.v1.catalog import get_feature, get_product, require_active_product
-from test_junkie_tcms.api.v1.md_bundle import FileError, md_to_row, read_bundle, write_bundle
+from test_junkie_tcms.api.v1.cases import (
+    CASE,
+    CASE_KEY,
+    _check_editable,
+    case_key,
+    content_of,
+    current_out,
+    db_current,
+    get_case,
+    subtree,
+    upsert_item,
+    version_tags,
+)
+from test_junkie_tcms.api.v1.catalog import get_feature, get_product, require_active_product, rich_mode
+from test_junkie_tcms.api.v1.md_bundle import FileError, case_to_md, md_to_row, read_bundle, write_bundle
 from test_junkie_tcms.api.v1.report_schemas import ExportIn, ImportIn, ImportOut
-from test_junkie_tcms.api.v1.schemas import CaseBulkItem
+from test_junkie_tcms.api.v1.schemas import CaseBulkItem, CaseMarkdownIn, CaseMarkdownOut, CaseOut, RichMode
 from test_junkie_tcms.auth.deps import OrgContext, get_db, require_scope
 from test_junkie_tcms.auth.scopes import READ, WRITE_CASES
 from test_junkie_tcms.db.models import CaseVersion, Feature, Product, TestCase
@@ -41,6 +54,7 @@ COLUMNS = (
     "version",
     "feature",
     "title",
+    "description",
     "preconditions",
     "steps",
     "priority",
@@ -52,6 +66,8 @@ COLUMNS = (
     "links",
     "custom",
 )
+# The header before cases had a description; its rows keep the stored description on an edit.
+LEGACY_COLUMNS = tuple(c for c in COLUMNS if c != "description")
 TARGETS = {*COLUMNS, "step_action", "step_expected"}
 SEP = " > "
 MAX_IMPORT = 5 * 1024 * 1024
@@ -123,9 +139,9 @@ def exports_create(
     for c in cases:
         writer.writerow(
             [
-                *(c[name] for name in COLUMNS[:5]),
+                *(c[name] for name in COLUMNS[:6]),
                 json.dumps(c["steps"], ensure_ascii=False),
-                *(c[name] for name in COLUMNS[6:11]),
+                *(c[name] for name in COLUMNS[7:12]),
                 json.dumps(c["tags"], ensure_ascii=False),
                 json.dumps(c["links"], ensure_ascii=False),
                 json.dumps(c["custom"], ensure_ascii=False, sort_keys=True),
@@ -156,31 +172,84 @@ def _export_cases(db: Session, ctx: OrgContext, p: Product, body: ExportIn) -> l
     rows = list(db.execute(query.order_by(TestCase.number)))
     tags = version_tags(db, [v.id for _, v in rows])
     paths = feature_paths(db, ctx.org.id, p.id)
-    out = []
-    for case, v in rows:
-        c = content_of(v, tags[v.id])
-        out.append(
-            {
-                "key": case_key(p, case),
-                "version": case.current_version,
-                "feature": paths[case.feature_id],
-                "title": c["title"],
-                "preconditions": doc_to_md(c["preconditions"]),
-                "steps": [
-                    {"id": s["id"], "action": doc_to_md(s["action"]), "expected": doc_to_md(s["expected"])}
-                    for s in c["steps"]
-                ],
-                "priority": c["priority"],
-                "type": c["type"],
-                "status": c["status"],
-                "automation": c["automation"],
-                "automation_ref": c["automation_ref"] or "",
-                "tags": c["tags"],
-                "links": c["links"],
-                "custom": c["custom"],
-            }
-        )
-    return out
+    return [_export_row(p, case, v, tags[v.id], paths) for case, v in rows]
+
+
+def _export_row(
+    p: Product, case: TestCase, v: CaseVersion, tags: list[str], paths: dict[str, str]
+) -> dict[str, Any]:
+    c = content_of(v, tags)
+    return {
+        "key": case_key(p, case),
+        "version": case.current_version,
+        "feature": paths[case.feature_id],
+        "title": c["title"],
+        "description": doc_to_md(c["description"]),
+        "preconditions": doc_to_md(c["preconditions"]),
+        "steps": [
+            {"id": s["id"], "action": doc_to_md(s["action"]), "expected": doc_to_md(s["expected"])}
+            for s in c["steps"]
+        ],
+        "priority": c["priority"],
+        "type": c["type"],
+        "status": c["status"],
+        "automation": c["automation"],
+        "automation_ref": c["automation_ref"] or "",
+        "tags": c["tags"],
+        "links": c["links"],
+        "custom": c["custom"],
+    }
+
+
+## One case as Markdown
+
+
+@router.get(CASE + "/markdown", response_model=CaseMarkdownOut, **op("cases_markdown_get", READ, "cases"))
+def cases_markdown_get(
+    case: str,
+    response: Response,
+    ctx: OrgContext = Depends(require_scope(READ)),
+    db: Session = Depends(get_db),
+):
+    """The case's current version as one md-bundle file, the same file an `md-bundle` export holds for
+    it. The ETag is the version, for `cases_markdown_put`'s `If-Match`."""
+    c = get_case(db, ctx, case)
+    p = db.get(Product, c.product_id)
+    v = db_current(db, c)
+    row = _export_row(p, c, v, version_tags(db, [v.id])[v.id], feature_paths(db, ctx.org.id, p.id))
+    response.headers["ETag"] = f'"{c.current_version}"'
+    return CaseMarkdownOut(case_id=c.id, key=row["key"], version=c.current_version, markdown=case_to_md(row))
+
+
+@router.put(CASE + "/markdown", response_model=CaseOut, **op("cases_markdown_put", WRITE_CASES, "cases"))
+def cases_markdown_put(
+    case: str,
+    body: CaseMarkdownIn,
+    response: Response,
+    expected: int = Depends(if_match),
+    mode: RichMode = Depends(rich_mode),
+    ctx: OrgContext = Depends(require_scope(WRITE_CASES)),
+    db: Session = Depends(get_db),
+):
+    """Save an edited `cases_markdown_get` file as the case's next version, through the same parser and
+    write path as an `md-bundle` import. The file's `key` must be this case and its `version` the
+    `If-Match` one; a file with no description section keeps the stored description; a changed `feature`
+    is 422 (use `cases_move`). An unchanged file writes no version."""
+    c = get_case(db, ctx, case)
+    p = db.get(Product, c.product_id)
+    _check_editable(c, expected)
+    try:
+        row = md_to_row(body.markdown)
+        if row["key"].strip() != case_key(p, c):
+            raise RowError("key", f"the file is for {row['key'].strip() or 'no case'}, not {case_key(p, c)}")
+        item = _item(db, ctx, p, row, feature_paths(db, ctx.org.id, p.id), create=False)
+    except (FileError, RowError) as e:
+        raise ProblemError(422, e.detail, errors=[{"row": 1, "column": e.column, "detail": e.detail}]) from e
+    item = item.model_copy(update={"change_note": body.change_note})
+    _, _, result = upsert_item(db, ctx, p, item, "markdown", action="case.update")
+    if result != "unchanged":
+        db.commit()
+    return current_out(db, c, mode, response)
 
 
 ## Import
@@ -302,6 +371,7 @@ def _item(
         "expected_version": int(row["version"]) if key else None,
         "feature_id": feature_id,
         "title": row["title"] or None,
+        "description": {"markdown": row["description"]},
         "preconditions": {"markdown": row["preconditions"]},
         "steps": [
             {
@@ -320,7 +390,7 @@ def _item(
         if row[column].strip():
             data[column] = row[column].strip()
     if key:
-        for column in ("preconditions", "steps", "automation_ref", "tags", "links", "custom"):
+        for column in ("description", "preconditions", "steps", "automation_ref", "tags", "links", "custom"):
             if column not in given:
                 del data[column]
     try:
@@ -374,9 +444,9 @@ def _csv_rows(text: str, mapping: dict[str, str | None] | None, errors: list) ->
     reader = csv.DictReader(io.StringIO(text))
     header = list(reader.fieldnames or ())
     if mapping is None:
-        if tuple(header) != COLUMNS:
+        if tuple(header) not in (COLUMNS, LEGACY_COLUMNS):
             raise HTTPException(422, f"The header must be: {','.join(COLUMNS)}")
-        ours = {c: c for c in COLUMNS}
+        ours = {c: c for c in header}
     else:
         ours = apply_mapping(header, mapping)
     theirs = {t: c for c, t in ours.items()}

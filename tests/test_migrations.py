@@ -1,5 +1,8 @@
 """Migrations build the models' schema, and the database itself keeps audit_event append-only."""
 
+import json
+
+from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
@@ -14,6 +17,8 @@ from test_junkie_tcms.db.migrate import alembic_config
 from test_junkie_tcms.db.models import AuditEvent
 from test_junkie_tcms.db.session import AuditAppendOnlyError, make_engine, make_sessionmaker
 from tests import support
+from tests.catalog_seed import seed
+from tests.execution_seed import make_case
 
 
 def _count(engine) -> int:
@@ -89,6 +94,24 @@ class Migrations:
             migrate.upgrade(database_url)
             with engine.connect() as conn:
                 assert conn.scalar(text("SELECT status FROM test_plan WHERE id = 'T1'")) == "active"
+        finally:
+            engine.dispose()
+
+    @test()
+    def test_0012_gives_existing_versions_an_empty_description(self, suite_parameter):
+        s = seed(self.env.owner)
+        make_case(self.env.owner, s["product"]["id"], s["child"]["id"], "Card")
+        database_url = self.env.database_url
+        command.downgrade(alembic_config(database_url), "0011")
+        migrate.upgrade(database_url)
+        engine = create_engine(database_url)
+        try:
+            with engine.connect() as conn:
+                [(doc, plain)] = conn.execute(text("SELECT description, description_text FROM case_version"))
+            assert (json.loads(doc) if isinstance(doc, str) else doc, plain) == (
+                {"type": "doc", "content": []},
+                "",
+            )
         finally:
             engine.dispose()
 

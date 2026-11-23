@@ -21,7 +21,7 @@ from tests.test_mcp_server import call, rpc, token, tool_names
 
 T0 = datetime(2026, 11, 14, 10, 15, tzinfo=UTC)
 MCP_OPS = {"mcp_tools_list", "mcp_usage", "mcp_server_get", "mcp_clients", "mcp_updates"}
-TOOL_COUNT = 92
+TOOL_COUNT = 94
 
 
 def make_clock(env):

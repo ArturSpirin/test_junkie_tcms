@@ -68,7 +68,7 @@ class McpDrift:
         assert unmarked_routes(app) == []
         tools = build_tools(app)
         assert drift(app, tools) == []
-        assert len(tools) == 92
+        assert len(tools) == 94
 
     @test()
     def test_tools_match_the_snapshot(self, suite_parameter):

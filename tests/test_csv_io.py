@@ -129,6 +129,26 @@ class CsvIo:
         assert (case["title"], case["current_version"]) == ("Pay by saved card", 2)
 
     @test()
+    def test_export_has_the_description_and_an_old_header_keeps_it(self, suite_parameter):
+        owner = self.env.owner
+        s = source(owner)
+        ok(
+            owner.patch(
+                url("/cases/PAY-1"),
+                json={"description": {"markdown": "Card payments"}},
+                headers={"If-Match": '"1"'},
+            )
+        )
+        items = rows(export(owner, s["product"]["id"]))
+        assert items[0]["description"].strip() == "Card payments"
+        old = [{k: v for k, v in r.items() if k != "description"} for r in items]
+        old[0]["title"] = "Pay by saved card"
+        out = ok(do_import(owner, s["product"]["id"], to_csv(old)))
+        assert (out["created"], out["updated"], out["unchanged"]) == (0, 1, 1)
+        case = ok(owner.get(url("/cases/PAY-1")))
+        assert (case["title"], case["description"].strip()) == ("Pay by saved card", "Card payments")
+
+    @test()
     def test_version_mismatch_rejects_the_whole_import(self, suite_parameter):
         owner = self.env.owner
         s = source(owner)

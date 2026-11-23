@@ -8,7 +8,7 @@ from test_junkie_tcms import audit
 from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
-from test_junkie_tcms.api.selection import plan_cases
+from test_junkie_tcms.api.selection import ProductIndex, entry_counts, plan_cases
 from test_junkie_tcms.api.selection import plan_entries as _entries
 from test_junkie_tcms.api.v1.cases import case_key, resolve_cases
 from test_junkie_tcms.api.v1.catalog import (
@@ -53,7 +53,10 @@ PLANS = "/orgs/{org}/products/{product}/plans"
 PLAN = "/orgs/{org}/plans/{id}"
 
 
-def plan_out(db: Session, plan: TestPlan, mode: RichMode) -> PlanOut:
+def plan_out(db: Session, plan: TestPlan, mode: RichMode, index: ProductIndex | None = None) -> PlanOut:
+    """The plan with each entry's case counts; pass the product's index when listing many plans."""
+    entries = _entries(db, plan)
+    counts = entry_counts(entries, index or ProductIndex.load(db, plan.org_id, plan.product_id))
     return PlanOut(
         id=plan.id,
         product_id=plan.product_id,
@@ -61,7 +64,12 @@ def plan_out(db: Session, plan: TestPlan, mode: RichMode) -> PlanOut:
         name=plan.name,
         description=rich_out(plan.description, mode),
         status=plan.status,
-        entries=[PlanEntryOut.model_validate(e) for e in _entries(db, plan)],
+        entries=[
+            PlanEntryOut.model_validate(e).model_copy(
+                update={"cases": counts[e.id][0], "new_cases": counts[e.id][1]}
+            )
+            for e in entries
+        ],
         created_at=plan.created_at,
         updated_at=plan.updated_at,
     )
@@ -136,7 +144,8 @@ def plans_list(
     if not include_archived:
         query = query.where(TestPlan.status != "archived")
     rows, cursor = paginate(db, query, TestPlan.id, params)
-    return Page[PlanOut](items=[plan_out(db, t, mode) for t in rows], next_cursor=cursor)
+    index = ProductIndex.load(db, ctx.org.id, p.id)
+    return Page[PlanOut](items=[plan_out(db, t, mode, index) for t in rows], next_cursor=cursor)
 
 
 @router.post(PLANS, status_code=201, response_model=PlanOut, **op("plans_create", WRITE_PLANNING, "planning"))

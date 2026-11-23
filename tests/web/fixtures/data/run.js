@@ -1,6 +1,7 @@
 /* Run view data, in the shape data/run.js gives: one cycle's queue, the current case with its steps, and the
    result being recorded. Demo data only. */
 const qcase = (id, key, title, status) => ({ id, key, title, status });
+const opt = (v, label, hint, icon) => ({ v, label, hint, icon });
 
 export default {
   base: {
@@ -22,7 +23,7 @@ export default {
     current: { q: 2, step: 1, res: ["success"] },
     /* pinned case_version, newest version (0 = pinned is newest), attempt */
     case: {
-      id: "cc_3", key: "PAY-118", title: "Checkout with a card that needs a 3-D Secure challenge after the issuer times out", pin: 2, newer: 3, attempt: 1,
+      id: "cc_3", key: "PAY-118", title: "Checkout with a card that needs a 3-D Secure challenge after the issuer times out", pin: 2, newer: 3, attempt: 1, build: "2.14.0-rc3",
       preconditions: "Stripe test mode; 3-D Secure test cards enabled", preShort: "Stripe test mode…",
       /* step action and expected result are stored rich text (HTML) */
       steps: [
@@ -38,7 +39,29 @@ export default {
       files: [{ name: "3ds-timeout-spinner.png", size: "412 KB" }, { name: "har-checkout.har", size: "1.8 MB" }],
       defectUrl: "https://issues.example.com/browse/PAY-2291", defectKey: "PAY-2291"
     },
-    previous: null
+    previous: null,
+    /* the skip reasons results_create takes, and the skip being recorded */
+    skipReasons: [
+      { group: "Blocked" },
+      opt("defect", "Blocked by a defect", "Link the defect below", "ban"),
+      opt("env", "Environment down", "the environment or a dependency is down", "server"),
+      opt("data", "Test data missing", "an account or fixture is not available", "doc"),
+      opt("dep", "Depends on a failed step", "an earlier step failed", "link"),
+      { group: "Not applicable" },
+      opt("na_env", "Not applicable on this environment", "", "eyeoff"),
+      opt("flag", "Feature flag off", "", "flag"),
+      "-",
+      opt("other", "Other…", "Write the reason in the comment", "more")
+    ],
+    skip: { reason: "defect", blockingDefect: "https://issues.example.com/browse/PAY-2291" },
+    /* the builds recorded for the product, newest first (cycle_builds) */
+    builds: [
+      { group: "Recorded builds" },
+      opt("2.14.0-rc3", "2.14.0-rc3", "last result Fri Nov 13, 9:10 AM", "build"),
+      opt("2.14.0-rc2", "2.14.0-rc2", "last result Thu Nov 12, 4:20 PM", "build"),
+      "-",
+      opt("", "Not recorded", "", "dotted")
+    ]
   },
   states: {
     "step-failed": { current: { res: ["success", "fail"] } },

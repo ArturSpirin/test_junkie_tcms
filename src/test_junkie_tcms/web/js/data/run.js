@@ -1,14 +1,34 @@
 /* Run adapter (docs/app-api-contract.md §10): cycles_get, cycle_cases_list (the queue, in run order),
    cases_version_get (the pinned version's steps as the stored doc, drawn as HTML, and its preconditions),
-   results_list (attempts so far) and releases_get for the version label. Writes: results_create and
-   attachments_upload_base64. Not served yet (F4), so left out: per-step ignore and cancel, the skip reason code
-   (and its blocking defect), the build under test, and undo.
+   results_list (attempts so far), releases_get for the version label and cycle_builds (the builds under test
+   recorded for the product, newest first). Writes: results_create (with every Test Junkie step status, the skip
+   reason and the build) and attachments_upload_base64. Result undo is not in the API yet.
    URL: ?view=run&id=<cycle>[&cc=<cycle case>][&done=<cycle case just saved>]#<ui>. With no cc the case is the first
    untested one in run order; none left is "complete". */
 import { all, get, org, post } from "../api.js";
 import { plain } from "./map.js";
 
 const UI = ["help", "step-failed", "skip-reason", "drop", "upload-error"];
+
+/* a dropdown option; icon is an icon name the view turns into its svg */
+const opt = (v, label, hint, icon) => ({ v, label, hint, icon });
+/* the skip reasons results_create takes (SKIP_REASONS); "other" needs the comment to say what it is */
+const SKIP_REASONS = [
+  { group: "Blocked" },
+  opt("defect", "Blocked by a defect", "Link the defect below", "ban"),
+  opt("env", "Environment down", "the environment or a dependency is down", "server"),
+  opt("data", "Test data missing", "an account or fixture is not available", "doc"),
+  opt("dep", "Depends on a failed step", "an earlier step failed", "link"),
+  { group: "Not applicable" },
+  opt("na_env", "Not applicable on this environment", "", "eyeoff"),
+  opt("flag", "Feature flag off", "", "flag"),
+  "-",
+  opt("other", "Other…", "Write the reason in the comment", "more")
+];
+
+/* the build dropdown: the builds recorded for the product, newest first, then "not recorded" (no build sent) */
+const buildOpts = (builds) => (builds.length ? [{ group: "Recorded builds" }] : [])
+  .concat(builds.map((b) => opt(b.build, b.build, `last result ${stamp(b.last_at)}`, "build")), builds.length ? ["-"] : [], [opt("", "Not recorded", "", "dotted")]);
 
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
@@ -71,16 +91,20 @@ function savedOf(cc, attempts) {
 export async function load(params, ctx) {
   const path = (...rest) => org(ctx.org.id, ...rest);
   const c = await get(path("cycles", params.id));
-  const [cases, release] = await Promise.all([
+  const [cases, release, builds] = await Promise.all([
     all(path("cycles", c.id, "cases"), { sort: "position" }),
-    c.release_id ? get(path("releases", c.release_id)) : null
+    c.release_id ? get(path("releases", c.release_id)) : null,
+    get(path("cycles", c.id, "builds"))
   ]);
   const data = {
     product: productOf(ctx, c.product_id),
     cycle: { id: c.id, queue: c.name, version: release ? release.version : "", environment: c.environment || "", releaseId: c.release_id || "", status: c.status },
     queue: cases.map((x) => ({ id: x.id, key: x.key, title: x.title, status: x.status })),
     queueOver: {},
-    uploadError: null
+    uploadError: null,
+    skipReasons: SKIP_REASONS,
+    skip: { reason: "", blockingDefect: "" },
+    builds: buildOpts(builds)
   };
   const q = params.cc ? cases.findIndex((x) => x.id === params.cc) : cases.findIndex((x) => x.status === "untested");
   if (params.cc && q < 0) throw new Error(`Cycle case ${params.cc} is not in this cycle.`);
@@ -93,13 +117,16 @@ export async function load(params, ctx) {
   ]);
   const pre = plain(v.preconditions);
   data.current = { q, step: 0, res: [] };
+  const last = attempts[attempts.length - 1];
   data.case = {
     id: cc.id, key: cc.key, title: cc.title, pin: cc.case_version, newer: cc.current_version > cc.case_version ? cc.current_version : 0,
     attempt: attempts.length + 1, preconditions: pre, preShort: pre.length > 40 ? pre.slice(0, 40) + "…" : pre,
+    /* the build under test: the last attempt's, else the newest recorded for the product, else none */
+    build: (last && last.build) || (builds[0] ? builds[0].build : ""),
     steps: v.steps.map((s) => ({ id: s.id, action: html(s.action.doc), expected: html(s.expected.doc) }))
   };
   data.failure = { actual: "", files: [], defectUrl: "", defectKey: "" };
-  data.previous = attempts.length ? previous(attempts[attempts.length - 1]) : null;
+  data.previous = last ? previous(last) : null;
   if (saved && saved.length) {
     data.saved = savedOf(cases.find((x) => x.id === params.done) || { key: "" }, saved);
     return { state: "submitted", data };
@@ -110,7 +137,8 @@ export async function load(params, ctx) {
 
 /* The view's writes; each resolves to what the server returns. */
 export const actions = {
-  /* body: a ResultCreate { status, comment, duration_ms, steps, defects } -> ResultOut (the next attempt) */
+  /* body: a ResultCreate { status, comment, duration_ms, steps, defects, skip_reason, build } -> ResultOut (the
+     next attempt) */
   submit: (cycleCaseId, body, ctx) => post(org(ctx.org.id, "cycle-cases", cycleCaseId, "results"), body),
   /* file: { filename, mime, content_base64 } -> AttachmentOut (a 413 when it's too large) */
   attach: (productKey, file, ctx) => post(org(ctx.org.id, "products", productKey, "attachments", "base64"), file)

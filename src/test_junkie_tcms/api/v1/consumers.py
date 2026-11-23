@@ -14,6 +14,7 @@ from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, count, page_params, paginate
 from test_junkie_tcms.api.v1.cases import case_key
+from test_junkie_tcms.api.v1.catalog import name_filter, name_q
 from test_junkie_tcms.api.v1.execution_schemas import JobOut
 from test_junkie_tcms.api.v1.job_queue import (
     HELD,
@@ -152,6 +153,7 @@ def consumers_list(
         None, description="Revoked consumers show only with status=revoked"
     ),
     product: str | None = Query(None, description="Only consumers that serve this product id"),
+    q: str | None = name_q(),
     ctx: OrgContext = Depends(require_scope(READ)),
     params: PageParams = Depends(page_params),
     db: Session = Depends(get_db),
@@ -176,6 +178,7 @@ def consumers_list(
     visible = _visible(ctx)
     if visible is not None:
         query = query.where(visible)
+    query = name_filter(query, q, Consumer.name)
     rows, cursor, total = paginate(db, query, Consumer.id, params)
     ids = [r.id for r in rows]
     products = consumer_product_ids(db, ids)

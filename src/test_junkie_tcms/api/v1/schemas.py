@@ -238,6 +238,7 @@ class ProductOut(BaseModel):
     key: str
     name: str
     description: RichOut
+    owner_actor_id: str | None = Field(None, description="The product's owner: an active member's actor")
     archived_at: UtcDateTime | None = None
     created_at: UtcDateTime
     updated_at: UtcDateTime
@@ -249,11 +250,16 @@ class ProductCreate(BaseModel):
     key: str = Field(pattern=r"^[A-Z][A-Z0-9]{1,9}$", description="Short key, e.g. PAY; can't change later")
     name: Name
     description: RichIn | None = None
+    owner_actor_id: str | None = Field(None, description="An active member's actor id; else 422")
+    copy_features_from: str | None = Field(
+        None, description="A product (id or key) in this org whose live feature tree the new product copies"
+    )
 
 
 class ProductUpdate(Patch):
     name: Name | None = None
     description: RichIn | None = None
+    owner_actor_id: str | None = Field(None, description="An active member's actor id; null clears it")
 
 
 class FeatureOut(BaseModel):

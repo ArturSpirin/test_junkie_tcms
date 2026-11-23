@@ -14,6 +14,8 @@ from test_junkie_tcms.api.v1.cases import case_key, resolve_cases
 from test_junkie_tcms.api.v1.catalog import (
     get_plan,
     get_product,
+    name_filter,
+    name_q,
     product_features,
     require_active_product,
     rich_mode,
@@ -134,6 +136,7 @@ def _entry_changes(e: PlanEntry) -> dict:
 def plans_list(
     product: str,
     include_archived: bool = Query(False),
+    q: str | None = name_q(),
     params: PageParams = Depends(page_params),
     mode: RichMode = Depends(rich_mode),
     ctx: OrgContext = Depends(require_scope(READ)),
@@ -143,6 +146,7 @@ def plans_list(
     query = select(TestPlan).where(TestPlan.org_id == ctx.org.id, TestPlan.product_id == p.id)
     if not include_archived:
         query = query.where(TestPlan.status != "archived")
+    query = name_filter(query, q, TestPlan.name)
     rows, cursor, total = paginate(db, query, TestPlan.id, params)
     index = ProductIndex.load(db, ctx.org.id, p.id)
     return Page[PlanOut](items=[plan_out(db, t, mode, index) for t in rows], next_cursor=cursor, total=total)

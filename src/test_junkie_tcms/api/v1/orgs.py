@@ -8,6 +8,7 @@ from test_junkie_tcms import audit
 from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
+from test_junkie_tcms.api.v1.catalog import name_filter, name_q
 from test_junkie_tcms.api.v1.schemas import (
     ActorDirectory,
     AgentCreate,
@@ -123,11 +124,17 @@ def _active_owners(db: Session, org_id: str) -> int:
 
 @router.get(ORG + "/members", response_model=Page[MemberOut], **op("members_list", READ, "admin"))
 def members_list(
+    q: str | None = name_q("the name or email"),
     ctx: OrgContext = Depends(require_scope(READ)),
     params: PageParams = Depends(page_params),
     db: Session = Depends(get_db),
 ):
-    query = select(Membership).where(Membership.org_id == ctx.org.id, Membership.removed_at.is_(None))
+    query = (
+        select(Membership)
+        .join(User, User.id == Membership.user_id)
+        .where(Membership.org_id == ctx.org.id, Membership.removed_at.is_(None))
+    )
+    query = name_filter(query, q, User.name, User.email)
     rows, cursor, total = paginate(db, query, Membership.id, params)
     return Page[MemberOut](items=[_member_out(db, m) for m in rows], next_cursor=cursor, total=total)
 

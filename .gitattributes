@@ -1,2 +1,4 @@
 # The server sends the web shell's bytes as checked out; keep them LF on every OS.
 src/test_junkie_tcms/web/** text eol=lf
+# Fonts are bytes: never convert their line endings.
+src/test_junkie_tcms/web/**/*.woff2 binary

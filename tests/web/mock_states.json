@@ -199,5 +199,22 @@
     "search-empty",
     "pair-noname",
     "rename"
+  ],
+  "signin": [
+    "default",
+    "focus",
+    "submitting",
+    "wrong",
+    "offline",
+    "invite"
+  ],
+  "accept": [
+    "valid",
+    "mismatch",
+    "short",
+    "submitting",
+    "exists",
+    "signedin",
+    "dead"
   ]
 }

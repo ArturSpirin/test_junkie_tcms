@@ -1,211 +1,248 @@
-/* MCP server view data. Demo data only. */
-/* calls per range: the demo scales each tool's calls today by the range length */
-const F = { today: 1, "7d": 6.8, "14d": 12.1, "30d": 23.4, custom: 7.3 };
-const perRange = (today) => Object.fromEntries(Object.entries(F).map(([r, f]) => [r, Math.round(today * f)]));
-/* kind: r read-only, i idempotent, d destructive, w write; tokCall ~tokens per call (p50 response), tokDef ~definition tokens */
-const tool = (name, toolset, scope, desc, kind, tokCall, tokDef, today) => ({ name, toolset, scope, desc, kind, tokCall, tokDef, calls: perRange(today) });
-/* one chart column: axis label, tooltip label and the calls in it; later() is a column of today still to come */
-const col = (x, tip, reads, writes, errors) => ({ x, tip, reads, writes, errors });
-const later = (x) => ({ x, later: true });
-const update = (kind, icon, title, text, at) => ({ kind, icon, title, text, at });
-const param = (arg, where, type, required, note) => ({ arg, where, type, required, note });
-const call = (at, code, ms, tokens, note) => ({ at, code, ms, tokens, note, agent: "triage-bot", for: "dana" });
+/* MCP server adapter (docs/app-api-contract.md §15): mcp_server_get, mcp_tools_list, mcp_usage, mcp_clients,
+   mcp_updates and mcp_calls for the chosen range, and the OpenAPI document for the API's operation count and a
+   tool's operation (path and args). Maps them onto the shapes views/mcp.js renders. The range runs in the
+   browser's zone: hour buckets are grouped into local hours or days. poll() is the live mode's 15 s refresh. */
+import { get, org, page } from "../api.js";
 
-const TOOLS = [
-  tool("products_list", "catalog", "read", "List the org's products (key, name).", "r", 380, 160, 42),
-  tool("features_list", "catalog", "read", "The feature tree of a product.", "r", 1900, 180, 57),
-  tool("features_create", "catalog", "write:catalog", "Add a feature under a parent.", "w", 260, 310, 1),
-  tool("features_move", "catalog", "write:catalog", "Move a feature to a new parent or position.", "w", 240, 260, 0),
-  tool("releases_list", "catalog", "read", "Releases of a product with status and target date.", "r", 640, 190, 22),
-  tool("releases_set_features", "catalog", "write:catalog", "Set the features a release affects (PUT /releases/{id}/features).", "i", 300, 240, 0),
-  tool("search", "catalog", "read", "Search cases, cycles and releases in the org.", "r", 1400, 170, 96),
-  tool("cases_list", "cases", "read", "Cases filtered by feature, tag, q, status, automation.", "r", 2600, 290, 188),
-  tool("cases_get", "cases", "read", "One case at its current version; rich fields as Markdown.", "r", 1100, 150, 312),
-  tool("cases_create", "cases", "write:cases", "Create a case (version 1).", "w", 280, 690, 4),
-  tool("cases_update", "cases", "write:cases", "Save a new version. expected_version (If-Match) is required; a stale one gets 409.", "w", 1100, 640, 37),
-  tool("cases_versions_list", "cases", "read", "Versions of a case with author and change note.", "r", 700, 170, 15),
-  tool("cases_version_get", "cases", "read", "One immutable version of a case.", "r", 1050, 180, 23),
-  tool("cases_restore", "cases", "write:cases", "Copy version n into a new version.", "w", 300, 220, 0),
-  tool("cases_archive", "cases", "write:cases", "Archive a case; versions and results are kept.", "d", 200, 170, 0),
-  tool("cases_bulk_upsert", "cases", "write:cases", "Create or update many cases from Markdown in one call.", "w", 900, 720, 2),
-  tool("exports_create", "cases", "read", "Export cases as csv or md-bundle (runs as a job).", "w", 210, 200, 1),
-  tool("plans_list", "planning", "read", "Test plans of a product.", "r", 420, 160, 9),
-  tool("plans_resolve", "planning", "read", "Preview the cases a plan resolves to.", "r", 1800, 190, 6),
-  tool("cycles_list", "planning", "read", "Cycles with status, release and counts.", "r", 880, 200, 64),
-  tool("cycles_create", "planning", "write:planning", "Start a cycle from a plan, features or cases.", "w", 340, 430, 3),
-  tool("cycles_get", "planning", "read", "One cycle with pinned case versions and status counts.", "r", 1300, 150, 41),
-  tool("cycles_bulk_create", "planning", "write:planning", "One cycle per affected feature of a release (POST /releases/{id}/cycles:bulk).", "w", 520, 380, 1),
-  tool("cycle_cases_list", "planning", "read", "Cases in a cycle with pinned version, assignee and status.", "r", 2400, 240, 133),
-  tool("cycle_cases_refresh_version", "planning", "write:planning", "Move a cycle case to the current case version, only before its first result.", "w", 260, 230, 2),
-  tool("results_create", "execution", "write:execution", "Record a result: success, fail, error, ignore, skip or cancel.", "w", 300, 560, 88),
-  tool("results_list", "execution", "read", "Result attempts of a cycle case.", "r", 760, 170, 27),
-  tool("results_bulk_create", "execution", "write:execution", "Many results by case key or automation_ref (POST /cycles/{id}/results:bulk).", "w", 420, 610, 12),
-  tool("attachments_upload_base64", "execution", "write:execution", "Evidence as base64 JSON, capped at 5 MB. MCP's stand-in for the multipart upload.", "w", 180, 260, 9),
-  tool("reports_release", "reports", "read", "Release readiness per feature, against the case version.", "r", 1600, 180, 19),
-  tool("reports_feature", "reports", "read", "Results for one feature across cycles.", "r", 1200, 160, 7),
-  tool("reports_cycle", "reports", "read", "Status counts and progress of one cycle.", "r", 900, 150, 14),
-  tool("audit_list", "admin", "audit:read", "Audit events by entity, actor and since.", "r", 2200, 220, 0),
-  tool("agents_list", "admin", "admin", "Agents with owner, role and status.", "r", 520, 150, 0),
-  tool("tokens_list", "admin", "admin", "Tokens (prefix only, never the secret).", "r", 610, 150, 0),
-  tool("members_list", "admin", "read", "Members and their roles.", "r", 680, 150, 0),
-  tool("orgs_get", "admin", "read", "The org and its settings.", "r", 300, 140, 0)
-];
-const UPDATES = [
-  update("acc", "spark", "Server v1.0.0 started", "Official mcp Python SDK, version pinned in the scaffold plan. 32 tools in the default toolsets.", "Sat Nov 14, 9:12 AM PT"),
-  update("info", "plus", "Tool list changed: +cycle_cases_refresh_version", "Connected clients were sent notifications/tools/list_changed.", "Fri Nov 13, 4:40 PM PT"),
-  update("ok", "check", "Drift guard passed", "Tool snapshot (names + schema hash 9f3c…e1, header args included) matches /api/v1/openapi.json.", "Fri Nov 13, 4:31 PM PT · CI"),
-  update("warn", "warn", "Drift guard failed, build blocked", "Route releases_set_features had no x-mcp marker. Fixed in the next commit.", "Thu Nov 12, 6:02 PM PT · CI"),
-  update("info", "build", "Schema changed: cases_update", "expected_version (If-Match) is now a required arg; idempotency_key added on every POST tool.", "Wed Nov 11, 2:15 PM PT")
-];
+const OPENAPI = "/api/v1/openapi.json";
+const API_PREFIX = "/api/v1/";
+const METHODS = ["get", "post", "put", "patch", "delete"];
+/* the request headers a tool takes as args (mcp_server/generator.py HEADER_ARGS) */
+const HEADER_ARGS = { "If-Match": "expected_version", "Idempotency-Key": "idempotency_key" };
+const DAYS = { "7d": 7, "14d": 14, "30d": 30 };
+const LIVE = ["today", "7d", "14d", "30d", "tool-detail", "empty"];
+const HOUR = 3600e3;
 
-export default {
-  base: {
-    range: "today",
-    loading: false,
-    server: { up: true, version: "1.0.0", transports: "Streamable HTTP + stdio" },
-    apiOps: 70,
-    toolsets: ["catalog", "cases", "planning", "execution", "reports", "admin"],
-    tools: TOOLS,
-    /* per range: the chart columns, the column that is now (-1: none) and the totals */
-    ranges: {
-      today: { now: 14, totals: { calls: 1236, errors: 24, tokens: 1735324, clients: 3 }, columns: [
-        col("12a", "Sat Nov 14 · 12:00 AM–1:00 AM PT", 11, 4, 0),
-        col("", "Sat Nov 14 · 1:00 AM–2:00 AM PT", 13, 4, 1),
-        col("", "Sat Nov 14 · 2:00 AM–3:00 AM PT", 44, 14, 1),
-        col("3a", "Sat Nov 14 · 3:00 AM–4:00 AM PT", 13, 4, 0),
-        col("", "Sat Nov 14 · 4:00 AM–5:00 AM PT", 11, 4, 0),
-        col("", "Sat Nov 14 · 5:00 AM–6:00 AM PT", 10, 3, 0),
-        col("6a", "Sat Nov 14 · 6:00 AM–7:00 AM PT", 13, 4, 0),
-        col("", "Sat Nov 14 · 7:00 AM–8:00 AM PT", 39, 13, 1),
-        col("", "Sat Nov 14 · 8:00 AM–9:00 AM PT", 66, 21, 1),
-        col("9a", "Sat Nov 14 · 9:00 AM–10:00 AM PT", 113, 37, 5),
-        col("", "Sat Nov 14 · 10:00 AM–11:00 AM PT", 99, 32, 2),
-        col("", "Sat Nov 14 · 11:00 AM–12:00 PM PT", 135, 44, 3),
-        col("12p", "Sat Nov 14 · 12:00 PM–1:00 PM PT", 154, 50, 3),
-        col("", "Sat Nov 14 · 1:00 PM–2:00 PM PT", 113, 37, 5),
-        col("", "Sat Nov 14 · 2:00 PM–3:00 PM PT", 81, 26, 2),
-        later("3p"), later(""), later(""), later("6p"), later(""), later(""), later("9p"), later(""), later("")
-      ] },
-      "7d": { now: 6, totals: { calls: 8406, errors: 177, tokens: 11801888, clients: 4 }, columns: [
-        col("Sun 8", "Sun Nov 8", 470, 152, 10),
-        col("Mon 9", "Mon Nov 9", 1463, 474, 59),
-        col("Tue 10", "Tue Nov 10", 798, 259, 16),
-        col("Wed 11", "Wed Nov 11", 886, 287, 18),
-        col("Thu 12", "Thu Nov 12", 1210, 392, 25),
-        col("Fri 13", "Fri Nov 13", 1046, 339, 42),
-        col("Sat 14", "Sat Nov 14", 342, 111, 7)
-      ] },
-      "14d": { now: 13, totals: { calls: 14944, errors: 299, tokens: 20981134, clients: 4 }, columns: [
-        col("Nov 1", "Nov 1", 416, 135, 8),
-        col("", "Nov 2", 1294, 420, 52),
-        col("Nov 3", "Nov 3", 707, 229, 14),
-        col("", "Nov 4", 784, 254, 16),
-        col("Nov 5", "Nov 5", 1070, 347, 22),
-        col("", "Nov 6", 925, 300, 38),
-        col("Nov 7", "Nov 7", 302, 98, 6),
-        col("", "Nov 8", 258, 84, 5),
-        col("Nov 9", "Nov 9", 1024, 332, 21),
-        col("", "Nov 10", 1181, 383, 48),
-        col("Nov 11", "Nov 11", 595, 193, 12),
-        col("", "Nov 12", 911, 295, 18),
-        col("Nov 13", "Nov 13", 1271, 412, 26),
-        col("", "Nov 14", 321, 104, 13)
-      ] },
-      "30d": { now: 29, totals: { calls: 28868, errors: 550, tokens: 40530205, clients: 4 }, columns: [
-        col("Oct 16", "Oct 16", 388, 126, 8),
-        col("", "Oct 17", 1208, 392, 49),
-        col("", "Oct 18", 660, 214, 13),
-        col("", "Oct 19", 732, 237, 15),
-        col("", "Oct 20", 999, 324, 20),
-        col("Oct 21", "Oct 21", 864, 280, 35),
-        col("", "Oct 22", 282, 91, 6),
-        col("", "Oct 23", 241, 78, 5),
-        col("", "Oct 24", 957, 310, 19),
-        col("", "Oct 25", 1103, 358, 45),
-        col("Oct 26", "Oct 26", 556, 180, 11),
-        col("", "Oct 27", 850, 276, 17),
-        col("", "Oct 28", 1187, 385, 24),
-        col("", "Oct 29", 300, 97, 12),
-        col("", "Oct 30", 207, 67, 4),
-        col("Oct 31", "Oct 31", 942, 306, 19),
-        col("", "Nov 1", 895, 290, 18),
-        col("", "Nov 2", 864, 280, 35),
-        col("", "Nov 3", 636, 206, 13),
-        col("", "Nov 4", 969, 314, 20),
-        col("Nov 5", "Nov 5", 581, 188, 12),
-        col("", "Nov 6", 164, 53, 7),
-        col("", "Nov 7", 841, 273, 17),
-        col("", "Nov 8", 1157, 375, 23),
-        col("", "Nov 9", 714, 232, 14),
-        col("Nov 10", "Nov 10", 742, 241, 30),
-        col("", "Nov 11", 884, 287, 18),
-        col("", "Nov 12", 515, 167, 10),
-        col("", "Nov 13", 344, 112, 7),
-        col("", "Nov 14", 602, 195, 24)
-      ] },
-      custom: { now: -1, totals: { calls: 9024, errors: 187, tokens: 12669550, clients: 2 }, columns: [
-        col("Nov 2", "Nov 2", 482, 156, 10),
-        col("Nov 3", "Nov 3", 1501, 487, 61),
-        col("Nov 4", "Nov 4", 819, 266, 17),
-        col("Nov 5", "Nov 5", 909, 295, 18),
-        col("Nov 6", "Nov 6", 1241, 402, 25),
-        col("Nov 7", "Nov 7", 1072, 348, 43),
-        col("Nov 8", "Nov 8", 350, 114, 7),
-        col("Nov 9", "Nov 9", 298, 97, 6)
-      ] }
-    },
-    errorsMostly: "409 stale version",
-    clientNames: ["triage-bot", "ci-reporter", "Dana's CLI"],
-    lastCall: { call: "cases_get PAY-101", agent: "triage-bot", code: 200, ms: 84, tokens: 1100 },
-    /* calls the live ticker cycles through while the page is open */
-    liveFeed: [
-      { call: "cases_get PAY-104", agent: "triage-bot", code: 200, ms: 71, tokens: 1000 },
-      { call: "cycle_cases_list", agent: "triage-bot", code: 200, ms: 132, tokens: 2400 },
-      { call: "results_create", agent: "ci-reporter", code: 200, ms: 58, tokens: 300 },
-      { call: "search q=refund", agent: "triage-bot", code: 200, ms: 96, tokens: 1400 },
-      { call: "cases_update PAY-101", agent: "triage-bot", code: 409, ms: 44, tokens: 200 }
-    ],
-    connect: { base: "https://tcms.northwind.test" },
-    updates: UPDATES,
-    /* the tool open in the detail drawer */
-    detail: {
-      tool: "cases_update", path: "/api/v1/cases/{key}", errorsToday: 2, p95: 3400,
-      params: [
-        param("key", "path", "string", true, "PAY-101"),
-        param("expected_version", "header If-Match", "integer", true, "stale → 409 with current_version"),
-        param("title", "body", "string", false, ""),
-        param("preconditions", "body", "Markdown", false, "rich field"),
-        param("steps", "body", "array of {id, action, expected}", false, "action and expected are Markdown; ids stay stable"),
-        param("priority", "body", "string", false, ""),
-        param("tags", "body", "string[]", false, ""),
-        param("change_note", "body", "string", false, "shown in version history")
-      ],
-      calls: [
-        call("3:14 PM", 200, 212, 1200, "v7 saved"),
-        call("3:13 PM", 409, 48, 200, "stale v6"),
-        call("11:02 AM", 200, 190, 1100, "v6 saved"),
-        call("9:47 AM", 200, 176, 900, "v5 saved"),
-        call("Fri 4:20 PM", 422, 31, 300, "unknown node html_block")
-      ],
-      raw: { at: "3:13 PM", code: 409, body: `{"isError": true, "content": [{"type": "text", "text": "409 Conflict: If-Match \\"v6\\" does not match current version \\"v7\\" of case PAY-101"}], "structuredContent": {"type": "https://tcms.northwind.test/problems/stale-version", "status": 409, "current_version": 7, "request_id": "req_01JD6QV2M8"}}` },
-      auditAt: "3:14 PM"
+/* ---- time, in the browser's zone ---- */
+const sp = (s) => s.replace(/[  ]/g, " ");
+const midnight = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+const addDays = (d, n) => new Date(d.getFullYear(), d.getMonth(), d.getDate() + n);
+const clock = (d) => sp(d.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }));
+const md = (d) => d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+const wd = (d) => d.toLocaleDateString("en-US", { weekday: "short" });
+const zone = (d = new Date()) => (new Intl.DateTimeFormat("en-US", { timeZoneName: "short" }).formatToParts(d).find((p) => p.type === "timeZoneName") || {}).value || "";
+const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+/* "2026-11-02" (or "2026-11-2") as that local day's midnight */
+function parseDay(s) {
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(s || ""));
+  if (!m) throw new Error(`Not a date: ${s}`);
+  return new Date(+m[1], +m[2] - 1, +m[3]);
+}
+/* "Sat Nov 14, 9:12 AM PST" */
+const stamp = (d) => `${wd(d)} ${md(d)}, ${clock(d)} ${zone(d)}`;
+/* a call's time in a list: "3:14 PM" today, else "Fri 4:20 PM" (with the date past a week) */
+function short(d, now = new Date()) {
+  if (+midnight(d) === +midnight(now)) return clock(d);
+  return now - d < 6 * 864e5 ? `${wd(d)} ${clock(d)}` : `${md(d)}, ${clock(d)}`;
+}
+/* the live "last call" time: "just now", "4 min ago", else as in a list */
+function ago(d, now = new Date()) {
+  const s = (now - d) / 1000;
+  if (s < 60) return "just now";
+  if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+  return short(d, now);
+}
+
+/* ---- the range: its columns and the [since, until) it asks for ---- */
+const hourX = (h) => (h % 3 ? "" : `${h % 12 || 12}${h < 12 ? "a" : "p"}`);
+const every = (n) => (n <= 8 ? 1 : n <= 16 ? 2 : n <= 35 ? 5 : 10);
+function windowOf(range, picker, now) {
+  const today = midnight(now);
+  if (range === "today") {
+    const end = addDays(today, 1), cols = [];
+    for (let t = today; t < end; t = new Date(+t + HOUR)) {
+      const b = new Date(+t + HOUR);
+      cols.push({ a: t, b, x: hourX(t.getHours()), tip: `${wd(t)} ${md(t)} · ${clock(t)}–${clock(b)} ${zone(t)}`, later: t > now });
     }
-  },
-  states: {
-    "7d": { range: "7d" },
-    "14d": { range: "14d" },
-    "30d": { range: "30d" },
-    "custom-open": { range: "7d", picker: { value: "custom", open: true } },
-    "custom-applied": { range: "custom", picker: { value: "custom", applied: true, from: "2026-11-02", to: "2026-11-09" }, lastCall: { at: "Mon Nov 9, 6:41 PM PT" } },
-    empty: {
-      ranges: { today: { totals: { calls: 0, errors: 0, tokens: 0, clients: 0 } } },
-      tools: TOOLS.map((t) => ({ ...t, calls: perRange(0) })),
-      updates: UPDATES.slice(0, 1)
-    },
-    offline: {
-      server: { up: false },
-      offline: { error: "connect ECONNREFUSED 127.0.0.1:8000", lastData: "Sat Nov 14, 2:12 PM PT", lastKnownCalls: 1071, lastKnownAt: "2:12 PM PT" }
-    },
-    loading: { loading: true }
+    return { since: today, until: end, cols, live: true };
   }
-};
+  const start = range === "custom" ? parseDay(picker.from) : addDays(today, 1 - DAYS[range]);
+  const end = range === "custom" ? addDays(parseDay(picker.to), 1) : addDays(today, 1);
+  const cols = [];
+  for (let t = start, i = 0; t < end; t = addDays(t, 1), i++) cols.push({ a: t, b: addDays(t, 1), i });
+  const k = every(cols.length);
+  for (const c of cols) {
+    c.x = c.i % k ? "" : range === "7d" ? `${wd(c.a)} ${c.a.getDate()}` : md(c.a);
+    c.tip = range === "7d" ? `${wd(c.a)} ${md(c.a)}` : md(c.a);
+  }
+  return { since: start, until: end, cols, live: range !== "custom" };
+}
+const span = (w) => ({ since: w.since.toISOString(), until: w.until.toISOString() });
+
+/* hour buckets into the window's columns: reads, writes and errors per column */
+function columns(w, buckets, now) {
+  const out = w.cols.map((c) => (c.later ? { x: c.x, later: true } : { x: c.x, tip: c.tip, reads: 0, writes: 0, errors: 0 }));
+  for (const b of buckets) {
+    const t = new Date(b.start);
+    const i = w.cols.findIndex((c) => c.a <= t && t < c.b);
+    if (i < 0 || out[i].later) continue;
+    out[i].reads += b.reads;
+    out[i].writes += b.writes;
+    out[i].errors += b.errors;
+  }
+  const at = w.live ? w.cols.findIndex((c) => c.a <= now && now < c.b) : -1;
+  return { columns: out, now: at };
+}
+const sum = (xs, f) => xs.reduce((n, x) => n + f(x), 0);
+
+/* ---- tools ---- */
+const kindOf = (t) => (t.destructive ? "d" : t.read_only ? "r" : t.idempotent ? "i" : "w");
+const tool = (t, range) => ({
+  name: t.name, toolset: t.toolset, scope: t.scope || "", desc: t.description, kind: kindOf(t),
+  tokCall: t.p50_resp_tokens, tokDef: t.def_tokens, calls: { [range]: t.calls }, errors: t.errors, p95: t.p95_resp_tokens
+});
+/* the API's operations in the OpenAPI document, in its order */
+const operations = (spec) => Object.entries(spec.paths || {}).filter(([p]) => p.startsWith(API_PREFIX))
+  .flatMap(([path, item]) => METHODS.filter((m) => item[m]).map((m) => ({ path, method: m, o: item[m] })));
+/* toolsets in the order the API declares them, admin last */
+function toolsets(ops, tools) {
+  const seen = [];
+  for (const { o } of ops) if (o["x-mcp"] && o["x-toolset"] && !seen.includes(o["x-toolset"])) seen.push(o["x-toolset"]);
+  for (const t of tools) if (!seen.includes(t.toolset)) seen.push(t.toolset);
+  return seen.filter((t) => t !== "admin").concat(seen.includes("admin") ? ["admin"] : []);
+}
+/* the most frequent error status over the tools, or null (calls recorded before F6 carry no status) */
+function mostly(items) {
+  const by = {};
+  for (const t of items) for (const [code, n] of Object.entries(t.errors_by_code || {})) by[code] = (by[code] || 0) + n;
+  const top = Object.entries(by).sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))[0];
+  return top ? top[0] : null;
+}
+
+/* a schema's type in words: a $ref's name, "string[]", "integer | string" */
+function typeOf(s) {
+  if (!s) return "any";
+  if (s.$ref) return s.$ref.split("/").pop();
+  const alt = s.anyOf || s.oneOf;
+  if (alt) return alt.filter((x) => x.type !== "null").map(typeOf).join(" | ") || "null";
+  if (s.type === "array") return `${typeOf(s.items)}[]`;
+  return s.type || "any";
+}
+const resolve = (s, spec) => (s && s.$ref ? spec.components.schemas[s.$ref.split("/").pop()] : s);
+/* the tool's args, as the MCP generator builds them from its operation: path and query params, the mapped
+   headers, then the JSON body's fields */
+function args(op, spec) {
+  const out = [];
+  for (const p of op.o.parameters || []) {
+    if (p.in === "path" || p.in === "query") out.push({ arg: p.name, where: p.in, type: typeOf(p.schema), required: !!p.required, note: p.description || "" });
+    else if (p.in === "header" && HEADER_ARGS[p.name]) out.push({ arg: HEADER_ARGS[p.name], where: `header ${p.name}`, type: HEADER_ARGS[p.name] === "expected_version" ? "integer" : typeOf(p.schema), required: !!p.required, note: p.description || "" });
+  }
+  const body = op.o.requestBody;
+  const schema = body && body.content && body.content["application/json"] && resolve(body.content["application/json"].schema, spec);
+  if (schema && schema.properties) {
+    const req = body.required ? schema.required || [] : [];
+    for (const [name, f] of Object.entries(schema.properties)) out.push({ arg: name, where: "body", type: typeOf(f), required: req.includes(name), note: f.description || "" });
+  }
+  return out;
+}
+
+const call = (c, now, live) => ({
+  call: c.tool, agent: c.name, kind: c.kind, actorId: c.actor_id, code: c.status, ms: c.ms, tokens: c.resp_tokens,
+  at: live ? ago(new Date(c.at), now) : short(new Date(c.at), now)
+});
+
+async function screen(at, range, picker, now) {
+  const w = windowOf(range, picker, now);
+  const q = span(w);
+  const [server, toolsOut, usage, clients, updates, last, spec] = await Promise.all([
+    get(at("mcp", "server")),
+    get(at("mcp", "tools"), q),
+    get(at("mcp", "usage"), { ...q, bucket: "hour" }),
+    get(at("mcp", "clients"), q),
+    page(at("mcp", "updates"), { limit: 5 }),
+    page(at("mcp", "calls"), w.live ? { limit: 1 } : { ...q, limit: 1 }),
+    get(OPENAPI)
+  ]);
+  const ops = operations(spec);
+  const tools = toolsOut.items.map((t) => tool(t, range));
+  const { columns: cols, now: nowAt } = columns(w, usage.items, now);
+  const c = last.items[0];
+  const data = {
+    range, picker, loading: false, zone: zone(now),
+    server: { up: true, version: server.version },
+    apiOps: ops.length,
+    toolsets: toolsets(ops, tools),
+    tools,
+    ranges: { [range]: { now: nowAt, columns: cols, totals: {
+      calls: sum(usage.items, (b) => b.calls), errors: sum(usage.items, (b) => b.errors),
+      tokens: Math.round(sum(usage.items, (b) => b.resp_bytes) / 4), clients: clients.items.length
+    } } },
+    errorsMostly: mostly(toolsOut.items),
+    clientNames: clients.items.map((x) => x.name),
+    lastCall: c ? call(c, now, w.live) : null,
+    connect: { base: String(globalThis.location?.origin || "") },
+    updates: updates.items.map(update),
+    live: null
+  };
+  if (w.live) {
+    const col = w.cols[nowAt];
+    data.live = { since: q.since, until: q.until, nowStart: col.a.toISOString(), nowEnd: col.b.toISOString() };
+  }
+  return { data, ops, spec };
+}
+
+/* one row of the updates feed */
+function update(u) {
+  const at = stamp(new Date(u.at));
+  if (u.kind === "server_started") return { kind: "acc", icon: "spark", title: `Server v${u.version} started`, text: "", at };
+  const list = [...u.added.map((n) => "+" + n), ...u.removed.map((n) => "−" + n)].join(", ");
+  const changed = u.changed.length ? `Schema changed: ${u.changed.join(", ")}` : "";
+  if (!list) return { kind: "info", icon: "build", title: changed || `Server v${u.version} started`, text: `v${u.version}`, at };
+  return { kind: "info", icon: "plus", title: `Tool list changed: ${list}`, text: changed || `v${u.version}`, at };
+}
+
+/* params: the URL's query (id: a tool name; from, to: a custom range) and ui, the hash's range or UI state. */
+export async function load(params, ctx) {
+  const at = (...rest) => org(ctx.org.id, ...rest);
+  const ui = params.ui || "";
+  const now = new Date();
+  if (params.id) {
+    const { data, ops, spec } = await screen(at, "today", null, now);
+    const t = data.tools.find((x) => x.name === params.id);
+    if (!t) throw new Error(`No MCP tool is named ${params.id}.`);
+    const op = ops.find((x) => x.o.operationId === t.name);
+    const calls = await page(at("mcp", "calls"), { tool: t.name, limit: 5 });
+    data.detail = {
+      tool: t.name, path: op ? op.path : "", errorsToday: t.errors, p95: t.p95,
+      params: op ? args(op, spec) : [], calls: calls.items.map((c) => call(c, now, false)), audited: t.kind !== "r"
+    };
+    return { state: "tool-detail", data };
+  }
+  let range = "today", state = "today", picker = null;
+  if (DAYS[ui]) range = state = ui;
+  else if (ui === "today-hover") state = ui;
+  else if (ui === "custom-open") { range = "7d"; state = ui; picker = { value: "custom", open: true }; }
+  else if (ui === "custom-applied" && params.from && params.to) {
+    range = "custom"; state = ui;
+    picker = { value: "custom", applied: true, from: iso(parseDay(params.from)), to: iso(parseDay(params.to)) };
+  }
+  const { data } = await screen(at, range, picker, now);
+  if (range === "today" && data.ranges.today.totals.calls === 0) state = "empty";
+  if (!LIVE.includes(state)) data.live = null;
+  return { state, data };
+}
+
+/* Live mode, every 15 s (contract §15 "Live": mcp_usage, mcp_clients, mcp_calls?limit=1): the range's calls
+   so far, the current column's reads, writes and errors, the clients and the latest call. live is data.live
+   from load. */
+export async function poll(live, ctx) {
+  const at = (...rest) => org(ctx.org.id, ...rest);
+  const now = new Date();
+  const q = { since: live.since, until: live.until };
+  const [usage, clients, last] = await Promise.all([
+    get(at("mcp", "usage"), { ...q, bucket: "hour" }),
+    get(at("mcp", "clients"), q),
+    page(at("mcp", "calls"), { limit: 1 })
+  ]);
+  const a = new Date(live.nowStart), b = new Date(live.nowEnd);
+  const cur = usage.items.filter((x) => { const t = new Date(x.start); return a <= t && t < b; });
+  return {
+    calls: sum(usage.items, (x) => x.calls),
+    clients: clients.items.map((x) => x.name),
+    now: { reads: sum(cur, (x) => x.reads), writes: sum(cur, (x) => x.writes), errors: sum(cur, (x) => x.errors) },
+    lastCall: last.items[0] ? call(last.items[0], now, true) : null
+  };
+}
+
+/* The view makes no writes. */
+export const actions = {};

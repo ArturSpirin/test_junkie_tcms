@@ -1,42 +1,111 @@
-/* Products view data. Demo data only. */
-const product = (key, name, markCls, desc, features, cases, versions, results, latest) => ({ key, name, markCls, desc, features, cases, versions, results, latest });
+/* Products adapter (docs/app-api-contract.md §1): products_list (name search is the server's q), products_get,
+   products_create, with releases, reports and plans for the cards and the detail. Maps the API onto the shapes
+   views/products.js renders. */
+import { all, get, org, page, post } from "../api.js";
+import { current, flatten, markCls, plain, results, when } from "./map.js";
 
-export default {
-  base: {
-    q: "",
-    products: [
-      product("PAY", "Payments", "", "Card, wallet and bank payments; refunds", 9, 412, 3, { success: 248, fail: 14, error: 3, skip: 9, untested: 22 }, "2.14.0 in progress"),
-      product("ID", "Identity", "b", "Sign-up, sign-in, MFA and account recovery", 6, 188, 2, { success: 120, fail: 4, skip: 2, untested: 10 }, "3.2.0 planned"),
-      product("WEB", "Storefront", "c", "Catalog, cart and the checkout front end", 11, 530, 4, { success: 301, fail: 22, error: 6, ignore: 4, skip: 11, untested: 40 }, "5.0.0 in progress")
-    ],
-    detail: {
-      key: "PAY", name: "Payments", desc: "Card, wallet and bank payments; refunds", owner: "dana",
-      kpis: { versions: 3, inProgress: 1, planned: 1, features: 9, topLevel: 3, cases: 412, automatedPct: 31, plans: 4, plansActive: 2 },
-      versions: [
-        { ver: "2.15.0", status: "planned", when: "Due Dec 18", features: 4, cycles: 0, results: {} },
-        { ver: "2.14.0", status: "in_progress", when: "Due Nov 27", features: 6, cycles: 3, results: { success: 62, fail: 4, error: 1, skip: 3, untested: 18 } },
-        { ver: "2.13.0", status: "released", when: "Released Oct 30", features: 5, cycles: 4, results: { success: 140, fail: 2, skip: 4 } }
-      ],
-      features: [
-        { path: "Checkout › Card payments", cases: 5, changedIn: "2.14.0" },
-        { path: "Checkout › Wallets", cases: 14, changedIn: "2.14.0" },
-        { path: "Refunds › Partial refunds", cases: 22, changedIn: "2.15.0" },
-        { path: "Payouts", cases: 31, changedIn: "2.13.0" }
-      ],
-      plans: [
-        { name: "Checkout regression", meta: "2.14.0 · 3 features · 46 cases", href: "plans.html#detail", cycles: 2 },
-        { name: "Release smoke", meta: "Any version · 18 cases", href: "plans.html#list", cycles: 5 }
-      ]
+const EVERY_STATUS = ["planned", "in_progress", "released", "cancelled"];
+const pill = (s) => s.replace("_", " ");
+
+/* releases (ReportRelease or ReleaseOut) as the card's "latest" chip */
+const latest = (rels) => {
+  const r = current(rels);
+  return r ? `${r.version} ${pill(r.status)}` : "No versions yet";
+};
+
+function card(x, row) {
+  const rels = row ? row.releases : [];
+  const cur = current(rels.map((t) => t.release));
+  const totals = cur && rels.find((t) => t.release.id === cur.id);
+  return {
+    id: x.id, key: x.key, name: x.name, markCls: markCls(x.key), desc: plain(x.description),
+    features: x.feature_count, cases: x.case_count, versions: rels.length,
+    results: totals ? results(totals.counts) : {}, latest: latest(rels.map((t) => t.release))
+  };
+}
+
+async function detail(at, id) {
+  const p = await get(at("products", id));
+  const [releases, report, tree, plans, cycles, org] = await Promise.all([
+    all(at("products", p.key, "releases")),
+    get(at("products", p.key, "report")),
+    get(at("products", p.key, "features")),
+    all(at("products", p.key, "plans")),
+    all(at("products", p.key, "cycles")),
+    get(at("report"), { release_status: EVERY_STATUS })
+  ]);
+  const features = flatten(tree.items);
+  const ver = Object.fromEntries(releases.map((r) => [r.id, r.version]));
+  const totals = Object.fromEntries(report.releases.map((t) => [t.release.id, t.counts]));
+  const row = org.products.find((r) => r.product_id === p.id);
+  const changedIn = (f) => (releases.find((r) => r.feature_ids.includes(f.id)) || {}).version || "";
+  return {
+    id: p.id, key: p.key, name: p.name, desc: plain(p.description), owner: p.owner_actor_id || "",
+    kpis: {
+      versions: releases.length,
+      inProgress: releases.filter((r) => r.status === "in_progress").length,
+      planned: releases.filter((r) => r.status === "planned").length,
+      features: features.length,
+      topLevel: tree.items.length,
+      cases: p.case_count,
+      automatedPct: row && row.automated_pct !== null ? row.automated_pct : 0,
+      plans: plans.length,
+      plansActive: plans.filter((pl) => pl.status === "active").length
     },
-    draft: { key: "KYC", name: "KYC · Partner onboarding", desc: "Identity checks for partner merchants" },
-    /* products whose feature tree a new product can copy */
-    copyFrom: [{ key: "PAY", name: "Payments", markCls: "", features: 9 }, { key: "ID", name: "Identity", markCls: "b", features: 6 }]
-  },
-  states: {
-    search: { q: "pay" },
-    "search-empty": { q: "billing" },
-    created: { created: product("KYC", "Partner onboarding", "", "Identity checks for partner merchants", 0, 0, 1, {}, "1.0.0 planned") },
-    empty: { products: [] },
-    "new-first": { products: [], draft: { key: "PAY", name: "Payments", desc: "" } }
+    versions: releases.map((r) => ({
+      id: r.id, ver: r.version, status: r.status, when: when(r, "Due"), features: r.feature_ids.length,
+      cycles: cycles.filter((c) => c.release_id === r.id).length, results: results(totals[r.id])
+    })),
+    features: features.map((f) => ({ id: f.id, path: f.path, cases: f.total_case_count, changedIn: changedIn(f) })),
+    plans: plans.map((pl) => {
+      const nf = pl.entries.filter((e) => e.feature_id).length;
+      const nc = pl.entries.reduce((n, e) => n + (e.cases ?? (e.case_id ? 1 : 0)), 0);
+      const meta = [pl.release_id ? ver[pl.release_id] : "Any version", nf ? `${nf} feature${nf === 1 ? "" : "s"}` : "", `${nc} case${nc === 1 ? "" : "s"}`];
+      return { id: pl.id, name: pl.name, meta: meta.filter(Boolean).join(" · "), cycles: cycles.filter((c) => c.plan_id === pl.id).length };
+    })
+  };
+}
+
+/* params: the URL's query (id, q, created) and ui, the hash's UI state ("new", "search-cleared"). */
+export async function load(params, ctx) {
+  const at = (...rest) => org(ctx.org.id, ...rest);
+  if (params.id) return { state: "detail", data: { detail: await detail(at, params.id) } };
+  const q = (params.q || "").trim();
+  const [hits, every, report] = await Promise.all([
+    page(at("products"), { q, limit: 200 }),
+    q ? page(at("products"), { limit: 1 }) : null,
+    get(at("report"), { release_status: EVERY_STATUS })
+  ]);
+  const rows = Object.fromEntries(report.products.map((r) => [r.product_id, r]));
+  let products = hits.items.map((x) => card(x, rows[x.id]));
+  const total = every ? every.total : hits.total;
+  const data = {
+    q, total, products, created: null,
+    draft: { key: "", name: "", desc: "" },
+    copyFrom: ctx.products.map((x) => ({ key: x.key, name: x.name, markCls: x.markCls, features: x.features }))
+  };
+  if (params.ui === "new" || params.ui === "new-first") return { state: total ? "new" : "new-first", data };
+  if (params.created) {
+    data.created = products.find((x) => x.key === params.created) || null;
+    data.products = products = products.filter((x) => x !== data.created);
+    if (data.created) return { state: "created", data };
+  }
+  if (q) return { state: hits.total ? "search" : "search-empty", data };
+  if (!total) return { state: "empty", data };
+  return { state: params.ui === "search-cleared" ? "search-cleared" : "list", data };
+}
+
+/* The view's writes. form: { key, name, desc, copyFrom ("none" or a product key), firstVersion (bool) }.
+   firstVersion adds a planned 1.0.0, as the form's switch says. Resolves to the new ProductOut. */
+export const actions = {
+  async create(form, ctx) {
+    const at = (...rest) => org(ctx.org.id, ...rest);
+    const p = await post(at("products"), {
+      key: form.key, name: form.name,
+      description: form.desc ? { markdown: form.desc } : undefined,
+      copy_features_from: form.copyFrom && form.copyFrom !== "none" ? form.copyFrom : undefined
+    });
+    if (form.firstVersion) await post(at("products", p.key, "releases"), { version: "1.0.0", name: "1.0.0", status: "planned" });
+    return p;
   }
 };

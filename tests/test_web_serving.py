@@ -88,6 +88,20 @@ class WebServing:
             assert response.content == (app_shell.WEB_DIR / rel).read_bytes(), rel
 
     @test()
+    def test_assets_are_served_no_cache_and_revalidate_to_304(self, suite_parameter):
+        # no-cache makes the browser revalidate each load, so an upgrade never runs stale JS.
+        client = self.env.client()
+        for rel in web_files():
+            response = client.get(f"/assets/{rel}")
+            assert response.status_code == 200, rel
+            assert response.headers.get("cache-control") == "no-cache", rel
+            etag = response.headers["etag"]
+            again = client.get(f"/assets/{rel}", headers={"If-None-Match": etag})
+            assert again.status_code == 304, (rel, again.status_code)
+            assert again.headers.get("cache-control") == "no-cache", rel
+            assert again.content == b"", rel
+
+    @test()
     def test_a_nested_font_is_served_at_assets_fonts(self, suite_parameter):
         # A copy of web/ with a font in it, so the test never writes into the package's own source tree.
         with tempfile.TemporaryDirectory() as tmp:

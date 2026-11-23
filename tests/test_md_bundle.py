@@ -11,6 +11,7 @@ from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, tes
 from tests import support
 from tests.catalog_seed import make_product, ok, url
 from tests.execution_seed import make_case
+from tests.test_cases import drop_section
 from tests.test_csv_io import cases_count, comparable, export, rows, source
 
 
@@ -111,6 +112,27 @@ class MdBundle:
         assert [s["action"] for s in json.loads(got[1]["steps"])] == ["Tap pay"]
 
     @test()
+    def test_file_without_a_description_section_keeps_the_description(self, suite_parameter):
+        owner = self.env.owner
+        s = source(owner)
+        p = s["product"]["id"]
+        ok(
+            owner.patch(
+                url("/cases/PAY-1"),
+                json={"description": {"markdown": "Card payments"}},
+                headers={"If-Match": '"1"'},
+            )
+        )
+        files = bundle(owner, p)
+        assert " description -->\nCard payments" in files["PAY-1.md"]
+        files["PAY-1.md"] = drop_section(files["PAY-1.md"], "description")
+        assert "Card payments" not in files["PAY-1.md"]
+        out = ok(do_import(owner, p, to_zip(files)))
+        assert (out["created"], out["updated"], out["unchanged"]) == (0, 0, 2)
+        case = ok(owner.get(url("/cases/PAY-1")))
+        assert (case["current_version"], case["description"].strip()) == (2, "Card payments")
+
+    @test()
     def test_stale_version_writes_nothing(self, suite_parameter):
         owner = self.env.owner
         s = source(owner)
@@ -124,6 +146,51 @@ class MdBundle:
         assert [(e["row"], e["column"]) for e in errors] == [(1, "version")]
         assert errors[0]["detail"].startswith("PAY-1.md: ")
         assert ok(owner.get(url("/cases/PAY-2")))["current_version"] == 1
+
+    @test()
+    def test_a_title_line_of_only_spaces_writes_nothing(self, suite_parameter):
+        owner = self.env.owner
+        s = source(owner)
+        p = s["product"]["id"]
+        files = bundle(owner, p)
+        files["PAY-1.md"] = re.sub(r"^# .*$", "#    ", files["PAY-1.md"], count=1, flags=re.M)
+        files["NEW.md"] = re.sub(r"^# .*$", "#  \t", keyless(files["PAY-2.md"]), count=1, flags=re.M)
+        r = do_import(owner, p, to_zip(files))
+        assert r.status_code == 422, r.text
+        errors = r.json()["errors"]
+        assert sorted((e["detail"].split(":")[0], e["column"]) for e in errors) == [
+            ("NEW.md", "title"),
+            ("PAY-1.md", "title"),
+        ]
+        assert ok(owner.get(url("/cases/PAY-1")))["title"] == "Pay by card"
+        assert cases_count(owner, p) == 2
+
+    @test()
+    def test_feature_names_in_the_path_are_stripped_and_never_only_spaces(self, suite_parameter):
+        owner = self.env.owner
+        s = source(owner)
+        p = s["product"]["id"]
+        new = keyless(bundle(owner, p)["PAY-1.md"])
+
+        def with_feature(path: str) -> str:
+            return to_zip({"NEW.md": new.replace('feature: "Checkout > Card"', f'feature: "{path}"', 1)})
+
+        tree = ok(owner.get(url(f"/products/{p}/features")))["items"]
+        r = do_import(owner, p, with_feature("Checkout >    > New"), create_features=True)
+        assert r.status_code == 422, r.text
+        assert [e["column"] for e in r.json()["errors"]] == ["feature"]
+        assert ok(owner.get(url(f"/products/{p}/features")))["items"] == tree
+        for path in (" Checkout  >  Card ", "  Refunds >  Partial ", "Refunds  > Partial  "):
+            assert ok(do_import(owner, p, with_feature(path), create_features=True))["created"] == 1, path
+        [refunds] = [
+            f for f in ok(owner.get(url(f"/products/{p}/features")))["items"] if f["name"] == "Refunds"
+        ]
+        assert [c["name"] for c in refunds["children"]] == ["Partial"]  # the third import reused it
+        cases = ok(owner.get(url(f"/products/{p}/cases"), params={"limit": 200}))["items"]
+        imported = [c for c in cases if c["key"] not in ("PAY-1", "PAY-2")]
+        assert sorted(c["feature_id"] for c in imported) == sorted(
+            [s["child"]["id"]] + [refunds["children"][0]["id"]] * 2
+        )
 
     @test()
     def test_boundary_collision_still_round_trips(self, suite_parameter):

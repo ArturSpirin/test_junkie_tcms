@@ -1,15 +1,17 @@
 """Cycles: a run of cases, each pinned to the case version it runs; and bulk cycles for a release."""
 
 import string
+from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
 from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.operations import op
-from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
+from test_junkie_tcms.api.pagination import PageParams, SortKey, page_params, paginate
 from test_junkie_tcms.api.selection import feature_candidates, plan_candidates, product_cases, split
 from test_junkie_tcms.api.v1.cases import _steps_out, case_key, db_current, resolve_cases
 from test_junkie_tcms.api.v1.catalog import (
@@ -52,9 +54,10 @@ from test_junkie_tcms.api.v1.plans import _release_features
 from test_junkie_tcms.api.v1.schemas import Page, RichMode
 from test_junkie_tcms.auth.deps import OrgContext, effective_role, get_db, require_scope
 from test_junkie_tcms.auth.scopes import READ, WRITE_EXECUTION, WRITE_PLANNING
-from test_junkie_tcms.db.base import utcnow
+from test_junkie_tcms.db.base import aware, utcnow
 from test_junkie_tcms.db.models import (
     CYCLE_CASE_STATUSES,
+    PRIORITIES,
     Actor,
     CaseVersion,
     Consumer,
@@ -65,7 +68,6 @@ from test_junkie_tcms.db.models import (
     Job,
     Product,
     Release,
-    Result,
     TestCase,
     TestPlan,
 )
@@ -150,6 +152,75 @@ def resolve_source(
         # A key and the id of the same case pin it once.
         return list({c.id: c for c in found.values()}.values()), None
     return [], None
+
+
+def check_eta(eta: datetime | None) -> None:
+    if eta is not None and eta < utcnow():
+        raise ProblemError(422, "eta is in the past", code="eta_in_past")
+
+
+def feature_rank(db: Session, org_id: str, product_id: str) -> dict[str, int]:
+    """Each feature's place in the tree walked depth first, siblings by position."""
+    children: dict[str | None, list[Feature]] = {}
+    for f in db.scalars(
+        select(Feature)
+        .where(Feature.org_id == org_id, Feature.product_id == product_id)
+        .order_by(Feature.position, Feature.id)
+    ):
+        children.setdefault(f.parent_id, []).append(f)
+    rank: dict[str, int] = {}
+    stack = list(reversed(children.get(None, [])))
+    while stack:
+        f = stack.pop()
+        rank[f.id] = len(rank)
+        stack.extend(reversed(children.get(f.id, [])))
+    return rank
+
+
+def current_priorities(db: Session, cases: list[TestCase]) -> dict[str, str]:
+    """Each case's priority at its current version, in one query."""
+    if not cases:
+        return {}
+    return dict(
+        db.execute(
+            select(CaseVersion.case_id, CaseVersion.priority)
+            .join(
+                TestCase,
+                and_(
+                    CaseVersion.org_id == TestCase.org_id,
+                    CaseVersion.case_id == TestCase.id,
+                    CaseVersion.version == TestCase.current_version,
+                ),
+            )
+            .where(TestCase.id.in_([c.id for c in cases]))
+        ).all()
+    )
+
+
+def run_order(
+    db: Session, ctx: OrgContext, product: Product, live: list[TestCase], body: CycleCreate
+) -> tuple[list[TestCase], str]:
+    """The live cases in the order the cycle runs them, and the order stored on it: `case_order` first as
+    given (stored as manual), the rest by `order` (stable, so ties keep the source's order)."""
+    if body.order == "feature":
+        rank = feature_rank(db, ctx.org.id, product.id)
+        live = sorted(live, key=lambda c: (rank.get(c.feature_id, len(rank)), c.position))
+    elif body.order == "priority":
+        priority = current_priorities(db, live)
+        live = sorted(live, key=lambda c: -PRIORITIES.index(priority[c.id]))
+    if not body.case_order:
+        return live, body.order
+    found = resolve_cases(db, ctx, product, list(dict.fromkeys(body.case_order)))
+    by_id = {c.id: c for c in live}
+    missing = [ref for ref, c in found.items() if c.id not in by_id]
+    if missing:
+        raise ProblemError(
+            422,
+            f"case_order names cases this run doesn't have: {', '.join(missing)}",
+            code="case_not_in_run",
+        )
+    first = dict.fromkeys(c.id for c in found.values())
+    return [by_id[i] for i in first] + [c for c in live if c.id not in first], "manual"
 
 
 def pin(db: Session, cycle: Cycle, cases: list[TestCase]) -> list[CycleCase]:
@@ -332,7 +403,10 @@ def cycles_create(
     release_id = body.release_id or (plan.release_id if plan else None)
     check_release(db, ctx, p.id, release_id)
     check_actor(db, ctx, body.default_assignee_actor_id)
+    check_eta(body.eta)
     consumers = chosen_consumers(db, ctx, p.id, body)
+    live, skipped = split(found, body.skip_drafts)
+    live, order = run_order(db, ctx, p, live, body)
     cycle = new_cycle(
         db,
         ctx,
@@ -345,8 +419,9 @@ def cycles_create(
         mode=body.mode,
         split=body.split,
         retries=body.retries,
+        order=order,
+        eta=body.eta,
     )
-    live, skipped = split(found, body.skip_drafts)
     rows = pin(db, cycle, live)
     jobs = []
     if consumers:
@@ -359,6 +434,8 @@ def cycles_create(
         "plan_id": [None, cycle.plan_id],
         "cases": [None, len(live)],
         "mode": [None, cycle.mode],
+        "order": [None, cycle.order],
+        "eta": [None, cycle.eta.isoformat() if cycle.eta else None],
         "jobs": [None, len(jobs)],
         "split": [None, cycle.split],
         "retries": [None, cycle.retries],
@@ -424,13 +501,19 @@ def cycles_update(
 ):
     cycle = get_cycle(db, ctx, id)
     changes: dict[str, list] = {}
-    for field in ("name", "environment", "default_assignee_actor_id"):
-        if field in body.model_fields_set and getattr(body, field) != getattr(cycle, field):
+    for field in ("name", "environment", "default_assignee_actor_id", "eta"):
+        old = aware(cycle.eta) if field == "eta" else getattr(cycle, field)
+        if field in body.model_fields_set and getattr(body, field) != old:
             if field == "name" and body.name is None:
                 raise HTTPException(422, "name can't be null")
             if field == "default_assignee_actor_id":
                 check_actor(db, ctx, body.default_assignee_actor_id)
-            changes[field] = [getattr(cycle, field), getattr(body, field)]
+            if field == "eta":
+                # Only an eta sent now is checked: an update that leaves a passed eta alone still works.
+                check_eta(body.eta)
+                changes[field] = [v and v.isoformat() for v in (old, body.eta)]
+            else:
+                changes[field] = [old, getattr(body, field)]
             setattr(cycle, field, getattr(body, field))
     if changes:
         audit.record(db, ctx, "cycle.update", "cycle", cycle.id, changes)
@@ -543,6 +626,7 @@ def cycle_cases_list(
     id: str,
     status: CycleCaseStatus | None = Query(None),
     assignee: str | None = Query(None, description="An actor id"),
+    sort: Literal["id", "position"] = Query("id", description="position: the cycle's run order"),
     params: PageParams = Depends(page_params),
     mode: RichMode = Depends(rich_mode),
     ctx: OrgContext = Depends(require_scope(READ)),
@@ -555,7 +639,8 @@ def cycle_cases_list(
         query = query.where(CycleCase.status == status)
     if assignee:
         query = query.where(CycleCase.assignee_actor_id == assignee)
-    rows, cursor, total = paginate(db, query, CycleCase.id, params)
+    by = SortKey((CycleCase.position,)) if sort == "position" else None
+    rows, cursor, total = paginate(db, query, CycleCase.id, params, sort=by)
     return Page[CycleCaseOut](items=cycle_cases_out(db, rows, mode), next_cursor=cursor, total=total)
 
 
@@ -624,15 +709,16 @@ def cycle_cases_refresh_version(
     idem: Idem = Depends(idempotency),
     db: Session = Depends(get_db),
 ):
-    """Re-pins the case to its current version, only while it has no result (409 once one is recorded)."""
+    """Re-pins the case to its current version. A case with results goes back to untested on the new
+    version for a rerun; its results stay as history, each with the version it ran."""
     cc, cycle = get_cycle_case(db, ctx, id)
     require_open(cycle)
-    if db.scalar(select(Result.id).where(Result.cycle_case_id == cc.id).limit(1)):
-        raise ProblemError(409, "The case already has a result in this cycle", code="has_results")
     v = db_current(db, db.get(TestCase, cc.case_id))
     if v.id != cc.case_version_id:
-        changes = {"case_version": [cc.case_version, v.version]}
-        cc.case_version_id, cc.case_version = v.id, v.version
+        changes: dict[str, list] = {"case_version": [cc.case_version, v.version]}
+        if cc.status != "untested":
+            changes["status"] = [cc.status, "untested"]
+        cc.case_version_id, cc.case_version, cc.status = v.id, v.version, "untested"
         audit.record(db, ctx, "cycle_case.refresh_version", "cycle_case", cc.id, changes)
         db.commit()
     return cycle_cases_out(db, [cc], mode)[0]

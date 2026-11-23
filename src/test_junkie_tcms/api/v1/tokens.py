@@ -77,8 +77,6 @@ def tokens_create(
     above_caller = set(scopes) - ctx.scopes
     if above_caller:
         raise HTTPException(422, f"Scopes you don't hold: {', '.join(sorted(above_caller))}")
-    if body.expires_at is not None and body.expires_at.tzinfo is None:
-        raise HTTPException(422, "expires_at needs a time zone")
     token, prefix, digest = new_token()
     row = ApiToken(
         org_id=ctx.org.id,

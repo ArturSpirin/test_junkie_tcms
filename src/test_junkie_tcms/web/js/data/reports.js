@@ -1,81 +1,160 @@
-/* Reports view data. Demo data only. */
-const product = (key, name, cases, automatedPct, results, openCycles) => ({ key, name, cases, automatedPct, results, openCycles });
-const day = (date, success, fail, error, skip) => ({ date, success, fail, error, skip });
-const release = (ver, name, status, due, hint) => ({ ver, name, status, due, hint });
-const feature = (path, cases, results, drift, driftNote, readiness) => ({ path, cases, results, drift, driftNote, readiness });
-/* by is { kind, id } (a person's handle or an agent's name), or null when nobody ran it; noteKind: "attempt", "issue" or "" */
-const kase = (key, title, ranOn, current, result, by, when, note, noteKind, why) => ({ key, title, ranOn, current, result, by, when, note, noteKind, why });
-const run = (ver, env, when, results) => ({ ver, env, when, results });
+/* Reports adapter (docs/app-api-contract.md §11): reports_org, reports_product (the product-wide report, no
+   release), reports_release and reports_feature, each for the period (from, to, tz); releases_list for the release
+   picker and "since last release", features_list for a feature's path, cycles_list for a release's cycle count.
+   Maps the API onto the shapes views/reports.js renders. */
+import { all, get, org } from "../api.js";
+import { current, day, flatten, results, today, when } from "./map.js";
 
-export default {
-  base: {
-    period: { value: "30d" },
-    /* the product the product and feature reports are about */
-    product: { key: "PAY", name: "Payments", cases: 142 },
+const RANGES = { today: 0, "7d": 6, "14d": 13, "30d": 29 };
+const KINDS = ["success", "fail", "error", "ignore", "skip", "cancel"];
+const VERDICT = { ready: "ready", at_risk: "at risk", in_progress: "in progress", not_started: "not started" };
+const PRODUCT_UI = ["pick-release", "bar-hover"];
+
+const daysAgo = (n) => { const d = new Date(); d.setDate(d.getDate() - n); return today(d); };
+const sum = (c) => KINDS.reduce((n, k) => n + (c[k] || 0), 0);
+const full = (c) => Object.fromEntries([...KINDS, "untested"].map((k) => [k, (c && c[k]) || 0]));
+const stamp = (iso) => `${day(iso, { day: true })}, ${new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
+const tz = () => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+
+/* the period: ?range= (today, 7d, 14d, 30d; 30d by default), ?range=custom&from=&to=, or ?range=rel, from the
+   latest release's released_at to today */
+async function periodOf(at, ctx, params) {
+  const value = params.range || "30d";
+  let from, to = today();
+  if (value === "custom" && params.from) { from = params.from; to = params.to || to; }
+  else if (value === "rel") {
+    const keys = params.level && params.level !== "org" ? [productOf(ctx, params).key] : ctx.products.map((p) => p.key);
+    const released = (await Promise.all(keys.map((k) => all(at("products", k, "releases"))))).flat().map((r) => r.released_at).filter(Boolean).sort();
+    from = released.length ? today(new Date(released[released.length - 1])) : daysAgo(RANGES["30d"]);
+  } else from = daysAgo(RANGES[value] ?? RANGES["30d"]);
+  const preset = value in RANGES;
+  const label = preset ? (value === "today" ? "today" : `last ${RANGES[value] + 1} days`) : `${day(from)} – ${day(to)}`;
+  return {
+    view: preset ? { value, open: params.ui === "period-custom" } : { value: "custom", applied: true, from, to, open: params.ui === "period-custom" },
+    keep: { range: preset ? value : value === "rel" ? "rel" : "custom", from: preset || value === "rel" ? null : from, to: preset || value === "rel" ? null : to },
+    label, query: { from, to, tz: tz() }
+  };
+}
+
+function productOf(ctx, params) {
+  const p = ctx.products.find((x) => x.key === params.product || x.id === params.product) || ctx.product;
+  if (!p) throw new Error("This org has no products yet.");
+  return { id: p.id, key: p.key, name: p.name, cases: p.cases };
+}
+
+async function orgReport(at, ctx, params, period) {
+  const r = await get(at("report"), period.query);
+  const days = r.trend.days.map((x) => ({ date: x.date, ...Object.fromEntries(KINDS.map((k) => [k, x[k] || 0])) }));
+  const totals = Object.fromEntries(KINDS.map((k) => [k, days.reduce((n, x) => n + x[k], 0)]));
+  const peak = r.trend.peak_day ? days.findIndex((x) => x.date === r.trend.peak_day.date) : -1;
+  const data = {
+    period: period.view, periodKeep: period.keep, periodLabel: period.label, product: ctx.product ? productOf(ctx, params) : null,
     org: {
-      kpis: { readyCases: 553, products: 4, successPct: 93, automatedPct: 39, openCycles: 8, untested: 161 },
-      trend: {
-        totals: { success: 581, fail: 38, error: 11, skip: 15 },
-        results: 645, peakDay: "Thu Nov 12", byAgentsPct: 71,
-        days: [
-          day("2026-11-01", 30, 3, 1, 1), day("2026-11-02", 42, 4, 0, 2), day("2026-11-03", 18, 1, 0, 0), day("2026-11-04", 8, 0, 0, 0),
-          day("2026-11-05", 51, 6, 2, 1), day("2026-11-06", 47, 3, 1, 3), day("2026-11-07", 39, 2, 0, 1), day("2026-11-08", 44, 5, 1, 0),
-          day("2026-11-09", 52, 2, 0, 2), day("2026-11-10", 21, 1, 0, 0), day("2026-11-11", 12, 0, 0, 0), day("2026-11-12", 58, 7, 3, 2),
-          day("2026-11-13", 61, 4, 1, 1), day("2026-11-14", 49, 3, 2, 2)
-        ]
-      },
-      products: [
-        product("PAY", "Payments", 142, 61, { success: 412, fail: 14, error: 4, skip: 9, ignore: 2, cancel: 1, untested: 37 }, 4),
-        product("MOB", "Mobile app (iOS & Android)", 310, 22, { success: 520, fail: 33, error: 8, skip: 12, ignore: 3, untested: 120 }, 3),
-        product("ADM", "Admin console", 64, 80, { success: 88, fail: 1, untested: 4 }, 1),
-        product("KYC", "Partner onboarding and KYC verification service", 37, 0, {}, 0)
-      ]
+      kpis: { readyCases: r.kpis.ready_cases, products: r.kpis.products, successPct: r.kpis.success_rate, automatedPct: r.kpis.automated_pct, openCycles: r.kpis.open_cycles, untested: r.kpis.open_untested },
+      trend: { totals, results: r.trend.total, peakDay: r.trend.peak_day ? day(r.trend.peak_day.date, { day: true }) : "–", byAgentsPct: r.trend.by_agents_pct, days },
+      products: r.products.map((p) => ({ id: p.product_id, key: p.product_key, name: p.name, cases: p.cases, automatedPct: p.automated_pct, results: results(p.results), successPct: p.success_rate, openCycles: p.open_cycles }))
     },
-    release: {
-      ver: "2.14.0", name: "Spring checkout", due: "Fri Nov 27", cycles: 4, open: false,
-      kpis: { cases: 53, ran: 35, ranPct: 66, fail: 2, error: 1, skip: 1, drift: 3 },
-      latest: { success: 29, fail: 2, error: 1, ignore: 2, skip: 1, untested: 18 },
-      driftExample: { key: "PAY-101", from: 7, to: 8 },
-      releases: [
-        release("2.14.0", "Spring checkout", "in_progress", "Fri Nov 27", "in_progress · due Fri Nov 27 · 4 release cycles"),
-        release("2.15.0", "Wallet upgrade", "planned", "Fri Dec 18", "planned · due Fri Dec 18 · no cycles yet"),
-        release("2.16.0", "Payouts v2", "planned", "Fri Jan 22", "planned · due Fri Jan 22"),
-        release("2.13.0", "Saved cards", "released", "", "released Fri Oct 30 · 6 cycles"),
-        release("2.12.0", "Refund webhooks", "released", "", "released Fri Oct 9 · 5 cycles")
-      ],
-      features: [
-        feature("Checkout › Card payments", 15, { success: 9, fail: 1, error: 1, ignore: 1, skip: 1, untested: 2 }, 1, "PAY-101 v8 is newer than pinned v7", "at risk"),
-        feature("Checkout › 3-D Secure challenge", 8, { success: 3, ignore: 1, untested: 4 }, 0, "", "in progress"),
-        feature("Refunds › Partial refunds", 12, { success: 11, fail: 1 }, 0, "", "at risk"),
-        feature("Subscriptions › Proration on plan change", 12, { untested: 12 }, 0, "", "not started"),
-        feature("Refunds › refund_webhook_retry", 6, { success: 6 }, 2, "2 cases edited after their result", "ready")
-      ]
-    },
-    feature: {
-      path: "Checkout › Card payments", name: "Card payments",
-      kpis: { cases: 15, results: { success: 9, fail: 1, error: 1, ignore: 1, skip: 1, untested: 2 }, successPct: 77, drift: 1 },
-      cases: [
-        kase("PAY-101", "Pay with a saved Visa card", 7, 8, "fail", { kind: "person", id: "lee" }, "Thu Nov 12, 4:20 PM PT", "attempt 2", "attempt", ""),
-        kase("PAY-102", "Card is declined with insufficient_funds and the user sees the retry banner", 3, 3, "success", { kind: "agent", id: "ci-reporter" }, "Fri Nov 13, 2:05 AM PT", "automated", "", ""),
-        kase("PAY-118", "Pay with a Mastercard that requires 3-D Secure when the issuer's ACS times out after the challenge is shown to the user on a slow connection", 2, 2, "skip", { kind: "person", id: "priya" }, "Thu Nov 12, 1:10 PM PT", "LAB-412", "issue", "Blocked by LAB-412: sandbox issuer down"),
-        kase("PAY-141", "Card vault returns 500 while saving a card", 2, 2, "error", { kind: "agent", id: "ci-reporter" }, "Fri Nov 13, 2:07 AM PT", "automated", "", "TimeoutError in harness"),
-        kase("PAY-140", "card_on_file_update_after_expiry", 1, 1, "untested", null, "", "", "", ""),
-        kase("PAY-107", "Save a new card during checkout", 4, 4, "success", { kind: "person", id: "lee" }, "Wed Nov 11, 3:44 PM PT", "", "", "")
-      ],
-      history: [
-        run("2.14.0", "staging", "now", { success: 9, fail: 1, error: 1, ignore: 1, skip: 1, untested: 2 }),
-        run("2.13.0", "prod", "Oct 30", { success: 13, fail: 1 }),
-        run("2.13.0", "staging", "Oct 27", { success: 11, fail: 2, cancel: 1 }),
-        run("2.12.0", "prod", "Oct 9", { success: 12, skip: 1 }),
-        run("2.12.0", "staging", "Oct 6", { success: 10, fail: 2, error: 1 })
-      ]
-    }
-  },
-  states: {
-    "period-custom": { period: { value: "custom", open: true } },
-    /* the chart column whose tooltip is pinned open */
-    "org-hover": { pinDay: 11 },
-    "pick-release": { release: { open: true } },
-    empty: { product: { key: "KYC", name: "Partner onboarding and KYC verification service", cases: 37 } }
-  }
+    pinDay: peak >= 0 ? peak : days.length - 1
+  };
+  if (params.ui === "org-hover" || params.ui === "period-custom") return { state: params.ui, data };
+  return { state: "org", data };
+}
+
+/* a feature row's drift in words */
+const driftNote = (f) => {
+  const d = f.drifted || [];
+  if (!f.drift) return "";
+  if (f.drift === 1 && d.length) return `${d[0].key} v${d[0].current_version} is newer than pinned v${d[0].ran_version}`;
+  return `${f.drift} cases edited after their result`;
 };
+const featureRow = (f) => ({ id: f.feature_id, path: f.path || f.name, cases: f.counts.total || 0, results: results(f.counts), drift: f.drift || 0, driftNote: driftNote(f), readiness: VERDICT[f.verdict] || "not started" });
+
+function releaseOption(r, cycles) {
+  const n = cycles.filter((c) => c.release_id === r.id).length;
+  const date = r.status === "released" && r.released_at ? `released ${day(r.released_at, { day: true })}` : r.target_date ? `due ${day(r.target_date, { day: true })}` : "";
+  const hint = [r.status === "released" ? "" : r.status, date, n ? `${n} release cycle${n === 1 ? "" : "s"}` : r.status === "released" ? "" : "no cycles yet"].filter(Boolean).join(" · ");
+  return { id: r.id, ver: r.version, name: r.name, status: r.status, due: r.target_date && r.status !== "released" ? day(r.target_date, { day: true }) : "", hint, when: when(r) };
+}
+
+async function productReport(at, ctx, params, period) {
+  const product = productOf(ctx, params);
+  const [releases, cycles, whole] = await Promise.all([
+    all(at("products", product.key, "releases")),
+    all(at("products", product.key, "cycles")),
+    get(at("products", product.key, "report"), period.query)
+  ]);
+  const picked = params.release === "none" ? null
+    : params.release ? releases.find((r) => r.id === params.release) || await get(at("releases", params.release))
+    : current(releases);
+  const rep = picked ? await get(at("releases", picked.id, "report"), period.query) : whole.whole;
+  const k = rep.kpis;
+  const features = (picked ? rep.features.filter((f) => f.in_release) : rep.features).map(featureRow);
+  const drifted = rep.features.flatMap((f) => f.drifted || [])[0];
+  const options = releases.map((r) => releaseOption(r, cycles));
+  const mine = picked ? options.find((o) => o.id === picked.id) : null;
+  const data = {
+    period: period.view, periodKeep: period.keep, periodLabel: period.label, product,
+    release: {
+      id: picked ? picked.id : null, ver: picked ? picked.version : "", name: picked ? picked.name : "", due: mine ? mine.due : "",
+      cycles: picked ? cycles.filter((c) => c.release_id === picked.id).length : null, open: params.ui === "pick-release",
+      kpis: { cases: k.cases, ran: k.ran, ranPct: k.cases ? Math.round((k.ran / k.cases) * 100) : 0, fail: k.fail, error: k.error, skip: k.skip, drift: k.drift },
+      latest: results(rep.counts), driftExample: drifted ? { key: drifted.key, from: drifted.ran_version, to: drifted.current_version } : null,
+      releases: options, features
+    }
+  };
+  if (!sum(whole.whole.counts) && !sum(rep.counts)) return { state: "empty", data };
+  return { state: PRODUCT_UI.includes(params.ui) ? params.ui : "product", data };
+}
+
+async function featureReport(at, ctx, params, period) {
+  const product = productOf(ctx, params);
+  const [tree, releases] = await Promise.all([get(at("products", product.key, "features")), all(at("products", product.key, "releases"))]);
+  const nodes = flatten(tree.items);
+  const node = params.feature ? nodes.find((f) => f.id === params.feature) : nodes[0];
+  if (!node && params.feature) await get(at("features", params.feature)); // an unknown id: the API's 404
+  if (!node) throw new Error(`${product.key} has no features yet.`);
+  const release = params.release && params.release !== "none" ? releases.find((r) => r.id === params.release) : null;
+  const items = [];
+  let rep, cursor = null;
+  do {
+    rep = await get(at("features", node.id, "report"), { ...period.query, release: release ? release.id : undefined, limit: 200, cursor });
+    items.push(...rep.items);
+    cursor = rep.next_cursor;
+  } while (cursor);
+  const by = (a) => (a ? { kind: a.kind === "agent" ? "agent" : "person", id: a.name } : null);
+  const cases = items.map((c) => {
+    const lr = c.last_result;
+    const defect = (c.defects || []).find((x) => x.key || x.url);
+    const attempt = c.attempt || (lr && lr.attempt) || 0;
+    return {
+      id: c.id, key: c.key, title: c.title, ranOn: c.ran_version ?? (lr ? lr.version : c.current_version), current: c.current_version, result: c.status,
+      by: by(c.actor || (lr && lr.actor)), when: c.last_result_at ? stamp(c.last_result_at) : lr ? stamp(lr.at) : "",
+      note: defect ? defect.key || defect.url : attempt > 1 ? `attempt ${attempt}` : "", noteKind: defect ? "issue" : attempt > 1 ? "attempt" : "", noteHref: defect && defect.url ? defect.url : "",
+      why: c.comment || ""
+    };
+  });
+  const data = {
+    period: period.view, periodKeep: period.keep, periodLabel: period.label, product,
+    release: { id: release ? release.id : null, ver: release ? release.version : "" },
+    feature: {
+      id: node.id, path: node.path, name: node.name,
+      kpis: { cases: rep.kpis.cases, results: full(rep.counts), successPct: rep.kpis.success_rate_last5, drift: rep.kpis.drift },
+      cases,
+      history: rep.history.map((h) => ({ ver: h.release_version || "no version", env: h.environment || "", when: day(h.at), results: results(h.counts), successPct: h.success_rate }))
+    }
+  };
+  return { state: "feature", data };
+}
+
+/* params: the URL's query (level: org, product or feature; product, release ("none" for the whole product),
+   feature, range, from, to) and ui ("org-hover", "period-custom", "pick-release", "bar-hover"). */
+export async function load(params, ctx) {
+  const at = (...rest) => org(ctx.org.id, ...rest);
+  const period = await periodOf(at, ctx, params);
+  if (params.level === "feature") return featureReport(at, ctx, params, period);
+  if (params.level === "product") return productReport(at, ctx, params, period);
+  return orgReport(at, ctx, params, period);
+}
+
+/* Reports only read: the level, period and release controls are links that load again (views/reports.js). */
+export const actions = {};

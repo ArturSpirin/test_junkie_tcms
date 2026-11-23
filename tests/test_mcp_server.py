@@ -15,7 +15,7 @@ from tests.catalog_seed import events, make_product, ok, url
 from tests.execution_seed import make_case, run_seed
 from tests.support import add_member, login
 from tests.test_csv_io import source
-from tests.test_mcp_drift import demo_router
+from tests.test_mcp_drift import TOOL_COUNT, demo_router
 
 ACCEPT = "application/json, text/event-stream"
 
@@ -75,18 +75,18 @@ class McpServer:
     # Listing
 
     @test()
-    def test_default_toolsets_list_30_tools_and_all_lists_96(self, suite_parameter):
+    def test_default_toolsets_list_34_tools_and_all_lists_every_tool(self, suite_parameter):
         app = self.env.app
         with mcp_client(app) as mcp:
             owner = self.env.owner
             admin_token = make_admin_token(owner)
-            assert len(tool_names(mcp, admin_token)) == 30
-            assert len(tool_names(mcp, admin_token, "?toolsets=all")) == 96
+            assert len(tool_names(mcp, admin_token)) == 34
+            assert len(tool_names(mcp, admin_token, "?toolsets=all")) == TOOL_COUNT
             all_but_admin = ",".join(t for t in TOOLSETS if t != "admin")
-            assert len(tool_names(mcp, admin_token, f"?toolsets={all_but_admin}")) == 74
+            assert len(tool_names(mcp, admin_token, f"?toolsets={all_but_admin}")) == TOOL_COUNT - 24
             assert tool_names(mcp, admin_token, "?toolsets=cases") <= tool_names(mcp, admin_token)
             app.state.settings.mcp_default_toolsets = "all"
-            assert len(tool_names(mcp, admin_token)) == 96
+            assert len(tool_names(mcp, admin_token)) == TOOL_COUNT
 
     @test()
     def test_an_unknown_toolset_is_a_400(self, suite_parameter):
@@ -256,6 +256,39 @@ class McpServer:
                 idempotency_key="k-1",
             )
             assert other["status"] == 422
+
+    @test()
+    def test_a_title_of_only_spaces_is_a_422(self, suite_parameter):
+        with mcp_client(self.env.app) as mcp:
+            owner = self.env.owner
+            admin_token = make_admin_token(owner)
+            s = run_seed(owner)
+            p, f, case = s["product"]["id"], s["child"]["id"], s["case"]
+            args = {"org": "acme", "product": p, "feature_id": f}
+            assert call(mcp, admin_token, "cases_create", **args, title="   ")["status"] == 422
+            update = {"org": "acme", "case": case["key"], "expected_version": case["current_version"]}
+            assert call(mcp, admin_token, "cases_update", **update, title=" \t ")["status"] == 422
+            stripped = call(mcp, admin_token, "cases_create", **args, title=" Refund ")
+            assert stripped["status"] == 201 and stripped["data"]["title"] == "Refund"
+
+    @test()
+    def test_a_name_of_only_spaces_is_a_422_and_spaces_around_one_are_stripped(self, suite_parameter):
+        with mcp_client(self.env.app) as mcp:
+            owner = self.env.owner
+            admin_token = make_admin_token(owner)
+            s = run_seed(owner)
+            at = {"org": "acme", "product": s["product"]["id"]}
+            tools = [
+                ("products_create", {"org": "acme", "key": "NEW"}),
+                ("features_create", at),
+                ("plans_create", at),
+                ("cycles_create", at),
+            ]
+            for tool, args in tools:
+                blank = call(mcp, admin_token, tool, "?toolsets=all", **args, name=" \t ")
+                assert blank["status"] == 422, (tool, blank)
+                made = call(mcp, admin_token, tool, "?toolsets=all", **args, name="  Nightly ")
+                assert made["status"] == 201 and made["data"]["name"] == "Nightly", (tool, made)
 
     @test()
     def test_missing_and_unknown_args_are_a_422(self, suite_parameter):

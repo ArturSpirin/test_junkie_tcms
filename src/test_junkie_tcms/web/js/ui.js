@@ -337,10 +337,13 @@ function dr(c = {}) {
 </div></div>`;
 }
 
-/* ---------- toast ---------- */
+/* ---------- toast ----------
+   A state's own toast is declarative (state.toast(d), state.toastKeep), so the shell shows it after render and
+   the render tests see its markup; toastHtml() is that markup. */
+const toastHtml = (html, err) => `<div class="toast live-t${err ? " err" : ""}" role="status">${html}</div>`;
 function toast(html, err, keep) {
   document.querySelectorAll(".toast.live-t").forEach((t) => t.remove());
-  document.body.insertAdjacentHTML("beforeend", `<div class="toast live-t${err ? " err" : ""}" role="status">${html}</div>`);
+  document.body.insertAdjacentHTML("beforeend", toastHtml(html, err));
   if (!keep) setTimeout(() => document.querySelectorAll(".toast.live-t").forEach((t) => t.remove()), 3200);
 }
 
@@ -476,9 +479,14 @@ function installLive() {
 /* wires tooltips, dropdowns, the editor and the date range to the document; browser only, called once by main.js */
 export function install() { installTips(); installLive(); installIds(); }
 
-const modal = (title, body, foot, cls = "") => `<div class="modal-back"><div class="modal ${cls}" role="dialog" aria-modal="true" aria-label="${title}">
+/* every footer (dialog .mf, card .foot-bar) is built here: the buttons, and on the left an optional note in plain
+   words for the person using it. The note is text, escaped here, never markup: API and MCP op names belong in the
+   docs, not the footer (tests/web/test_render.py guards it). tone "faint" dims the note. */
+const foot = (actions, note = "", tone = "") => `${note ? `<span class="l${tone ? " " + tone : ""}">${esc(note)}</span>` : ""}${actions || ""}`;
+const footBar = (actions, note = "", tone = "") => `<div class="foot-bar">${foot(actions, note, tone)}</div>`;
+const modal = (title, body, actions, cls = "", note = "", tone = "") => `<div class="modal-back"><div class="modal ${cls}" role="dialog" aria-modal="true" aria-label="${title}">
   <div class="mh"><h2>${title}</h2><button class="icon-btn" aria-label="Close" data-back>${I.x}</button></div>
-  <div class="mb">${body}</div>${foot ? `<div class="mf">${foot}</div>` : ""}</div></div>`;
+  <div class="mb">${body}</div>${actions || note ? `<div class="mf">${foot(actions, note, tone)}</div>` : ""}</div></div>`;
 
 /* links name a view and its state as "<view>.html#<state>"; the app serves every view from one page, ?view=<view> */
 const lnk = (h) => {
@@ -492,5 +500,5 @@ const crumbs = (items) => `<div class="crumbs">${[[esc(orgName)]].concat(items).
 const psearch = (o) => `<div class="psearch"><label class="in-ic">${I.search}<input class="in" value="${esc(o.q || "")}" placeholder="${o.ph}" aria-label="${o.ph}">${o.q ? `<a class="x" href="${lnk(o.clear)}" aria-label="Clear search">${I.x}</a>` : ""}</label>${o.q ? `<span class="cnt">${o.cnt}</span>` : ""}${o.extra || ""}</div>`;
 const hl = (s, q) => (q ? s.replace(new RegExp("(" + q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "ig"), "<mark>$1</mark>") : s);
 
-export { psearch, hl, I, actor, st, disc, ver, bar, legend, counts, tipH, tipA, pinTip, crumbs, lnk, STATUS, dd, ddFit, tg, rte, toMd, dr, toast, modal, esc };
+export { psearch, hl, I, actor, st, disc, ver, bar, legend, counts, tipH, tipA, pinTip, crumbs, lnk, STATUS, dd, ddFit, tg, rte, toMd, dr, toast, toastHtml, modal, footBar, esc };
 

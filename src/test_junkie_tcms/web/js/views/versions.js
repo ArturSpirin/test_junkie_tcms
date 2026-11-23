@@ -1,5 +1,8 @@
-/* Case version history: the immutable versions of one case, a compare of two, restore, and the cycles that pin them. */
-import { I, st, ver, actor, modal, dd, lnk, esc, person } from "../ui.js";
+/* Case version history: the immutable versions of one case, a compare of two, restore, and the cycles that pin them.
+   The data and the restore are data/versions.js; the two picked versions are the URL's a and b. */
+import { I, st, ver, actor, modal, dd, esc, person } from "../ui.js";
+import { href, showError } from "../shell.js";
+import { actions } from "../data/versions.js";
 
 const KIND_IC = { person: I.person, agent: I.agent, token: I.key };
 const and = (xs) => (xs.length < 2 ? xs.join("") : xs.slice(0, -1).join(", ") + " and " + xs[xs.length - 1]);
@@ -17,16 +20,16 @@ function vlist(d, a, b) {
   return `<div class="card vlist"><div class="hd"><div class="ttl"><span class="eyebrow">Immutable</span><span>Versions</span></div><span class="r faint" style="font-size:12px">${d.versions.length} versions</span></div>` + d.versions.map((v) => {
     const p = v.n === a ? "A" : v.n === b ? "B" : "";
     return `
-  <div class="vi ${p ? "on" : ""}" role="button" tabindex="0" aria-pressed="${!!p}" aria-label="Pick v${v.n} to compare"><span class="pick${p ? " on" : ""}">${p}</span>
+  <div class="vi ${p ? "on" : ""}" data-n="${v.n}" role="button" tabindex="0" aria-pressed="${!!p}" aria-label="Pick v${v.n} to compare"><span class="pick${p ? " on" : ""}">${p}</span>
   <div style="min-width:0;flex:1"><div class="row">${ver(v.n)}${v.n === current ? '<span class="chip acc">current</span>' : ""}<span class="ell" style="font-size:13px">${v.note ? esc(v.note) : '<span class="faint">No change note</span>'}</span></div>
   <div class="meta">${actor(v.kind, esc(v.who), { k: false })}${v.forWho ? `<span>for ${esc(person(v.forWho)[0])}</span>` : ""}<span class="via">${esc(v.via)}</span><span>${esc(v.at)}</span></div></div></div>`;
   }).join("") + `</div>`;
 }
 function cbar(d, a, b, open) {
   return `<div class="card"><div class="bd roomy cbar">
-    <div class="cf"><span class="eyebrow">From</span>${dd({ value: String(a), options: vopts(d), cls: "sm", w: "112px", open: open === "a", label: "Compare from version" })}</div>
+    <div class="cf"><span class="eyebrow">From</span>${dd({ value: String(a), options: vopts(d), cls: "sm", w: "112px", open: open === "a", label: "Compare from version", name: "a" })}</div>
     <span class="arrow">${I.chev}</span>
-    <div class="cf"><span class="eyebrow">To</span>${dd({ value: String(b), options: vopts(d), cls: "sm", w: "112px", open: open === "b", label: "Compare to version" })}</div>
+    <div class="cf"><span class="eyebrow">To</span>${dd({ value: String(b), options: vopts(d), cls: "sm", w: "112px", open: open === "b", label: "Compare to version", name: "b" })}</div>
     <span class="sp"></span>
     <button class="btn sm" data-go="restore-confirm">${I.restore}Restore v${a}</button>
   </div></div>`;
@@ -41,7 +44,7 @@ function diff(d, a, b) {
   </div></div>`;
 }
 function used(d) {
-  const name = (u) => (u.open ? `<a href="${lnk("cycles.html#detail")}">${esc(u.cycle)}</a>` : esc(u.cycle));
+  const name = (u) => (u.open ? `<a href="${href("cycles", { id: u.id })}">${esc(u.cycle)}</a>` : esc(u.cycle));
   return `<div class="card"><div class="hd"><div class="ttl"><span class="eyebrow">Pinned versions</span><span>Used in cycles</span></div><span class="r faint" style="font-size:12px">each cycle keeps the version pinned when the case was added</span></div>
   <div class="tbl-wrap mswap"><table class="t"><thead><tr><th>Cycle</th><th>Release</th><th>Pinned</th><th>Result</th><th></th></tr></thead><tbody>
   ${d.used.map((u) => `<tr class="${u.open ? "" : "dim"}"><td>${name(u)}</td><td>${u.release ? esc(u.release) : '<span class="faint">none</span>'}</td><td>${ver(u.pinned, 1)}</td><td>${st(u.result)}</td><td class="used-note">${esc(u.note)}</td></tr>`).join("")}
@@ -50,8 +53,8 @@ function used(d) {
 }
 const head = (d, tab) => {
   const c = d.case;
-  return `<div class="crumbs"><a href="${lnk("tree.html")}">${esc(c.product)}</a><span class="sep">/</span><span>${esc(c.feature)}</span><span class="sep">/</span><a href="${lnk("case.html")}" class="key">${esc(c.key)}</a></div>
-<div class="ph"><div class="ttl"><span class="eyebrow">Version history · ${esc(c.key)}</span><h1>${esc(c.title)}</h1></div><div class="actions"><a class="btn hide-n" href="${lnk("case.html")}">${I.chevl}Back to case</a></div></div>
+  return `<div class="crumbs"><a href="${href("tree", { product: c.productKey })}">${esc(c.product)}</a><span class="sep">/</span><span>${esc(c.feature)}</span><span class="sep">/</span><a href="${href("case", { id: c.id })}" class="key">${esc(c.key)}</a></div>
+<div class="ph"><div class="ttl"><span class="eyebrow">Version history · ${esc(c.key)}</span><h1>${esc(c.title)}</h1></div><div class="actions"><a class="btn hide-n" href="${href("case", { id: c.id })}">${I.chevl}Back to case</a></div></div>
 <nav class="tabs" aria-label="History views"><a href="#default" class="${tab === "changes" ? "on" : ""}">${I.restore}Changes</a><a href="#used-in-cycles" class="${tab === "used" ? "on" : ""}">${I.cycle}Used in cycles</a></nav>`;
 };
 const page = (d, right, o = {}) => {
@@ -61,7 +64,7 @@ const page = (d, right, o = {}) => {
 
 function compare(d) {
   const { a, b } = d.pick;
-  return page(d, `<div class="banner info">${I.info}<div>Comparing two picked versions, <b>v${a}</b> and <b>v${b}</b> (<code>GET /cases/${esc(d.case.key)}/versions?compare=${a},${b}</code>). Pick any two in the list or in From and To.</div></div>` + cbar(d, a, b, "a") + diff(d, a, b));
+  return page(d, `<div class="banner info">${I.info}<div>Comparing two picked versions, <b>v${a}</b> and <b>v${b}</b>. Pick any two in the list or in From and To.</div></div>` + cbar(d, a, b, "a") + diff(d, a, b));
 }
 function restoreConfirm(d) {
   const a = d.pick.a, next = d.versions[0].n + 1;
@@ -69,22 +72,59 @@ function restoreConfirm(d) {
   const pinned = [...new Set(d.used.filter((u) => u.open).map((u) => u.pinned))].sort((x, y) => x - y).map((n) => "v" + n);
   return page(d) + modal(`Restore v${a} as v${next}?`, `<p style="margin-top:0">Restoring copies v${a} into a <b>new version v${next}</b>. ${and(kept)} stay in history; nothing is deleted.</p>
     <div class="field"><label for="cn">Change note</label><input id="cn" class="in" value="${esc(d.draft.note)}"></div>
-    <div class="banner warn mb0">${I.info}<div>Open cycles keep their pinned versions (${pinned.join(", ")}). Use “Refresh to v${next}” in a cycle to move an untested case.</div></div>`,
-    `<span class="l mono">POST /cases/${esc(d.case.key)}/versions/${a}:restore</span><button class="btn" data-back>Cancel</button><button class="btn primary">Restore as v${next}</button>`);
+    <div class="banner warn mb0">${I.info}<div>Open cycles keep their pinned versions (${pinned.join(", ")}). Use “Refresh to v${next}” in a cycle to move a case.</div></div>`,
+    `<button class="btn" data-back>Cancel</button><button class="btn primary" data-act="restore">Restore as v${next}</button>`);
 }
 function restored(d) {
   const { a, b } = d.pick, prev = d.versions[1].n;
   return page(d, `<div class="card"><div class="hd"><div class="ttl"><span class="eyebrow">Restored</span><span class="row wrap">${ver(a)} and ${ver(b)} are identical</span></div><span class="r chip acc">current: v${b}</span></div><div class="bd roomy muted">v${b} is a copy of v${a} with its own change note. Compare v${prev} → v${b} to see what the restore undid.</div></div>` + cbar(d, a, b)) +
-    `<div class="toast" role="status"><div><b>v${a} restored as v${b}.</b> <span class="muted">Audit: cases.restore by ${esc(person(d.ctx.user.handle)[0])}.</span></div></div>`;
+    `<div class="toast" role="status"><div><b>v${a} restored as v${b}.</b> <span class="muted">Audit: case.restore by ${esc(person(d.ctx.user.handle)[0])}.</span></div></div>`;
 }
 
-/* the Restore button moves to the confirm state; one document listener, added once */
-let wired = false;
-const wire = () => {
+/* the two versions to compare in the URL; the server's versions are drawn again from it */
+const pickHref = (d, a, b) => href("versions", { id: d.case.id, a: Math.min(a, b), b: Math.max(a, b) }, "compare");
+/* a version picked in the list replaces the older pick (or the newer, when it is newer than both) */
+function pickIn(d, n) {
+  const { a, b } = d.pick;
+  if (n === a || n === b) return "";
+  return n > b ? pickHref(d, b, n) : pickHref(d, n, b);
+}
+
+/* D: the data of the state on the page; every control is one document listener, added once (wire) */
+let D = null, wired = false;
+function onClick(e) {
+  if (!D || !e.target.closest('[data-view="versions"]')) return;
+  const go = e.target.closest("[data-go]");
+  if (go) { location.hash = go.dataset.go; return; }
+  const vi = e.target.closest(".vlist .vi[data-n]");
+  if (vi) { const h = pickIn(D, Number(vi.dataset.n)); if (h) location.assign(h); return; }
+  const b = e.target.closest('[data-act="restore"]');
+  if (!b) return;
+  const d = D, input = document.getElementById("cn");
+  b.disabled = true;
+  actions.restore(d.case.id, d.pick.a, input ? input.value.trim() : "", d.case.version, d.ctx)
+    .then((c) => location.assign(href("versions", { id: d.case.id, a: d.pick.a, b: c.current_version }, "restored")))
+    .catch((err) => { showError(document.querySelector(".modal .mb"), err, `Couldn't restore v${d.pick.a}.`); b.disabled = false; });
+}
+function onKey(e) {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  const vi = e.target.closest && e.target.closest('[data-view="versions"] .vlist .vi[data-n]');
+  if (vi) { e.preventDefault(); vi.click(); }
+}
+function onPick(e) {
+  if (!D || !e.target.closest('[data-view="versions"] .cbar')) return;
+  const { name: n, value } = e.detail;
+  const v = Number(value);
+  if (n === "a") location.assign(pickHref(D, v, D.pick.b === v ? D.pick.a : D.pick.b));
+  else if (n === "b") location.assign(pickHref(D, D.pick.a === v ? D.pick.b : D.pick.a, v));
+}
+function wire() {
   if (wired) return;
   wired = true;
-  document.addEventListener("click", (e) => { const go = e.target.closest("[data-go]"); if (go) location.hash = go.dataset.go; });
-};
+  document.addEventListener("click", onClick);
+  document.addEventListener("keydown", onKey);
+  document.addEventListener("dd:change", onPick);
+}
 
 export default { nav: "cases", default: "default", states: {
   "default": { render: (d) => page(d) },
@@ -92,4 +132,4 @@ export default { nav: "cases", default: "default", states: {
   "restore-confirm": { render: restoreConfirm },
   "restored": { render: restored },
   "used-in-cycles": { render: (d) => page(d, used(d), { tab: "used" }) }
-}, after: () => wire() };
+}, after: (main, id, d) => { D = d; wire(); } };

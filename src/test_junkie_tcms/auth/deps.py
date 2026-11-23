@@ -7,14 +7,14 @@ from fastapi import Depends, HTTPException, Path, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from test_junkie_tcms.api.request_context import MCP_TOOL_KEY
 from test_junkie_tcms.auth import sessions, tokens
 from test_junkie_tcms.auth.scopes import CONSUMER, ROLE_SCOPES, lower_role
+from test_junkie_tcms.db.base import aware, utcnow
 from test_junkie_tcms.db.models import Actor, ApiToken, Consumer, Membership, Org, User, UserSession
 from test_junkie_tcms.settings import Settings
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
-# ASGI scope key the MCP dispatcher sets on its in-process requests; no client header can set it.
-MCP_VIA_KEY = "tcms.via_mcp"
 
 
 def get_settings(request: Request) -> Settings:
@@ -56,7 +56,7 @@ def get_principal(
         token, actor = found
         if CONSUMER in token.scopes:
             raise HTTPException(403, "A consumer token reaches only the consumer routes")
-        via = "mcp" if request.scope.get(MCP_VIA_KEY) else "api"
+        via = "mcp" if request.scope.get(MCP_TOOL_KEY) else "api"
         return Principal(via=via, token=token, actor=actor)
 
     cookie = request.cookies.get(sessions.SESSION_COOKIE)
@@ -111,9 +111,26 @@ class OrgContext:
     def sees_product(self, product_id: str) -> bool:
         return self.product_ids is None or product_id in self.product_ids
 
+    def provenance(self) -> dict[str, str | None]:
+        """How this request acts: stored on every audit_event and case_version it writes."""
+        token = self.principal.token
+        return {
+            "via": self.principal.via,
+            "token_id": token.id if token is not None else None,
+            "on_behalf_of_user_id": self.actor.owner_user_id,
+        }
+
 
 def _not_found() -> HTTPException:
     return HTTPException(404, "Org not found")
+
+
+def touch_active(db: Session, actor: Actor) -> None:
+    """Members' "last active": committed here, since a read-only request never commits."""
+    now = utcnow()
+    if actor.last_active_at is None or now - aware(actor.last_active_at) >= tokens.LAST_USED_EVERY:
+        actor.last_active_at = now
+        db.commit()
 
 
 def get_org_context(
@@ -139,6 +156,7 @@ def get_org_context(
     role = effective_role(db, actor)
     if role is None:
         raise _not_found()
+    touch_active(db, actor)
     scopes = ROLE_SCOPES[role]
     product_ids = None
     if principal.token is not None:
@@ -177,6 +195,7 @@ def get_consumer_context(request: Request, db: Session = Depends(get_db)) -> Con
     role = effective_role(db, actor)
     if role is None:
         raise _unauthorized("The consumer's approver is no longer a member")
+    touch_active(db, actor)
     product_ids = frozenset(token.product_ids) if token.product_ids is not None else None
     ctx = OrgContext(
         org=db.get(Org, token.org_id),

@@ -185,7 +185,7 @@ class BulkResultItem(BaseModel):
     case_key: str | None = Field(None, max_length=40)
     automation_ref: str | None = Field(None, max_length=500)
     status: ResultStatus
-    comment: str | None = Field(None, max_length=20_000)
+    comment: RichIn | None = None
     duration_ms: int | None = Field(None, ge=0)
     defects: list[Link] = Field(default_factory=list, max_length=50)
 

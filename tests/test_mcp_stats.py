@@ -1,5 +1,6 @@
 """Per-tool MCP stats recorded on each `/mcp` call, and the three MCP page operations."""
 
+import dataclasses
 import json
 import math
 from contextlib import ExitStack
@@ -10,8 +11,8 @@ from sqlalchemy import select
 from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
 
 from test_junkie_tcms import __version__
-from test_junkie_tcms.db.models import McpToolStat
-from test_junkie_tcms.mcp_server import stats
+from test_junkie_tcms.db.models import Actor, McpServerEvent, McpToolStat
+from test_junkie_tcms.mcp_server import events, stats
 from test_junkie_tcms.mcp_server.generator import build_tools, tool_list_hash
 from tests import support
 from tests.catalog_seed import ok, url
@@ -19,7 +20,8 @@ from tests.support import add_member, login
 from tests.test_mcp_server import call, rpc, token, tool_names
 
 T0 = datetime(2026, 11, 14, 10, 15, tzinfo=UTC)
-MCP_OPS = {"mcp_tools_list", "mcp_usage", "mcp_server_get"}
+MCP_OPS = {"mcp_tools_list", "mcp_usage", "mcp_server_get", "mcp_clients", "mcp_updates"}
+TOOL_COUNT = 92
 
 
 def make_clock(env):
@@ -172,7 +174,7 @@ class McpStats:
         raw_call(mcp, admin_token, "me_get")
         listed = ok(api.get(url("/mcp/tools")))
         by_name = {item["name"]: item for item in listed["items"]}
-        assert len(by_name) == 90 and MCP_OPS <= set(by_name)
+        assert len(by_name) == TOOL_COUNT and MCP_OPS <= set(by_name)
         live = rpc(mcp, admin_token, "tools/list", query="?toolsets=all").json()["result"]["tools"]
         for entry in live:
             wire = json.dumps(entry, separators=(",", ":")).encode()
@@ -260,10 +262,134 @@ class McpStats:
         api = TestClient(app)
         api.headers["Authorization"] = f"Bearer {admin_token}"
         server = ok(api.get(url("/mcp/server")))
-        assert server["version"] == __version__ and server["tool_count"] == 90
+        assert server["version"] == __version__ and server["tool_count"] == TOOL_COUNT
         assert server["tool_list_hash"] == tool_list_hash(build_tools(app))
         over_mcp = call_all(mcp, admin_token, "mcp_server_get", org="acme")["structuredContent"]
         assert over_mcp["status"] == 200 and over_mcp["data"] == server
+
+    # The app's MCP page: custom ranges, reads and writes, clients and the updates feed
+
+    @test()
+    def test_tools_list_counts_calls_over_a_custom_range(self, suite_parameter):
+        mcp = self.mcp()
+        admin_token = token(self.env.owner, "admin", "read")
+        clock = make_clock(self.env)
+        raw_call(mcp, admin_token, "me_get")
+        clock[0] = T0 + timedelta(days=10)
+        raw_call(mcp, admin_token, "me_get")
+        assert call(mcp, admin_token, "orgs_get", org="nope")["status"] >= 400
+        api = self.env.bearer(admin_token)
+
+        def tools(**params):
+            listed = ok(api.get(url("/mcp/tools"), params=params))
+            return listed, {i["name"]: i for i in listed["items"]}
+
+        listed, by_name = tools()
+        assert listed["since"].startswith("2026-10-25T11:00:00") and listed["until"].startswith("2026-11-24T11")
+        assert (by_name["me_get"]["calls"], by_name["orgs_get"]["errors"]) == (2, 1)
+        listed, by_name = tools(since="2026-11-14T11:30:00Z", until="2026-11-30T00:00:00Z")
+        assert listed["since"].startswith("2026-11-14T11:00:00")
+        assert (by_name["me_get"]["calls"], by_name["me_get"]["calls_30d"]) == (1, 2)
+        assert by_name["me_get"]["p50_resp_tokens"] > 0
+        _, by_name = tools(since="2026-11-01T00:00:00Z", until="2026-11-14T00:00:00Z")
+        assert by_name["me_get"]["calls"] == 0 and by_name["me_get"]["p50_resp_tokens"] is None
+        backwards = {"since": "2026-11-14T10:00:00Z", "until": "2026-11-14T09:00:00Z"}
+        assert api.get(url("/mcp/tools"), params=backwards).status_code == 422
+        too_long = {"since": "2026-01-01T00:00:00Z"}
+        assert api.get(url("/mcp/tools"), params=too_long).status_code == 422
+
+    @test()
+    def test_usage_splits_reads_and_writes_and_a_removed_tool_counts_as_a_write(self, suite_parameter):
+        app = self.env.app
+        mcp = self.mcp()
+        admin_token = token(self.env.owner, "admin", "read")
+        make_clock(self.env)
+        raw_call(mcp, admin_token, "me_get")
+        [seen] = rows(app)
+        writer = next(t.name for t in app.state.mcp_tools if not t.annotations["read_only_hint"])
+        for tool in (writer, "a_tool_no_longer_served"):
+            stats.record(app.state.sessionmaker, seen.org_id, seen.actor_id, tool, False, 10)
+        usage = ok(self.env.bearer(admin_token).get(url("/mcp/usage")))
+        [bucket] = usage["items"]
+        assert (bucket["calls"], bucket["reads"], bucket["writes"]) == (3, 1, 2)
+
+    @test()
+    def test_clients_lists_each_actor_with_its_name_and_kind_most_calls_first(self, suite_parameter):
+        app = self.env.app
+        mcp = self.mcp()
+        owner = self.env.owner
+        clock = make_clock(self.env)
+        add_member(owner, "eddie@example.com", "admin")
+        eddie = self.env.client()
+        login(eddie, "eddie@example.com")
+        admin = token(owner, "admin", "read")
+        raw_call(mcp, token(eddie, "read"), "me_get")
+        clock[0] = T0 + timedelta(hours=2)
+        raw_call(mcp, admin, "me_get")
+        assert call(mcp, admin, "orgs_get", org="nope")["status"] >= 400
+        with app.state.sessionmaker() as db:
+            names = {a.id: (a.name, a.kind) for a in db.scalars(select(Actor))}
+        api = self.env.bearer(admin)
+        clients = ok(api.get(url("/mcp/clients")))
+        assert clients["since"].startswith("2026-11-13T13:00:00")
+        first, second = clients["items"]
+        assert (first["calls"], first["errors"], second["calls"], second["errors"]) == (2, 1, 1, 0)
+        for item in (first, second):
+            assert (item["name"], item["kind"]) == names[item["actor_id"]]
+        assert first["last_hour"].startswith("2026-11-14T12") and second["last_hour"].startswith("2026-11-14T10")
+        later = ok(api.get(url("/mcp/clients"), params={"since": "2026-11-14T11:00:00Z"}))["items"]
+        assert [i["actor_id"] for i in later] == [first["actor_id"]]
+        assert api.get(url("/mcp/clients"), params={"since": "2026-01-01T00:00:00Z"}).status_code == 422
+
+    @test()
+    def test_each_server_start_adds_one_update_and_a_changed_list_names_its_tools(self, suite_parameter):
+        app = self.env.app
+        mcp = self.mcp()
+        admin_token = token(self.env.owner, "admin", "read")
+        sessionmaker = app.state.sessionmaker
+        tools = app.state.mcp_tools
+        events.record_start(sessionmaker, tools)
+        changed = [
+            *tools[2:],
+            dataclasses.replace(tools[1], description=tools[1].description + " Changed."),
+            dataclasses.replace(tools[0], name="zz_new_tool"),
+        ]
+        events.record_start(sessionmaker, changed)
+        events.record_start(sessionmaker, changed)
+        api = self.env.bearer(admin_token)
+        page = ok(api.get(url("/mcp/updates"), params={"limit": 2}))
+        rest = ok(api.get(url("/mcp/updates"), params={"limit": 2, "cursor": page["next_cursor"]}))
+        assert rest["next_cursor"] is None
+        newest, change, restart, first = page["items"] + rest["items"]
+        assert [u["kind"] for u in (newest, change, restart, first)] == [
+            "server_started",
+            "tools_changed",
+            "server_started",
+            "server_started",
+        ]
+        assert first["tool_list_hash"] == restart["tool_list_hash"] == app.state.mcp_tool_hash
+        assert (change["added"], change["removed"], change["changed"]) == (
+            ["zz_new_tool"],
+            [tools[0].name],
+            [tools[1].name],
+        )
+        assert change["tool_list_hash"] == newest["tool_list_hash"] == tool_list_hash(changed)
+        assert all(u["version"] == __version__ for u in (newest, change, restart, first))
+        assert all((u["added"], u["removed"], u["changed"]) == ([], [], []) for u in (newest, restart, first))
+        over_mcp = call_all(mcp, admin_token, "mcp_updates", org="acme", limit=2)["structuredContent"]
+        assert over_mcp["status"] == 200 and over_mcp["data"] == page
+
+    @test()
+    def test_a_failing_update_record_still_starts_the_server(self, suite_parameter):
+        def boom(*args):
+            raise RuntimeError("db down")
+
+        self.env.patch(events, "record_start", boom)
+        mcp = self.mcp()
+        admin_token = token(self.env.owner, "admin", "read")
+        assert call(mcp, admin_token, "me_get")["status"] == 200
+        with self.env.app.state.sessionmaker() as db:
+            assert db.scalars(select(McpServerEvent)).all() == []
 
     # Criterion 5: admin or audit:read
 
@@ -274,7 +400,7 @@ class McpStats:
         owner = self.env.owner
         value = token(owner, *scopes)
         api = self.env.bearer(value)
-        for path in ("/mcp/tools", "/mcp/usage", "/mcp/server"):
+        for path in ("/mcp/tools", "/mcp/usage", "/mcp/server", "/mcp/clients", "/mcp/updates"):
             response = api.get(url(path))
             assert response.status_code == (200 if allowed else 403), (path, response.text)
             if not allowed:

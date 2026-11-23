@@ -23,7 +23,7 @@ from test_junkie_tcms.api.operations import TOOLSETS
 from test_junkie_tcms.auth import tokens
 from test_junkie_tcms.auth.deps import effective_role
 from test_junkie_tcms.auth.scopes import ADMIN, AUDIT_READ, CONSUMER, ROLE_SCOPES
-from test_junkie_tcms.mcp_server import stats
+from test_junkie_tcms.mcp_server import events, stats
 from test_junkie_tcms.mcp_server.dispatch import dispatch
 from test_junkie_tcms.mcp_server.generator import ToolSpec, build_tools, mcp_tool, tool_list_hash
 
@@ -223,6 +223,7 @@ async def lifespan(app: FastAPI):
     )
     app.state.mcp_tools = tools
     app.state.mcp_tool_hash = tool_list_hash(tools)
+    await anyio.to_thread.run_sync(events.safe_record_start, app.state.sessionmaker, tools)
     try:
         async with server.session_manager.run():
             yield

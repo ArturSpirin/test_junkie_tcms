@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, Response
-from sqlalchemy import delete, or_, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
@@ -70,12 +70,26 @@ def consumer_product_ids(db: Session, consumer_ids: list[str]) -> dict[str, list
     return found
 
 
-def consumer_out(consumer: Consumer, product_ids: list[str], now) -> ConsumerOut:
+def consumer_project_counts(db: Session, consumer_ids: list[str]) -> dict[str, int]:
+    """Projects in each consumer's last inventory, one grouped query for the whole page."""
+    found = dict.fromkeys(consumer_ids, 0)
+    rows = db.execute(
+        select(ConsumerInventory.consumer_id, func.count())
+        .where(ConsumerInventory.consumer_id.in_(consumer_ids))
+        .group_by(ConsumerInventory.consumer_id)
+    )
+    for consumer_id, count in rows:
+        found[consumer_id] = count
+    return found
+
+
+def consumer_out(consumer: Consumer, product_ids: list[str], project_count: int, now) -> ConsumerOut:
     return ConsumerOut(
         id=consumer.id,
         name=consumer.name,
         status=consumer_status(consumer, now),
         product_ids=product_ids,
+        project_count=project_count,
         last_heartbeat_at=consumer.last_heartbeat_at,
         busy_job_id=consumer.busy_job_id,
         tj_version=consumer.tj_version,
@@ -156,8 +170,10 @@ def consumers_list(
     if visible is not None:
         query = query.where(visible)
     rows, cursor = paginate(db, query, Consumer.id, params)
-    products = consumer_product_ids(db, [r.id for r in rows])
-    items = [consumer_out(r, products[r.id], now) for r in rows]
+    ids = [r.id for r in rows]
+    products = consumer_product_ids(db, ids)
+    projects = consumer_project_counts(db, ids)
+    items = [consumer_out(r, products[r.id], projects[r.id], now) for r in rows]
     return Page[ConsumerOut](items=items, next_cursor=cursor)
 
 
@@ -178,8 +194,8 @@ def consumers_get(
         select(ConsumerInventory)
         .where(ConsumerInventory.consumer_id == row.id)
         .order_by(ConsumerInventory.project)
-    )
-    base = consumer_out(row, consumer_product_ids(db, [row.id])[row.id], now)
+    ).all()
+    base = consumer_out(row, consumer_product_ids(db, [row.id])[row.id], len(inventory), now)
     return ConsumerDetail(
         **base.model_dump(),
         heartbeats=[HeartbeatOut.model_validate(b) for b in beats],
@@ -218,7 +234,7 @@ def consumers_update(
     if changes:
         audit.record(db, ctx, "consumer.update", "consumer", row.id, changes)
         db.commit()
-    return consumer_out(row, current, utcnow())
+    return consumer_out(row, current, consumer_project_counts(db, [row.id])[row.id], utcnow())
 
 
 @router.delete(CONSUMERS + "/{consumer_id}", status_code=204, **op("consumers_revoke", ADMIN, "consumers"))

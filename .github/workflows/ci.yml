@@ -41,6 +41,46 @@ jobs:
       # PYTHONPATH=. lets the suites import tests.support (the CLI does not add the project root).
       - run: PYTHONPATH=. python -m test_junkie run -s tests
 
+  # requirements.lock is made only by scripts/lock.py; a hand edit or a stale lock fails here.
+  lock:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements.lock
+      - run: python scripts/lock.py --check
+
+  # The README's "Try it" commands, verbatim, in a clean venv on each platform.
+  quickstart:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - run: python -m venv "$RUNNER_TEMP/venv"
+      - name: README quick-start
+        run: |
+          if [ -d "$RUNNER_TEMP/venv/Scripts" ]; then source "$RUNNER_TEMP/venv/Scripts/activate"; else source "$RUNNER_TEMP/venv/bin/activate"; fi
+          pip install -r requirements.lock && pip install --no-deps .
+          TJ_TCMS_ADMIN_PASSWORD=change-me-now test-junkie-tcms create-admin --email you@example.com --name You --org-slug acme --org-name Acme
+          TJ_TCMS_INSECURE_COOKIES=true test-junkie-tcms serve > "$RUNNER_TEMP/serve.log" 2>&1 &
+          for _ in $(seq 60); do curl -sf -o /dev/null http://127.0.0.1:8000/api/v1/openapi.json && break; sleep 1; done
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8000/api/v1/openapi.json)" = 200
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+            -d '{"email":"you@example.com","password":"change-me-now"}' http://127.0.0.1:8000/api/v1/auth/login)" = 200
+      - if: failure()
+        run: cat "$RUNNER_TEMP/serve.log" || true
+
   docker:
     runs-on: ubuntu-latest
     steps:

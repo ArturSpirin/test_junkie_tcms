@@ -34,6 +34,8 @@ dev = [
     "ruff==0.15.12",
     # The tests run on Test Junkie itself: python -m test_junkie run -s tests
     "test-junkie==0.9a8",
+    # Makes requirements.lock with platform markers: python scripts/lock.py
+    "uv==0.13.9",
 ]
 
 [project.scripts]

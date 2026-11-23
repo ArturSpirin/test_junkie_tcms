@@ -69,26 +69,28 @@ def main(argv: list[str] | None = None) -> None:
         anyio.run(mcp_bridge.run, args.url, token, args.toolsets)
         return
 
-    settings = Settings()
+    # Check the input before anything touches the database.
+    if args.command == "create-admin":
+        password = os.environ.get("TJ_TCMS_ADMIN_PASSWORD") or getpass.getpass("Password: ")
+        if len(password) < 8:
+            sys.exit("The password needs at least 8 characters")
+    elif args.command == "sweep-idempotency" and args.batch_size < 1:
+        sys.exit("--batch-size must be at least 1")
 
-    if args.command == "migrate":
-        migrate.upgrade(settings.database_url)
-    elif args.command == "serve":
+    settings = Settings()
+    # Every command from here on uses the database, so each one brings it to head first (a no-op when it is).
+    migrate.upgrade(settings.database_url)
+
+    if args.command == "serve":
         import uvicorn
 
         from test_junkie_tcms.app import create_app
 
-        migrate.upgrade(settings.database_url)
         uvicorn.run(create_app(settings), host=args.host, port=args.port)
     elif args.command == "create-admin":
-        password = os.environ.get("TJ_TCMS_ADMIN_PASSWORD") or getpass.getpass("Password: ")
-        if len(password) < 8:
-            sys.exit("The password needs at least 8 characters")
         create_admin(settings, args.email, args.name, args.org_slug, args.org_name, password)
         print(f"Created {args.email} as owner of {args.org_slug}")
     elif args.command == "sweep-idempotency":
-        if args.batch_size < 1:
-            sys.exit("--batch-size must be at least 1")
         engine = make_engine(settings.database_url)
         try:
             deleted = sweep_expired(

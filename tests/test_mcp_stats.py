@@ -100,8 +100,8 @@ class McpStats:
         mcp = self.mcp()
         owner = self.env.owner
         value = token(owner, "read")
-        for name in ("nope", "mcp_usage"):
-            assert call_all(mcp, value, name, org="acme")["structuredContent"]["status"] == 404
+        for name, status in (("nope", 404), ("mcp_usage", 403)):
+            assert call_all(mcp, value, name, org="acme")["structuredContent"]["status"] == status
         assert rows(app) == []
 
     @test()
@@ -532,7 +532,9 @@ class McpStats:
         assert (MCP_OPS <= visible) is allowed and (MCP_OPS & visible) == (MCP_OPS if allowed else set())
         for name in MCP_OPS:
             result = call_all(mcp, value, name, org="acme")["structuredContent"]
-            assert result["status"] == (200 if allowed else 404), (name, result)
+            assert result["status"] == (200 if allowed else 403), (name, result)
+            if not allowed:
+                assert result["error"]["detail"] == "Needs scope admin or audit:read"
 
     @test()
     def test_an_admin_only_token_can_also_read_the_audit_log(self, suite_parameter):

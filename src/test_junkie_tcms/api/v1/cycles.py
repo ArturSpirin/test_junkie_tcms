@@ -263,8 +263,8 @@ def cycles_list(
     query = select(Cycle).where(Cycle.org_id == ctx.org.id, Cycle.product_id == p.id)
     if status:
         query = query.where(Cycle.status == status)
-    rows, cursor = paginate(db, query, Cycle.id, params)
-    return Page[CycleOut](items=cycles_out(db, rows), next_cursor=cursor)
+    rows, cursor, total = paginate(db, query, Cycle.id, params)
+    return Page[CycleOut](items=cycles_out(db, rows), next_cursor=cursor, total=total)
 
 
 @router.post(
@@ -440,8 +440,8 @@ def cycle_cases_list(
         query = query.where(CycleCase.status == status)
     if assignee:
         query = query.where(CycleCase.assignee_actor_id == assignee)
-    rows, cursor = paginate(db, query, CycleCase.id, params)
-    return Page[CycleCaseOut](items=cycle_cases_out(db, rows, mode), next_cursor=cursor)
+    rows, cursor, total = paginate(db, query, CycleCase.id, params)
+    return Page[CycleCaseOut](items=cycle_cases_out(db, rows, mode), next_cursor=cursor, total=total)
 
 
 @router.post(

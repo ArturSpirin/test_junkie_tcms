@@ -301,7 +301,8 @@ def mcp_updates(
     """The MCP server's starts and tool-list changes, newest first. One row per start: `tools_changed` when
     its tool list differs from the previous row's (naming the tools added, removed and changed), else
     `server_started`. Server-wide: every org sees the same rows, which hold only tool names and versions."""
-    rows, next_cursor = paginate(db, select(McpServerEvent), McpServerEvent.id, page, newest_first=True)
+    query = select(McpServerEvent)
+    rows, next_cursor, total = paginate(db, query, McpServerEvent.id, page, newest_first=True)
     return Page[McpUpdateOut](
         items=[
             McpUpdateOut(
@@ -317,4 +318,5 @@ def mcp_updates(
             for row in rows
         ],
         next_cursor=next_cursor,
+        total=total,
     )

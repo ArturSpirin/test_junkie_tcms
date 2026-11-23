@@ -43,5 +43,5 @@ def audit_list(
         query = query.where(AuditEvent.via == via)
     if action:
         query = query.where(AuditEvent.action == action)
-    rows, cursor = paginate(db, query, AuditEvent.id, params)
-    return Page[AuditOut](items=rows, next_cursor=cursor)
+    rows, cursor, total = paginate(db, query, AuditEvent.id, params)
+    return Page[AuditOut](items=rows, next_cursor=cursor, total=total)

@@ -39,7 +39,14 @@ from test_junkie_tcms.api.v1.cases import (
 from test_junkie_tcms.api.v1.catalog import get_feature, get_product, require_active_product, rich_mode
 from test_junkie_tcms.api.v1.md_bundle import FileError, case_to_md, md_to_row, read_bundle, write_bundle
 from test_junkie_tcms.api.v1.report_schemas import ExportIn, ImportIn, ImportOut
-from test_junkie_tcms.api.v1.schemas import CaseBulkItem, CaseMarkdownIn, CaseMarkdownOut, CaseOut, Name, RichMode
+from test_junkie_tcms.api.v1.schemas import (
+    CaseBulkItem,
+    CaseMarkdownIn,
+    CaseMarkdownOut,
+    CaseOut,
+    Name,
+    RichMode,
+)
 from test_junkie_tcms.auth.deps import OrgContext, get_db, require_scope
 from test_junkie_tcms.auth.scopes import READ, WRITE_CASES
 from test_junkie_tcms.db.models import CaseVersion, Feature, Product, TestCase

@@ -55,6 +55,7 @@ class TenancyMetadata:
             "attachment",
             "job",
             "mcp_tool_stat",
+            "mcp_tool_call",
         }
 
     @test()

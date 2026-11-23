@@ -2,7 +2,7 @@
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from test_junkie_tcms.api.v1.schemas import Link, Name, Out, Patch, RichIn, RichOut, StepOut, UtcDateTime
 
@@ -27,14 +27,14 @@ class CycleSource(BaseModel):
 
 
 class CycleCreate(CycleSource):
-    name: str = Name
+    name: Name
     environment: str | None = Environment
     release_id: str | None = None
     default_assignee_actor_id: str | None = None
 
 
 class CycleUpdate(Patch):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     environment: str | None = Environment
     default_assignee_actor_id: str | None = None
 
@@ -119,11 +119,26 @@ class CycleCaseOut(BaseModel):
     steps: list[StepOut]
 
 
+class CaseCycleOut(BaseModel):
+    """A cycle a case is in, with the version the cycle pinned and the case's status there."""
+
+    cycle_id: str
+    name: str
+    cycle_status: str
+    environment: str | None
+    started_at: UtcDateTime
+    closed_at: UtcDateTime | None
+    cycle_case_id: str
+    case_version: int
+    status: str
+    last_result_at: UtcDateTime | None
+
+
 class BulkCycleCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     mode: Literal["features", "plans"] = "features"
     plan_ids: list[str] | None = Field(None, max_length=200)
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     environment: str | None = Environment
 
 
@@ -167,6 +182,7 @@ class ResultOut(BaseModel):
     id: str
     cycle_case_id: str
     attempt: int
+    case_version: int
     status: str
     actor_id: str
     via: str
@@ -225,6 +241,7 @@ class JobOut(BaseModel):
     claimed_at: UtcDateTime | None
     last_beat_at: UtcDateTime | None
     finished_at: UtcDateTime | None
+    reason: str | None = Field(None, description="Why it ended rejected or failed, when known")
     created_at: UtcDateTime
     updated_at: UtcDateTime
 
@@ -241,8 +258,17 @@ class JobResultItem(BaseModel):
 
 class JobReportIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    state: Literal["running", "done", "failed"]
+    state: Literal["running", "done", "failed", "rejected"]
     results: list[JobResultItem] = Field(default_factory=list, max_length=500)
+    reason: str | None = Field(
+        None, min_length=1, max_length=500, description="Why the job was rejected (required) or failed"
+    )
+
+    @model_validator(mode="after")
+    def _rejected_has_reason(self) -> "JobReportIn":
+        if self.state == "rejected" and self.reason is None:
+            raise ValueError("A rejected job needs a reason")
+        return self
 
 
 class JobReportOut(BaseModel):

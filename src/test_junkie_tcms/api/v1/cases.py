@@ -3,7 +3,7 @@
 
 import json
 import re
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -25,6 +25,7 @@ from test_junkie_tcms.api.v1.catalog import (
     rich_out,
 )
 from test_junkie_tcms.api.v1.catalog import to_doc as _to_doc
+from test_junkie_tcms.api.v1.execution_schemas import CaseCycleOut
 from test_junkie_tcms.api.v1.schemas import (
     CaseBulkIn,
     CaseBulkItem,
@@ -42,6 +43,7 @@ from test_junkie_tcms.api.v1.schemas import (
     RichMode,
     StepOut,
     TagOut,
+    UtcDateTime,
 )
 from test_junkie_tcms.auth.deps import OrgContext, get_db, require_scope
 from test_junkie_tcms.auth.scopes import READ, WRITE_CASES
@@ -52,6 +54,7 @@ from test_junkie_tcms.db.models import (
     Actor,
     CaseVersion,
     CaseVersionTag,
+    Cycle,
     CycleCase,
     Feature,
     Product,
@@ -252,11 +255,6 @@ def _check_values(name: str, values: list[str], allowed: tuple[str, ...]) -> Non
         raise HTTPException(422, f"{name} must be one of {', '.join(allowed)}; got {', '.join(bad)}")
 
 
-def _utc(value: datetime) -> datetime:
-    """A query time as stored: UTC; a time without a zone is taken as UTC."""
-    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
-
-
 ## Content: what a version holds
 
 
@@ -408,6 +406,7 @@ def add_version(
         custom=content["custom"],
         change_note=change_note,
         created_by_actor_id=ctx.actor.id,
+        **ctx.provenance(),
     )
     db.add(v)
     db.flush()
@@ -566,6 +565,9 @@ def version_out(db: Session, case: TestCase, v: CaseVersion, mode: RichMode) -> 
         tags=version_tags(db, [v.id])[v.id],
         change_note=v.change_note,
         created_by_actor_id=v.created_by_actor_id,
+        via=v.via,
+        token_id=v.token_id,
+        on_behalf_of_user_id=v.on_behalf_of_user_id,
         created_at=v.created_at,
     )
 
@@ -590,7 +592,7 @@ def cases_list(
         [], description="Repeatable; the last result in any cycle, `untested` when the case has none"
     ),
     priority: list[str] = Query([], description="Repeatable"),
-    updated_since: datetime | None = Query(None, description="Cases changed at or after this time"),
+    updated_since: UtcDateTime | None = Query(None, description="Cases changed at or after this time"),
     edited_by: list[str] = Query([], description="Repeatable actor ids; who made the current version"),
     edited_by_kind: Literal["user", "agent"] | None = Query(None, description="Who made the current version"),
     has_ref: bool | None = Query(None, description="Whether the case has an automation_ref"),
@@ -631,7 +633,7 @@ def cases_list(
         _check_values("priority", priority, PRIORITIES)
         query = query.where(CaseVersion.priority.in_(priority))
     if updated_since is not None:
-        query = query.where(TestCase.updated_at >= _utc(updated_since))
+        query = query.where(TestCase.updated_at >= updated_since)
     if edited_by:
         query = query.where(CaseVersion.created_by_actor_id.in_(edited_by))
     if edited_by_kind is not None:
@@ -774,11 +776,45 @@ def cases_versions_list(
             title=v.title,
             change_note=v.change_note,
             created_by_actor_id=v.created_by_actor_id,
+            via=v.via,
+            token_id=v.token_id,
+            on_behalf_of_user_id=v.on_behalf_of_user_id,
             created_at=v.created_at,
         )
         for v in rows
     ]
     return Page[CaseVersionSummary](items=items, next_cursor=cursor, total=total)
+
+
+@router.get(CASE + "/cycles", response_model=list[CaseCycleOut], **op("cases_cycles", READ, "cases"))
+def cases_cycles(
+    case: str,
+    ctx: OrgContext = Depends(require_scope(READ)),
+    db: Session = Depends(get_db),
+):
+    """The cycles the case is in, newest first, with the version each pinned."""
+    c = get_case(db, ctx, case)
+    rows = db.execute(
+        select(CycleCase, Cycle)
+        .join(Cycle, and_(Cycle.org_id == CycleCase.org_id, Cycle.id == CycleCase.cycle_id))
+        .where(CycleCase.org_id == c.org_id, CycleCase.case_id == c.id)
+        .order_by(Cycle.started_at.desc(), Cycle.id.desc())
+    )
+    return [
+        CaseCycleOut(
+            cycle_id=cycle.id,
+            name=cycle.name,
+            cycle_status=cycle.status,
+            environment=cycle.environment,
+            started_at=cycle.started_at,
+            closed_at=cycle.closed_at,
+            cycle_case_id=cc.id,
+            case_version=cc.case_version,
+            status=cc.status,
+            last_result_at=cc.last_result_at,
+        )
+        for cc, cycle in rows
+    ]
 
 
 @router.get(

@@ -10,8 +10,11 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
+from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.operations import op
-from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
+from test_junkie_tcms.api.pagination import PageParams, count, page_params, paginate
+from test_junkie_tcms.api.v1.cases import case_key
+from test_junkie_tcms.api.v1.execution_schemas import JobOut
 from test_junkie_tcms.api.v1.job_queue import (
     HELD,
     ONLINE_WITHIN,
@@ -30,6 +33,7 @@ from test_junkie_tcms.api.v1.schemas import (
     InventoryReply,
     InventorySummary,
     Page,
+    RosterItem,
 )
 from test_junkie_tcms.auth.deps import (
     ConsumerContext,
@@ -47,8 +51,10 @@ from test_junkie_tcms.db.models import (
     ConsumerHeartbeat,
     ConsumerInventory,
     ConsumerProduct,
+    Cycle,
     Job,
     Product,
+    TestCase,
 )
 
 router = APIRouter(tags=["consumers"])
@@ -78,8 +84,8 @@ def consumer_project_counts(db: Session, consumer_ids: list[str]) -> dict[str, i
         .where(ConsumerInventory.consumer_id.in_(consumer_ids))
         .group_by(ConsumerInventory.consumer_id)
     )
-    for consumer_id, count in rows:
-        found[consumer_id] = count
+    for consumer_id, n in rows:
+        found[consumer_id] = n
     return found
 
 
@@ -95,6 +101,7 @@ def consumer_out(consumer: Consumer, product_ids: list[str], project_count: int,
         tj_version=consumer.tj_version,
         python=consumer.python,
         os=consumer.os,
+        paused_at=consumer.paused_at,
         revoked_at=consumer.revoked_at,
         created_at=consumer.created_at,
     )
@@ -196,11 +203,154 @@ def consumers_get(
         .order_by(ConsumerInventory.project)
     ).all()
     base = consumer_out(row, consumer_product_ids(db, [row.id])[row.id], len(inventory), now)
+    recent = _jobs_query(ctx, row.id).where(Job.created_at >= now - HISTORY)
+    rejected = recent.where(Job.status == "rejected")
+    roster = _roster(db, ctx, inventory)
     return ConsumerDetail(
         **base.model_dump(),
         heartbeats=[HeartbeatOut.model_validate(b) for b in beats],
         inventory=[InventorySummary.model_validate(i) for i in inventory],
+        jobs_today=count(db, recent),
+        rejected_today=count(db, rejected),
+        tests_found=len(roster),
+        tests_linked=sum(1 for item in roster if item.case_key is not None),
     )
+
+
+def _jobs_query(ctx: OrgContext, consumer_id: str):
+    """The consumer's jobs whose cycle is in a product the caller sees."""
+    query = select(Job).join(Cycle, Cycle.id == Job.cycle_id).where(Job.consumer_id == consumer_id)
+    if ctx.product_ids is not None:
+        query = query.where(Cycle.product_id.in_(ctx.product_ids))
+    return query
+
+
+def _roster(db: Session, ctx: OrgContext, inventory: list[ConsumerInventory]) -> list[RosterItem]:
+    """Each ref of the inventory, by project, linked to the live case whose automation_ref it is when the
+    caller sees that case's product."""
+    pairs = [
+        (i.project, t["id"])
+        for i in inventory
+        for t in i.roster
+        if isinstance(t, dict) and isinstance(t.get("id"), str)
+    ]
+    refs = sorted({ref for _, ref in pairs})
+    keys: dict[str, str] = {}
+    for chunk in (refs[i : i + 500] for i in range(0, len(refs), 500)):
+        query = (
+            select(TestCase, Product)
+            .join(Product, Product.id == TestCase.product_id)
+            .where(
+                TestCase.org_id == ctx.org.id,
+                TestCase.archived_at.is_(None),
+                TestCase.automation_ref.in_(chunk),
+            )
+            .order_by(TestCase.product_id, TestCase.number)
+        )
+        if ctx.product_ids is not None:
+            query = query.where(TestCase.product_id.in_(ctx.product_ids))
+        for case, product in db.execute(query):
+            keys.setdefault(case.automation_ref, case_key(product, case))
+    return [RosterItem(project=p, ref=r, case_key=keys.get(r)) for p, r in pairs]
+
+
+@router.get(
+    CONSUMERS + "/{consumer_id}/jobs",
+    response_model=Page[JobOut],
+    **op("consumers_jobs", READ, "consumers"),
+)
+def consumers_jobs(
+    consumer_id: str = Path(),
+    status: Literal["queued", "claimed", "running", "done", "failed", "cancelled", "rejected"] | None = None,
+    ctx: OrgContext = Depends(require_scope(READ)),
+    params: PageParams = Depends(page_params),
+    db: Session = Depends(get_db),
+):
+    """The jobs sent to this machine, newest first, each with its `reason` when it was rejected or failed.
+    Only jobs in products you can see."""
+    row = _get(db, ctx, consumer_id)
+    query = _jobs_query(ctx, row.id)
+    if status is not None:
+        query = query.where(Job.status == status)
+    rows, cursor, total = paginate(db, query, Job.id, params, newest_first=True)
+    items = [JobOut.model_validate(j, from_attributes=True) for j in rows]
+    return Page[JobOut](items=items, next_cursor=cursor, total=total)
+
+
+@router.get(
+    CONSUMERS + "/{consumer_id}/roster",
+    response_model=Page[RosterItem],
+    **op("consumers_roster", READ, "consumers"),
+)
+def consumers_roster(
+    consumer_id: str = Path(),
+    project: str | None = Query(None, description="Only this project's refs"),
+    ctx: OrgContext = Depends(require_scope(READ)),
+    params: PageParams = Depends(page_params),
+    db: Session = Depends(get_db),
+):
+    """The tests in the machine's last inventory, by project then as listed, each with the key of the case
+    whose automation_ref it is (null when none you can see)."""
+    row = _get(db, ctx, consumer_id)
+    query = select(ConsumerInventory).where(ConsumerInventory.consumer_id == row.id)
+    if project is not None:
+        query = query.where(ConsumerInventory.project == project)
+    roster = _roster(db, ctx, db.scalars(query.order_by(ConsumerInventory.project)).all())
+    # The roster is one JSON list per project, so it pages by position; the cursor is the next offset.
+    start = 0
+    if params.cursor:
+        if not params.cursor.isdigit():
+            raise HTTPException(422, "cursor is not a next_cursor of this list")
+        start = int(params.cursor)
+    end = start + params.limit
+    cursor = str(end) if end < len(roster) else None
+    return Page[RosterItem](items=roster[start:end], next_cursor=cursor, total=len(roster))
+
+
+def _set_paused(db: Session, ctx: OrgContext, consumer_id: str, paused: bool) -> ConsumerOut:
+    row = _get(db, ctx, consumer_id)
+    if row.revoked_at is not None:
+        raise HTTPException(409, "The consumer is revoked; pair it again")
+    if (row.paused_at is not None) != paused:
+        row.paused_at = utcnow() if paused else None
+        action = "consumer.pause" if paused else "consumer.resume"
+        audit.record(db, ctx, action, "consumer", row.id, {"paused": {"from": not paused, "to": paused}})
+        db.commit()
+    ids = [row.id]
+    return consumer_out(
+        row, consumer_product_ids(db, ids)[row.id], consumer_project_counts(db, ids)[row.id], utcnow()
+    )
+
+
+@router.post(
+    CONSUMERS + "/{consumer_id}/pause",
+    response_model=ConsumerOut,
+    **op("consumers_pause", ADMIN, "consumers"),
+)
+def consumers_pause(
+    consumer_id: str = Path(),
+    ctx: OrgContext = Depends(require_scope(ADMIN)),
+    idem: Idem = Depends(idempotency),
+    db: Session = Depends(get_db),
+):
+    """Stop sending it new jobs: claims return none and new cycles can't choose it. A job it holds runs to
+    the end. Pausing a paused consumer changes nothing."""
+    return _set_paused(db, ctx, consumer_id, True)
+
+
+@router.post(
+    CONSUMERS + "/{consumer_id}/resume",
+    response_model=ConsumerOut,
+    **op("consumers_resume", ADMIN, "consumers"),
+)
+def consumers_resume(
+    consumer_id: str = Path(),
+    ctx: OrgContext = Depends(require_scope(ADMIN)),
+    idem: Idem = Depends(idempotency),
+    db: Session = Depends(get_db),
+):
+    """It takes jobs again. Resuming a consumer that isn't paused changes nothing."""
+    return _set_paused(db, ctx, consumer_id, False)
 
 
 @router.patch(

@@ -91,6 +91,9 @@ class Actor(TenantMixin, Base):
     owner_user_id: Mapped[str | None] = mapped_column(String(26))
     role: Mapped[str | None] = mapped_column(String(16))
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    description: Mapped[str | None] = mapped_column(String(500))
+    # Touched in get_org_context, at most once per tokens.LAST_USED_EVERY.
+    last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ApiToken(TenantMixin, Base):
@@ -319,10 +322,13 @@ class CaseVersion(TenantMixin, Base):
         UniqueConstraint("org_id", "case_id", "version"),
         ForeignKeyConstraint(["org_id", "case_id"], ["test_case.org_id", "test_case.id"]),
         ForeignKeyConstraint(["org_id", "created_by_actor_id"], ["actor.org_id", "actor.id"]),
+        ForeignKeyConstraint(["org_id", "token_id"], ["api_token.org_id", "api_token.id"]),
+        ForeignKeyConstraint(["org_id", "on_behalf_of_user_id"], ["membership.org_id", "membership.user_id"]),
         CheckConstraint(f"priority IN {PRIORITIES}", name="priority"),
         CheckConstraint(f"type IN {CASE_TYPES}", name="type"),
         CheckConstraint(f"status IN {CASE_STATUSES}", name="status"),
         CheckConstraint(f"automation IN {AUTOMATIONS}", name="automation"),
+        CheckConstraint("via IS NULL OR via IN ('ui', 'api', 'mcp')", name="via"),
     )
 
     case_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
@@ -345,6 +351,10 @@ class CaseVersion(TenantMixin, Base):
     custom: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     change_note: Mapped[str | None] = mapped_column(String(500))
     created_by_actor_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    # Provenance, set as audit.record sets it; null on versions written before 0012.
+    via: Mapped[str | None] = mapped_column(String(8))
+    token_id: Mapped[str | None] = mapped_column(String(26))
+    on_behalf_of_user_id: Mapped[str | None] = mapped_column(String(26))
 
 
 class Tag(TenantMixin, Base):
@@ -394,7 +404,7 @@ class IdempotencyRecord(TenantMixin, Base):
 
 # Consumers: a machine running the test_junkie daemon, paired by device code.
 
-PAIRING_STATUSES = ("pending", "approved", "claimed")
+PAIRING_STATUSES = ("pending", "approved", "claimed", "denied")
 
 
 class Consumer(TenantMixin, Base):
@@ -418,6 +428,8 @@ class Consumer(TenantMixin, Base):
     tj_version: Mapped[str | None] = mapped_column(String(64))
     python: Mapped[str | None] = mapped_column(String(64))
     os: Mapped[str | None] = mapped_column(String(200))
+    # Paused: claims return no job and new cycles can't pick it; a job it already holds runs to the end.
+    paused_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
@@ -450,6 +462,8 @@ class PairingRequest(IdMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     consumer_id: Mapped[str | None] = mapped_column(String(26))
     client_ip: Mapped[str | None] = mapped_column(String(64))
+    # What the machine says about itself on POST /pair, shown to the admin before approving.
+    machine: Mapped[dict[str, Any] | None] = mapped_column(JSON(none_as_null=True))
 
 
 class ConsumerHeartbeat(TenantMixin, Base):
@@ -596,6 +610,8 @@ class Job(TenantMixin, UpdatedMixin, Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Cancelled while claimed: the id goes in the consumer's next heartbeat reply, then this is set.
     cancel_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Why it ended rejected or failed: the consumer's words, or the server's (consumer lost / revoked).
+    reason: Mapped[str | None] = mapped_column(String(500))
 
 
 class Result(TenantMixin, Base):
@@ -610,6 +626,8 @@ class Result(TenantMixin, Base):
 
     cycle_case_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
     attempt: Mapped[int] = mapped_column(Integer, nullable=False)
+    # The version of the case this attempt ran: the cycle case's pin when it was recorded.
+    case_version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     actor_id: Mapped[str] = mapped_column(String(26), nullable=False)
     via: Mapped[str] = mapped_column(String(8), nullable=False)

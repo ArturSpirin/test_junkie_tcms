@@ -1,5 +1,5 @@
 /* Products: the catalog list, one product's detail and the new-product form. */
-import { I, bar, crumbs, lnk, modal, dd, tg, toast, psearch, hl, esc, person } from "../ui.js";
+import { I, bar, crumbs, lnk, modal, dd, tg, psearch, hl, esc, person } from "../ui.js";
 
 const pcard = (p, q) => `<a class="card pc" href="${lnk("products.html#detail")}">
   <div class="pc-h"><span class="mark ${p.markCls}">${esc(p.key[0])}</span><div style="min-width:0"><h2>${hl(esc(p.key + " · " + p.name), q)}</h2><small class="ell">${hl(esc(p.desc), q)}</small></div></div>
@@ -51,7 +51,7 @@ const form = (d) => {
   <div class="field"><label for="pd">Description</label><textarea id="pd" class="in" rows="3">${esc(f.desc)}</textarea></div>
   <div class="field"><label>Copy feature tree from</label>${dd({ value: "none", options: copy, w: "100%", label: "Copy feature tree from" })}</div>
   ${tg(true, "Create version 1.0.0 now", "Adds a planned version so plans and cycles have a target")}`,
-  `<span class="l mono">POST /products</span><button class="btn" data-back>Cancel</button><button class="btn primary">Create product</button>`);
+  `<button class="btn" data-back>Cancel</button><button class="btn primary">Create product</button>`);
 };
 
 const empty = (d) => catalog(d) + `<div class="card"><div class="empty"><div class="ill">${I.build}</div><h3>No products yet</h3><p class="muted">A product holds versions, a feature tree with its cases, and test plans. Start with one.</p><a class="btn primary" href="#new-first">${I.plus}New product</a></div></div>`;
@@ -60,10 +60,10 @@ export default { nav: "products", default: "list", states: {
   "list": { render: list },
   "search": { render: list },
   "search-empty": { render: list },
-  "search-cleared": { render: list, after: (m, d) => toast(`Search cleared. <span class="muted">Showing all ${d.products.length} products.</span>`) },
+  "search-cleared": { render: list, toast: (d) => `Search cleared. <span class="muted">Showing all ${d.products.length} products.</span>` },
   "detail": { render: detail },
   "new": { render: (d) => list(d) + form(d) },
-  "created": { render: list, after: (m, d) => toast(`<b>${esc(d.created.key)} created.</b> <span class="muted">Add features, then cases. Audit: products.create by ${esc(person(d.ctx.user.handle)[0])}.</span>`, false, true) },
+  "created": { render: list, toastKeep: true, toast: (d) => `<b>${esc(d.created.key)} created.</b> <span class="muted">Add features, then cases. Recorded in the audit log.</span>` },
   "empty": { render: empty },
   "new-first": { render: (d) => catalog(d) + form(d) }
 }};

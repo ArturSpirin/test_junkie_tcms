@@ -40,7 +40,7 @@ function detail(d, banner = "") {
 const picked = (d) => d.detail.tree.filter((f) => f.inVersion).length;
 const setFeatures = (d) => modal(`Features in ${esc(d.detail.ver)}`, `<p style="margin-top:0" class="muted">Pick the features this version changes. A bulk cycle makes one cycle per picked feature; a plan that picks “all features in the version” resolves from this list when its cycle starts.</p>
   <div class="fpick">${d.detail.tree.map((f) => `<div class="src${f.inVersion ? " on" : ""}${f.sub ? " sub" : ""}"><span class="ic">${I.folder}</span><div style="min-width:0"><div class="t1">${esc(f.path)}</div><div class="t2">${f.cases} cases</div></div><span class="r">${tg(f.inVersion, "", "", { name: "f" })}</span></div>`).join("")}</div>`,
-  `<span class="l mono">PUT /releases/${esc(d.detail.ver)}/features</span><button class="btn" data-back>Cancel</button><button class="btn primary">Save ${picked(d)} features</button>`);
+  `<button class="btn" data-back>Cancel</button><button class="btn primary">Save ${picked(d)} features</button>`);
 
 const newForm = (d) => {
   const f = d.draft;
@@ -57,7 +57,7 @@ const newForm = (d) => {
   <div class="field"><label for="vt">Target date</label>${dd({ value: f.target, options: targets, w: "100%", label: "Target date" })}</div>
   <div class="field"><label>Copy features from</label>${dd({ value: f.copyFrom, options: copy, w: "100%", label: "Copy features from" })}</div>
   <div class="field"><label for="vno">Notes</label><textarea id="vno" class="in" rows="2">${esc(f.notes)}</textarea></div>`,
-  `<span class="l mono">POST /products/${key}/releases</span><button class="btn" data-back>Cancel</button><button class="btn primary">Create version</button>`);
+  `<button class="btn" data-back>Cancel</button><button class="btn primary">Create version</button>`);
 };
 
 const releasedBanner = (d) => `<div class="banner info">${I.info}<div><b>Mark ${esc(d.detail.ver)} released?</b> ${d.detail.untested} cycle cases are still untested in ${d.detail.openCycles} open cycles. Releasing doesn't close them. <a href="${lnk("cycles.html#list")}">Review cycles</a></div></div>`;

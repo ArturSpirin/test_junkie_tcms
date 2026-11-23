@@ -3,13 +3,14 @@ a job whose consumer stopped beating. Cycles, jobs and consumers all use it, so 
 
 from dataclasses import dataclass, field
 from datetime import timedelta
-from types import SimpleNamespace
 
 from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
+from test_junkie_tcms.auth.deps import OrgContext, Principal
+from test_junkie_tcms.auth.scopes import CONSUMER
 from test_junkie_tcms.db.base import aware
 from test_junkie_tcms.db.models import (
     Actor,
@@ -20,6 +21,7 @@ from test_junkie_tcms.db.models import (
     Cycle,
     CycleCase,
     Job,
+    Org,
 )
 from test_junkie_tcms.errors import ProblemError
 
@@ -69,7 +71,7 @@ def rosters(db: Session, consumer_ids: list[str]) -> dict[str, dict[str, set[str
 def check_consumers(db: Session, org_id: str, product_id: str, ids: list[str], now) -> list[Consumer]:
     """The chosen consumers in the given order.
 
-    404 not in the org, 422 not serving the product, 409 offline."""
+    404 not in the org, 422 not serving the product, 409 offline or paused."""
     found = []
     for consumer_id in dict.fromkeys(ids):
         row = db.scalar(select(Consumer).where(Consumer.org_id == org_id, Consumer.id == consumer_id))
@@ -79,6 +81,8 @@ def check_consumers(db: Session, org_id: str, product_id: str, ids: list[str], n
             raise HTTPException(422, f"Consumer {row.name!r} does not serve this product")
         if not online(row, now):
             raise ProblemError(409, f"Consumer {row.name!r} is offline", code="consumer_offline")
+        if row.paused_at is not None:
+            raise ProblemError(409, f"Consumer {row.name!r} is paused", code="consumer_paused")
         found.append(row)
     return found
 
@@ -146,12 +150,16 @@ def make_jobs(db: Session, cycle: Cycle, plan: Split) -> list[Job]:
     return jobs
 
 
-def system_ctx(db: Session, org_id: str, consumer: Consumer):
-    """Acts as the consumer for what the server does on its behalf: requeue, fail, cancel results."""
-    return SimpleNamespace(
-        org=SimpleNamespace(id=org_id),
-        actor=db.get(Actor, consumer.actor_id),
-        principal=SimpleNamespace(token=None, via="api"),
+def system_ctx(db: Session, org_id: str, consumer: Consumer) -> OrgContext:
+    """Acts as the consumer for what the server does on its behalf: requeue, fail, cancel results.
+    A real `OrgContext`, so audit and provenance read it like any request's."""
+    actor = db.get(Actor, consumer.actor_id)
+    return OrgContext(
+        org=db.get(Org, org_id),
+        actor=actor,
+        role=actor.role,
+        scopes=frozenset({CONSUMER}),
+        principal=Principal(via="api", actor=actor),
     )
 
 
@@ -181,7 +189,8 @@ def cancel_open_cases(db: Session, ctx, job: Job, comment: str) -> int:
 
 
 def pick_other(db: Session, job: Job, product_id: str, now) -> Consumer | None:
-    """Another online consumer that serves the product and lists the job's project, least busy first."""
+    """Another online, unpaused consumer that serves the product and lists the job's project, least busy
+    first."""
     rows = db.scalars(
         select(Consumer)
         .join(ConsumerProduct, ConsumerProduct.consumer_id == Consumer.id)
@@ -190,6 +199,7 @@ def pick_other(db: Session, job: Job, product_id: str, now) -> Consumer | None:
             Consumer.org_id == job.org_id,
             Consumer.id != job.consumer_id,
             Consumer.revoked_at.is_(None),
+            Consumer.paused_at.is_(None),
             ConsumerProduct.product_id == product_id,
             ConsumerInventory.project == job.project,
         )
@@ -216,7 +226,7 @@ def requeue_or_fail(db: Session, job: Job, now, reason: str = LOST) -> None:
             cc.consumer_id = target.id
         audit.record(db, ctx, "job.requeue", "job", job.id, {**changes, "reason": reason})
         return
-    job.status, job.finished_at = "failed", now
+    job.status, job.finished_at, job.reason = "failed", now, reason
     cancelled = cancel_open_cases(db, ctx, job, reason)
     audit.record(db, ctx, "job.fail", "job", job.id, {"reason": reason, "cancelled": cancelled})
 

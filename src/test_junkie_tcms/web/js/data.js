@@ -19,8 +19,11 @@ export async function context() {
   return clone((await import("./data/context.js")).default);
 }
 
-/* The data one view shows in one state (the state ids are the mock's). */
-export async function load(view, state) {
+/* The data one view shows in one state (the state ids are the mock's); q, when given, is the search query
+   from the URL and replaces the state's own. */
+export async function load(view, state, q) {
   const f = (await import(`./data/${view}.js`)).default;
-  return clone(deepMerge(f.base, (f.states || {})[state] || {}));
+  const out = clone(deepMerge(f.base, (f.states || {})[state] || {}));
+  if (q) out.q = q;
+  return out;
 }

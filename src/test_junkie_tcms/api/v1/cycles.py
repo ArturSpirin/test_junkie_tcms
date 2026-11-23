@@ -53,7 +53,6 @@ from test_junkie_tcms.db.models import (
     Feature,
     Product,
     Release,
-    Result,
     TestCase,
     TestPlan,
 )
@@ -510,15 +509,16 @@ def cycle_cases_refresh_version(
     idem: Idem = Depends(idempotency),
     db: Session = Depends(get_db),
 ):
-    """Re-pins the case to its current version, only while it has no result (409 once one is recorded)."""
+    """Re-pins the case to its current version. A case with results goes back to untested on the new
+    version for a rerun; its results stay as history, each with the version it ran."""
     cc, cycle = get_cycle_case(db, ctx, id)
     require_open(cycle)
-    if db.scalar(select(Result.id).where(Result.cycle_case_id == cc.id).limit(1)):
-        raise ProblemError(409, "The case already has a result in this cycle", code="has_results")
     v = db_current(db, db.get(TestCase, cc.case_id))
     if v.id != cc.case_version_id:
-        changes = {"case_version": [cc.case_version, v.version]}
-        cc.case_version_id, cc.case_version = v.id, v.version
+        changes: dict[str, list] = {"case_version": [cc.case_version, v.version]}
+        if cc.status != "untested":
+            changes["status"] = [cc.status, "untested"]
+        cc.case_version_id, cc.case_version, cc.status = v.id, v.version, "untested"
         audit.record(db, ctx, "cycle_case.refresh_version", "cycle_case", cc.id, changes)
         db.commit()
     return cycle_cases_out(db, [cc], mode)[0]

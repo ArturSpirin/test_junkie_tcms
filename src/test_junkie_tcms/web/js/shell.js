@@ -1,6 +1,6 @@
 /* App shell (top bar, side nav, product and version switcher) and the state router for one view.
    Everything the shell shows about the org, user and product comes from data.context(). */
-import { I, actor, dd, ddFit, esc, lnk } from "./ui.js";
+import { I, actor, dd, ddFit, esc, lnk, toast } from "./ui.js";
 
 const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 const mark = (m, cls, size = "xs") => `<span class="mark ${size}${cls ? " " + cls : ""}">${esc(m)}</span>`;
@@ -41,7 +41,29 @@ const ORGS = (ctx) => [
   { v: "new", label: "Create org…", icon: I.plus }
 ];
 
-export function shell(nav, ctx) {
+/* The top-bar search sends its query to the cases view, which filters by it. */
+export const searchHref = (q) => {
+  const t = (q || "").trim();
+  return t ? `?view=cases&q=${encodeURIComponent(t)}` : "?view=cases";
+};
+
+/* "/" focuses the top-bar search, unless a modifier is held, the key goes to an editable field,
+   a dialog is open or the search is hidden (at narrow widths). Returns whether it acted. */
+const EDITABLE = "input, textarea, select, [contenteditable]:not([contenteditable='false'])";
+export function slashKey(e, doc) {
+  if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey) return false;
+  const t = e.target;
+  if (t && typeof t.closest === "function" && t.closest(EDITABLE)) return false;
+  if (doc.querySelector('[aria-modal="true"]')) return false;
+  const box = doc.querySelector("[data-search] input");
+  if (!box || !box.getClientRects().length) return false;
+  e.preventDefault();
+  box.focus();
+  box.select();
+  return true;
+}
+
+export function shell(nav, ctx, q = "") {
   const all = NAVS(ctx).flatMap((s) => s[1]);
   const cur = all.find((l) => l[0] === nav);
   const parent = cur && cur[4];
@@ -53,14 +75,14 @@ export function shell(nav, ctx) {
   const me = actor("person", ctx.user.handle);
   return `
 <header class="top">
-  <button class="burger" aria-label="Menu" data-nav-toggle>${I.menu}</button>
+  <button class="burger" aria-label="Menu" aria-expanded="false" aria-controls="side" data-nav-toggle>${I.menu}</button>
   <a class="brand" href="${lnk("tree.html")}"><span class="mark">TJ</span><span class="hide-n">Test Junkie</span> <small>TCMS</small></a>
   ${dd({ value: ctx.org.id, options: ORGS(ctx), cls: "org sm hide-n", label: "Switch org" })}
-  <div class="search">${I.search}<span class="ell">Search cases, cycles, releases</span><kbd>/</kbd></div>
+  <form class="search" role="search" data-search>${I.search}<input type="search" name="q" aria-label="Search cases" placeholder="Search cases" value="${esc(q)}" autocomplete="off" enterkeyhint="search"><kbd aria-hidden="true">/</kbd></form>
   <div class="spacer"></div>
   <div class="me">${me.replace(/<span>([^<]*)<\/span><\/span>$/, '<span class="who">$1</span></span>')}<span class="chip hide-n">${esc(ctx.user.role)}</span></div>
 </header>
-<nav class="side" aria-label="Main">
+<nav class="side" id="side" aria-label="Main">
   ${ctxDd}
   ${NAVS(ctx).map(([h, ls], i) => `${i ? `<h6>${h}</h6>` : `<h6 style="margin-top:4px">${h}</h6>`}${ls.map(link).join("")}`).join("")}
   <div class="foot">v${esc(ctx.app.version)} · ${esc(ctx.app.hosting)}<br><span class="mono">${esc(ctx.app.openapi)}</span></div>
@@ -76,15 +98,27 @@ export const stateOf = (view, hash) => {
   return view.states[id] ? id : first;
 };
 
-/* Mount one view: draw the shell, then render the state in the hash, loading its data through load(state). */
-export function mount(name, view, ctx, load) {
-  document.body.insertAdjacentHTML("afterbegin", shell(view.nav, ctx));
+/* Mount one view: draw the shell, then render the state in the hash, loading its data through load(state).
+   q is the URL's search query (main.js reads it), shown in the top-bar search. */
+export function mount(name, view, ctx, load, q = "") {
+  document.body.insertAdjacentHTML("afterbegin", shell(view.nav, ctx, q));
+  document.addEventListener("keydown", (e) => slashKey(e, document));
+  document.querySelector("[data-search]").addEventListener("submit", (e) => {
+    e.preventDefault();
+    location.href = searchHref(e.currentTarget.elements.q.value);
+  });
   const main = document.getElementById("main");
   main.dataset.view = name;
   if (view.flush) main.classList.add("flush");
+  // the one writer of the menu's open state: the sidebar class and the Menu button's aria-expanded move together
+  const burger = document.querySelector("[data-nav-toggle]");
+  const setNav = (open) => {
+    document.body.classList.toggle("nav-open", open);
+    burger.setAttribute("aria-expanded", String(open));
+  };
   document.addEventListener("click", (e) => {
-    if (e.target.closest("[data-nav-toggle]")) document.body.classList.toggle("nav-open");
-    else if (e.target.closest("[data-nav-close]")) document.body.classList.remove("nav-open");
+    if (e.target.closest("[data-nav-toggle]")) setNav(burger.getAttribute("aria-expanded") !== "true");
+    else if (e.target.closest("[data-nav-close]")) setNav(false);
   });
   let seq = 0;
   async function render() {
@@ -94,9 +128,10 @@ export function mount(name, view, ctx, load) {
     const d = await load(id);
     if (mine !== seq) return; // a newer hash change won
     d.ctx = ctx;
-    document.body.classList.toggle("nav-open", !!s.navOpen);
+    setNav(!!s.navOpen);
     document.querySelectorAll(".toast.live-t").forEach((t) => t.remove());
     main.innerHTML = s.render(d);
+    if (s.toast) toast(s.toast(d), false, s.toastKeep);
     if (s.after) s.after(main, d);
     if (view.after) view.after(main, id, d);
     document.querySelectorAll(".dd.open").forEach(ddFit);

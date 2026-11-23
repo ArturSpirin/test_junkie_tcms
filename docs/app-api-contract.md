@@ -14,7 +14,7 @@ app does not show them.
 | F4 | Cycle and run extras: created/closed by, bulk naming, splits, retries, stop, step ignore, build under test |
 | F5 | Report periods, trend, org KPIs, product-wide and feature-history reports |
 | F6 | MCP tool descriptions and hints, recent calls, error-code breakdown (done) |
-| F7 | Consumer jobs per machine, rejected reason, pause, deny pairing, pending-pairing preview, roster |
+| F7 | Consumer jobs per machine, rejected reason, pause, deny pairing, pending-pairing preview, roster (done) |
 | F8 | Name search (`q`) on lists, product owner, copy feature tree, ETA and manual case order on Start |
 
 ## Serving
@@ -143,7 +143,7 @@ also starts a session and sets the cookies. It returns the new `MemberOut`.
 | reports, import, viewer | `reports_feature`, `imports_create`, `cases_get` | exists |
 | case count per feature, last-result dot, filters, sort, key search | `features_list` (`case_count` own, `total_case_count` with sub-features); `cases_list` (`last_result`, `last_result_at`; filters, `sort`, `q` as in Cases below) | exists |
 | reorder a case within a feature | `CaseOut.position`; `cases_move` `{feature_id, position?}` (no `position` appends; reordering keeps the other cases' `updated_at`) | exists |
-| "edited by agent via MCP on behalf of", "in cycles" | | not yet (F2) |
+| "edited by agent via MCP on behalf of", "in cycles" | `cases_versions_list` (`via`, `token_id`, `on_behalf_of_user_id`), `actors_list`, `cases_cycles` | exists (F2) |
 
 ### 4. Cases
 
@@ -170,14 +170,22 @@ tree's pre-order, then position), `key`, `title`, `updated` (newest first), `res
 | tags | `tags_list` | exists |
 | separate Description field | `description` on `cases_get`, `cases_create`, `cases_update`; versioned and restored with the other fields | exists (F3) |
 | Markdown get/put | `GET`/`PUT /cases/{case}/markdown` (`cases_markdown_get`, `cases_markdown_put`): one md-bundle file; `ETag` is the version, `PUT` takes `If-Match`. A file without a Description section keeps the stored one | exists (F3) |
-| version provenance (via, on behalf of), "in cycles" | | not yet (F2) |
+| version provenance (via, on behalf of), "in cycles" | `cases_get` / `cases_version_get` (`via`, `token_id`, `on_behalf_of_user_id`), `cases_cycles` | exists (F2) |
 
 ### 6. Version history
 
 | Need | Operations | Status |
 |---|---|---|
 | list, compare (two gets), restore | `cases_versions_list`, `cases_version_get`, `cases_restore` | exists |
-| via / on-behalf-of per version, "used in cycles" | | not yet (F2) |
+| via / on-behalf-of per version, "used in cycles" | `cases_versions_list`, `cases_cycles` | exists (F2) |
+
+Each version carries `via` (`ui`, `api`, `mcp`; null on versions saved before F2), `token_id` and
+`on_behalf_of_user_id` (the agent's owner, set only when an agent saved it). Names come from `actors_list`.
+
+`GET /cases/{case}/cycles` (`cases_cycles`, read) lists the cycles the case is in, newest first:
+`CaseCycleOut {cycle_id, name, cycle_status, environment, started_at, closed_at, cycle_case_id, case_version,
+status, last_result_at}`, where `case_version` is the version the cycle pinned. A case in a product the caller
+can't see is a 404.
 
 ### 7. Plans
 
@@ -240,7 +248,15 @@ operations.
 | Need | Operations | Status |
 |---|---|---|
 | release, feature, cycle, product, org reports | `reports_release`, `reports_feature`, `reports_cycle`, `reports_product`, `reports_org` | exists |
-| period filters, trend, org KPIs, product-wide report, feature history in the mock's shape | | not yet (F5) |
+| period filter: `from`, `to` (days in `tz`, both included), `tz` (IANA, default UTC); default the last 30 days ending today in `tz`; 422 for an unknown `tz`, `from` after `to`, or more than 366 days | `reports_release`, `reports_feature`, `reports_product`, `reports_org` | exists |
+| trend: `trend{days[{date, success..cancel}], total, peak_day{date, total} or null, by_agents_pct}`, one zero-filled row per day of the period | `reports_release`, `reports_product`, `reports_org` | exists |
+| release KPIs: `kpis{cases, ran, fail, error, skip, drift, success_rate}`; ran = all - untested, success rate = success / ran (ignore, skip and cancel count as ran) | `reports_release` | exists |
+| feature rows: `path`, `drift`, `drifted[{key, ran_version, current_version}]`, `verdict` (`at_risk` on fail, error, stale or drift; else `not_started`, `ready` or `in_progress`) | `reports_release`, `reports_product` | exists |
+| org KPIs: `kpis{ready_cases, products, success_rate, automated_pct, open_cycles, open_untested}`; product rows add `name, cases, automated_pct, results, success_rate, open_cycles` (`results.untested` counts untested cases in open cycles) | `reports_org` | exists |
+| product-wide report: without `release`, `whole{counts, kpis, features}`, the product as it stands in the period | `reports_product` | exists |
+| feature report: `release` optional (none: the period); items add `ran_version, current_version, actor{kind, name}, attempt, comment, defects, last_result{status, version, at, actor, attempt}` (`last_result` is set for a stale case too); `kpis{cases, success, success_rate_last5, drift}` | `reports_feature` | exists |
+| feature history: `history[]`, the feature's last 5 cycles `{cycle_id, release_version, environment, status, at, counts, success_rate}`; ignores the period and the release | `reports_feature` | exists |
+| "since last release" period | the app sets `from` to the latest `Release.released_at` from `releases_list` | exists |
 
 ### 12. Members
 
@@ -251,7 +267,7 @@ operations.
 | copy the invite link | `InviteCreated.token` from `invites_create`, shown once; the link carries it to the accept view | exists |
 | resend an invite | revoke, then create (a new token) | exists |
 | name search | | not yet (F8) |
-| last active | | not yet (F2) |
+| last active | `members_list` (`last_active_at`) | exists (F2) |
 | invite emails | | out of scope (v1, owner decision) |
 
 ### 13. Tokens and agents
@@ -260,14 +276,43 @@ operations.
 |---|---|---|
 | tokens: list, create, revoke | `tokens_list`, `tokens_create`, `tokens_revoke` | exists |
 | agents: list, create, edit, disable | `agents_list`, `agents_create`, `agents_update`, `agents_disable` | exists |
-| agent enable, description, name rule | | not yet (F2) |
+| agent enable, description, last active | `agents_enable`, `agents_create` / `agents_update` (`description`), `agents_list` (`last_active_at`) | exists (F2) |
+| agent name rule | | not yet (follow-up) |
+
+`POST /agents/{agent_id}/enable` (`agents_enable`, admin) clears `disabled_at` and is idempotent. It is a 422
+when the agent's owner is no longer a member or the agent's role is now above the owner's, the same rule as
+`agents_create`. `description` is at most 500 characters; an empty string clears it.
+
+`last_active_at` is the actor's latest authenticated request in the org, any method, written at most once a
+minute.
+
+### Actor directory
+
+`GET /actors` (`actors_list`, read, any member) gives names for every actor and token that can appear on a
+row, past ones included, with no emails or roles:
+
+```json
+{"actors": [{"id": "...", "kind": "user|agent|consumer", "name": "...", "disabled": false}],
+ "tokens": [{"id": "...", "name": "...", "actor_id": "..."}]}
+```
+
+`disabled` is true for a removed member, a disabled agent or a revoked consumer.
 
 ### 14. Audit
 
 | Need | Operations | Status |
 |---|---|---|
 | rows, diff, actor/action/via/entity/date filters, one case's history | `audit_list` | exists |
-| actor kind filter, `q`, request id and tool on rows, retention | | not yet (F2) |
+| actor kind filter, `q`, retention | `audit_list?actor_kind=&q=`, `audit_retention` | exists (F2) |
+| request id and tool on rows | | not yet (follow-up) |
+
+`actor_kind` is one of `user` (a member in the app, no token), `token` (a member through a token), `agent` or
+`consumer`; the four split the log. Agents use tokens too, but their rows are `agent`, not `token`. `q` (at
+most 200 characters) matches, case-insensitively, the action, entity type, entity id or the actor's name.
+
+`GET /audit/retention` (`audit_retention`) returns `{days, oldest_kept}`. `days` is the stated policy (90);
+**it is not enforced yet**: nothing deletes audit rows. `oldest_kept` is the `created_at` of the oldest stored
+row, null when there is none.
 
 Action names are singular (`product.create`), not the mock's `products.create`.
 
@@ -295,7 +340,7 @@ floored and `until` ceiled to the bucket. `since >= until`, or a span over 90 da
 `mcp_server_get`:
 
 ```json
-{"name": "...", "version": "...", "tool_count": 95, "tool_list_hash": "..."}
+{"name": "...", "version": "...", "tool_count": 105, "tool_list_hash": "..."}
 ```
 
 `mcp_tools_list?since&until` (default: the last 30 days):
@@ -375,20 +420,55 @@ There is no server push (no SSE, no `notifications/tools/list_changed`).
 | rename, set products | `PATCH /consumers/{id}` `{name?, product_ids?}` | exists |
 | revoke | `DELETE /consumers/{id}` | exists |
 | pair | `POST /pair/approve` (`pairings_approve`) | exists |
-| jobs per machine, rejected reason, pause, deny pairing, pending-pairing preview, roster | | not yet (F7) |
+| jobs per machine, with the rejected reason | `GET /consumers/{id}/jobs?status&cursor&limit` (`consumers_jobs`), `JobOut.reason` | added |
+| jobs today, rejected today | `ConsumerDetail.jobs_today`, `rejected_today` | added |
+| pause, resume | `POST /consumers/{id}/pause` (`consumers_pause`), `POST /consumers/{id}/resume` (`consumers_resume`) | added |
+| pair paused ("accept jobs now" off) | `pairings_approve` `{..., accept_jobs: false}` | added |
+| pending-pairing preview | `GET /pair/{user_code}` (`pairings_get`) | added |
+| deny pairing | `POST /pair/deny` `{user_code}` (`pairings_deny`) | added |
+| inventory roster, tests found and linked | `GET /consumers/{id}/roster?project&cursor&limit` (`consumers_roster`), `ConsumerDetail.tests_found`, `tests_linked` | added |
 
 `ConsumerOut`:
 
 ```json
 {"id": "...", "name": "...", "status": "online", "product_ids": ["..."], "project_count": 2,
  "last_heartbeat_at": "...", "busy_job_id": null, "tj_version": "...", "python": "...", "os": "...",
- "revoked_at": null, "created_at": "..."}
+ "paused_at": null, "revoked_at": null, "created_at": "..."}
 ```
 
 `status` is `online`, `offline`, `busy` or `revoked`. `project_count` is the number of inventoried projects.
+Paused is not a status: a paused consumer keeps its status and has `paused_at` set.
 
-`ConsumerDetail` adds `heartbeats: [{at, busy_job_id}]` (last 24 hours, newest first) and
-`inventory: [{project, hash, test_count, updated_at}]`.
+`ConsumerDetail` adds `heartbeats: [{at, busy_job_id}]` (last 24 hours, newest first),
+`inventory: [{project, hash, test_count, updated_at}]`, `jobs_today`, `rejected_today`, `tests_found` and
+`tests_linked`. `jobs_today` and `rejected_today` count jobs created for the consumer in the **last 24 hours**
+(a rolling window, not the calendar day), so the app labels them "last 24 h". `tests_found` counts the refs in
+its inventory across projects; `tests_linked` those that are the `automation_ref` of a case the caller can see.
+
+**Jobs.** `consumers_jobs` pages the consumer's jobs, newest first, limited to products the caller can see;
+`status` filters (`queued`, `running`, `done`, `failed`, `rejected`, ...). Each item is a `JobOut`, which now has
+`reason`: why the job was rejected (always set) or failed (`consumer lost` when it stalled twice), else `null`.
+
+**Rejected.** A machine that can't run a job reports `state: "rejected"` with a `reason` (required, 422 without
+it). The job ends `rejected` and is not requeued: its open cycle cases are cancelled with the comment
+`job rejected: <reason>`, as a failed job's are, so people see why and rerun them. The consumer stays online.
+
+**Pause.** `consumers_pause` and `consumers_resume` (admin) set and clear `paused_at`; a second call is a no-op
+with no audit row, and a revoked consumer is a 409. A paused consumer keeps and finishes the job it holds but
+`next_job` gives it no new one, starting a cycle that names it is a 409 `consumer_paused`, and a stalled job is
+not requeued onto it.
+
+**Pairing preview and deny.** The machine may send `{os, tj_version, python, projects}` with `POST /pair`
+(every field optional; an empty body is still fine). `pairings_get` (admin) returns
+`{user_code, status, expires_at, os, tj_version, python, projects}` for a request not yet tied to an org, or
+tied to this one; unknown (or another org's) is 404, an expired pending one is 410. `pairings_deny` (admin, 204) marks a pending request `denied`; the machine's
+next `POST /pair/token` gets 403 `access_denied`, and denying it again is a 409 `pairing_not_pending`.
+
+**Roster.** `consumers_roster` pages `{project, ref, case_key}` for the consumer's inventory, by project, then
+in the order the machine uploaded them; `project` filters. `case_key` (`PAY-12`) is the visible case whose `automation_ref` is the ref, else `null`.
+
+**Undo.** Migration `0014` adds only nullable columns and the `denied` pairing status. Its downgrade deletes
+`denied` pairing requests (short-lived, and the old schema has no such status); everything else is kept.
 
 For reference, the machine side (consumer token, not the app):
 

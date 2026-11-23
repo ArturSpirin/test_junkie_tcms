@@ -2,10 +2,12 @@
 other route (`/api/v1`, `/mcp`, `/healthz`, the docs) answers as before."""
 
 import glob
+import shutil
 import tempfile
 import tomllib
 from pathlib import Path
 
+from fastapi.testclient import TestClient
 from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
 
 from test_junkie_tcms import app_shell
@@ -85,18 +87,22 @@ class WebServing:
 
     @test()
     def test_a_nested_font_is_served_at_assets_fonts(self, suite_parameter):
-        fonts = app_shell.WEB_DIR / "fonts"
-        created = not fonts.exists()
-        font = fonts / "test-only.woff2"
-        fonts.mkdir(exist_ok=True)
-        try:
-            font.write_bytes(b"wOF2-test")
-            response = self.env.client().get("/assets/fonts/test-only.woff2")
-            assert response.status_code == 200 and response.content == b"wOF2-test"
-        finally:
-            font.unlink(missing_ok=True)
-            if created:
-                fonts.rmdir()
+        # A copy of web/ with a font in it, so the test never writes into the package's own source tree.
+        with tempfile.TemporaryDirectory() as tmp:
+            web = Path(tmp) / "web"
+            shutil.copytree(app_shell.WEB_DIR, web)
+            (web / "fonts").mkdir(exist_ok=True)
+            (web / "fonts" / "test-only.woff2").write_bytes(b"wOF2-test")
+            self.env.patch(app_shell, "WEB_DIR", web)
+            self.env.patch(app_shell, "SHELL", web / "index.html")
+            app = create_app(self.env.settings, load_entry_points=False)
+            try:
+                with TestClient(app) as client:
+                    response = client.get("/assets/fonts/test-only.woff2")
+                    assert response.status_code == 200 and response.content == b"wOF2-test"
+                    assert client.get("/app/x").status_code == 200
+            finally:
+                app.state.engine.dispose()
 
     @test()
     def test_a_missing_or_escaping_asset_is_a_problem_404(self, suite_parameter):

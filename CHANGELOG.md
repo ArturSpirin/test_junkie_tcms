@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- MCP tools list each tool's description, its idempotent and destructive hints and its errors by HTTP status (`errors_by_code`); new `mcp_calls` lists the org's recent MCP calls (kept 7 days) with status and latency.
 - Web app screens, static for now: the 16 app views (products, releases, feature tree, cases, case editor, versions, plans, cycles, start run, run, reports, members, tokens, audit, MCP, consumers) as vanilla ES modules in `src/test_junkie_tcms/web/` with no build step. Every view reads its data through one module, `js/data.js`, which the API wiring replaces. Tests render every state under node (CI pins node; no npm).
 - Web app shell: `web/` ships as package data, is served at `/assets/`, and `/` and `/app/...` return `index.html`; `docs/app-api-contract.md` lists the API each view uses. Plan status shows its enum on reads; consumers show `project_count`; MCP tools and usage take `since`/`until`, usage splits reads and writes, and new `mcp_clients` and `mcp_updates` list callers and server starts and tool-list changes.
 - Bulk results take `comment` as `{"markdown"}` or `{"doc"}`, like a single result; a plain string is now a 422. Each bulk comment's cap moves from 20,000 characters to the single-result limit (200,000 for Markdown).

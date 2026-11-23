@@ -14,7 +14,7 @@ app does not show them.
 | F4 | Cycle and run extras: created/closed by, bulk naming, splits, retries, stop, step ignore, build under test |
 | F5 | Report periods, trend, org KPIs, product-wide and feature-history reports |
 | F6 | MCP tool descriptions and hints, recent calls, error-code breakdown (done) |
-| F7 | Consumer jobs per machine, rejected reason, pause, deny pairing, pending-pairing preview, roster |
+| F7 | Consumer jobs per machine, rejected reason, pause, deny pairing, pending-pairing preview, roster (done) |
 | F8 | Name search (`q`) on lists, product owner, copy feature tree, ETA and manual case order on Start |
 
 ## Serving
@@ -294,7 +294,7 @@ floored and `until` ceiled to the bucket. `since >= until`, or a span over 90 da
 `mcp_server_get`:
 
 ```json
-{"name": "...", "version": "...", "tool_count": 93, "tool_list_hash": "..."}
+{"name": "...", "version": "...", "tool_count": 99, "tool_list_hash": "..."}
 ```
 
 `mcp_tools_list?since&until` (default: the last 30 days):
@@ -374,20 +374,55 @@ There is no server push (no SSE, no `notifications/tools/list_changed`).
 | rename, set products | `PATCH /consumers/{id}` `{name?, product_ids?}` | exists |
 | revoke | `DELETE /consumers/{id}` | exists |
 | pair | `POST /pair/approve` (`pairings_approve`) | exists |
-| jobs per machine, rejected reason, pause, deny pairing, pending-pairing preview, roster | | not yet (F7) |
+| jobs per machine, with the rejected reason | `GET /consumers/{id}/jobs?status&cursor&limit` (`consumers_jobs`), `JobOut.reason` | added |
+| jobs today, rejected today | `ConsumerDetail.jobs_today`, `rejected_today` | added |
+| pause, resume | `POST /consumers/{id}/pause` (`consumers_pause`), `POST /consumers/{id}/resume` (`consumers_resume`) | added |
+| pair paused ("accept jobs now" off) | `pairings_approve` `{..., accept_jobs: false}` | added |
+| pending-pairing preview | `GET /pair/{user_code}` (`pairings_get`) | added |
+| deny pairing | `POST /pair/deny` `{user_code}` (`pairings_deny`) | added |
+| inventory roster, tests found and linked | `GET /consumers/{id}/roster?project&cursor&limit` (`consumers_roster`), `ConsumerDetail.tests_found`, `tests_linked` | added |
 
 `ConsumerOut`:
 
 ```json
 {"id": "...", "name": "...", "status": "online", "product_ids": ["..."], "project_count": 2,
  "last_heartbeat_at": "...", "busy_job_id": null, "tj_version": "...", "python": "...", "os": "...",
- "revoked_at": null, "created_at": "..."}
+ "paused_at": null, "revoked_at": null, "created_at": "..."}
 ```
 
 `status` is `online`, `offline`, `busy` or `revoked`. `project_count` is the number of inventoried projects.
+Paused is not a status: a paused consumer keeps its status and has `paused_at` set.
 
-`ConsumerDetail` adds `heartbeats: [{at, busy_job_id}]` (last 24 hours, newest first) and
-`inventory: [{project, hash, test_count, updated_at}]`.
+`ConsumerDetail` adds `heartbeats: [{at, busy_job_id}]` (last 24 hours, newest first),
+`inventory: [{project, hash, test_count, updated_at}]`, `jobs_today`, `rejected_today`, `tests_found` and
+`tests_linked`. `jobs_today` and `rejected_today` count jobs created for the consumer in the **last 24 hours**
+(a rolling window, not the calendar day), so the app labels them "last 24 h". `tests_found` counts the refs in
+its inventory across projects; `tests_linked` those that are the `automation_ref` of a case the caller can see.
+
+**Jobs.** `consumers_jobs` pages the consumer's jobs, newest first, limited to products the caller can see;
+`status` filters (`queued`, `running`, `done`, `failed`, `rejected`, ...). Each item is a `JobOut`, which now has
+`reason`: why the job was rejected (always set) or failed (`consumer lost` when it stalled twice), else `null`.
+
+**Rejected.** A machine that can't run a job reports `state: "rejected"` with a `reason` (required, 422 without
+it). The job ends `rejected` and is not requeued: its open cycle cases are cancelled with the comment
+`job rejected: <reason>`, as a failed job's are, so people see why and rerun them. The consumer stays online.
+
+**Pause.** `consumers_pause` and `consumers_resume` (admin) set and clear `paused_at`; a second call is a no-op
+with no audit row, and a revoked consumer is a 409. A paused consumer keeps and finishes the job it holds but
+`next_job` gives it no new one, starting a cycle that names it is a 409 `consumer_paused`, and a stalled job is
+not requeued onto it.
+
+**Pairing preview and deny.** The machine may send `{os, tj_version, python, projects}` with `POST /pair`
+(every field optional; an empty body is still fine). `pairings_get` (admin) returns
+`{user_code, status, expires_at, os, tj_version, python, projects}` for a request not yet tied to an org, or
+tied to this one; unknown (or another org's) is 404, an expired pending one is 410. `pairings_deny` (admin, 204) marks a pending request `denied`; the machine's
+next `POST /pair/token` gets 403 `access_denied`, and denying it again is a 409 `pairing_not_pending`.
+
+**Roster.** `consumers_roster` pages `{project, ref, case_key}` for the consumer's inventory, by project, then
+in the order the machine uploaded them; `project` filters. `case_key` (`PAY-12`) is the visible case whose `automation_ref` is the ref, else `null`.
+
+**Undo.** Migration `0014` adds only nullable columns and the `denied` pairing status. Its downgrade deletes
+`denied` pairing requests (short-lived, and the old schema has no such status); everything else is kept.
 
 For reference, the machine side (consumer token, not the app):
 

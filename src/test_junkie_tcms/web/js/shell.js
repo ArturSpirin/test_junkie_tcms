@@ -1,6 +1,6 @@
 /* App shell (top bar, side nav, product and version switcher) and the state router for one view.
    Everything the shell shows about the org, user and product comes from data.context(). */
-import { I, actor, dd, ddFit, esc, lnk } from "./ui.js";
+import { I, actor, dd, ddFit, esc, lnk, toast } from "./ui.js";
 
 const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
 const mark = (m, cls, size = "xs") => `<span class="mark ${size}${cls ? " " + cls : ""}">${esc(m)}</span>`;
@@ -131,6 +131,7 @@ export function mount(name, view, ctx, load, q = "") {
     setNav(!!s.navOpen);
     document.querySelectorAll(".toast.live-t").forEach((t) => t.remove());
     main.innerHTML = s.render(d);
+    if (s.toast) toast(s.toast(d), false, s.toastKeep);
     if (s.after) s.after(main, d);
     if (view.after) view.after(main, id, d);
     document.querySelectorAll(".dd.open").forEach(ddFit);

@@ -52,7 +52,7 @@ const createForm = (d, role, o = {}) => {
   <div class="field"><div class="lbl-row">Scopes<span class="muted">· ${f.on.length} on</span><span class="scap" style="margin-left:auto">${lock()} capped by role <span class="chip">${role}</span></span></div>${scopeToggles(d, role, f.on)}</div>
   <div class="grid2"><div class="field"><label>Products</label>${dd({ value: f.products, multi: true, options: prodOpts(d), cls: "block", search: "Find a product…", name: "products", label: "Products", placeholder: "All products" })}<span class="hint">Empty means all products.</span></div>
   <div class="field"><label>Expires</label>${dd({ value: f.expiry, options: expOpts(d.expiryDates), cls: "block", name: "expiry", label: "Expires" })}<span class="hint">Owners get a warning 10 days before.</span></div></div></div>`,
-  `<span class="l mono">tokens_create</span><button class="btn" data-back>Cancel</button><button class="btn primary" data-go="created">Create token</button>`, "wide");
+  `<button class="btn" data-back>Cancel</button><button class="btn primary" data-go="created">Create token</button>`, "wide");
 };
 /* the scopes above a role, as "a, b and c" */
 const above = (d, role) => {
@@ -75,14 +75,15 @@ function created(d) {
     <div class="field"><label>Use it with MCP</label><pre class="raw" style="margin:0">export TJ_TCMS_TOKEN=${esc(c.prefix)}_…
 test-junkie-tcms mcp --url ${u} --token-env TJ_TCMS_TOKEN</pre><span class="hint">Or point an MCP client at <span class="mono">${u}/mcp</span> with this token as the bearer. <a href="${lnk("mcp.html")}">MCP server</a></span></div>
     <div class="field mb0"><label>Or the REST API</label><pre class="raw" style="margin:0">curl -H "Authorization: Bearer $TJ_TCMS_TOKEN" ${u}/api/v1/cases?product=${esc(c.products[0])}</pre></div>`,
-  `<span class="l faint">scopes ${esc(c.scopes.join(", "))} · ${prods(c.products)} · expires ${esc(c.expires)}</span><button class="btn primary" data-go="tokens">I've copied it</button>`, "wide");
+  `<button class="btn primary" data-go="tokens">I've copied it</button>`, "wide",
+  `scopes ${c.scopes.join(", ")} · ${c.products.length ? c.products.join(", ") : "All products"} · expires ${c.expires}`, "faint");
 }
 
 function revokeConfirm(d) {
   const t = d.tokens.find((x) => x.prefix === d.revoke);
   return tokens(d) + modal(`Revoke “${esc(t.name)}”?`, `<p style="margin-top:0">Requests with <span class="mono">${esc(t.prefix)}_…</span> fail with 401 at once. CI jobs using it will stop reporting results. This can't be undone; create a new token instead.</p>
     <div class="row wrap" style="font-size:13px"><span class="muted">Owner</span>${actor(t.owner.kind, esc(t.owner.handle))}<span class="muted">· last used ${esc(t.lastUsed)}</span></div>`,
-  `<span class="l mono">tokens_revoke</span><button class="btn" data-back>Cancel</button><button class="btn danger solid" data-go="revoked">Revoke token</button>`);
+  `<button class="btn" data-back>Cancel</button><button class="btn danger solid" data-go="revoked">Revoke token</button>`);
 }
 
 const revoked = (d) => tokens(d, `<div class="toast" role="status"><div><b>Token revoked.</b> <span class="muted">Audit: tokens.revoke by ${esc(person(d.ctx.user.handle)[0])}.</span></div></div>`);
@@ -114,7 +115,7 @@ function createAgent(d) {
     <div class="field"><label>Role</label>${dd({ value: a.role, options: roleOpts, cls: "block", name: "agent-role", label: "Role" })}
       <span class="hint">Capped by the owner's role (${cap}). It can't be raised above it later either.</span></div>
     <div class="tg-list">${tg(true, "Create its first token now", "Opens the token form with this agent as owner.", { cls: "right" })}</div></div>`,
-  `<span class="l mono">agents_create</span><button class="btn" data-back>Cancel</button><button class="btn primary">Create agent</button>`, "wide");
+  `<button class="btn" data-back>Cancel</button><button class="btn primary">Create agent</button>`, "wide");
 }
 
 function selfOnly(d) {
@@ -125,7 +126,7 @@ function error422(d) {
   const e = d.error;
   return tokens(d) + modal("New API token", `<div class="banner err">${I.warn}<div><b>The server refused the token.</b> Response, as sent:</div></div><pre class="raw" style="margin:0 0 20px">${esc(e.raw)}</pre>
     <div class="field mb0"><div class="lbl-row">Scopes<span class="muted">· owner ${esc(e.owner)}</span><span class="scap" style="margin-left:auto">${lock()} owner role <span class="chip">${e.ownerRole}</span></span></div>${scopeToggles(d, "admin", e.on, e.bad)}<span class="err">${I.warn}Owner ${esc(e.owner)} is a ${e.ownerRole}. Turn off ${esc(e.bad)} or change the owner.</span></div>`,
-  `<span class="l mono">tokens_create · 422</span><button class="btn" data-back>Cancel</button><button class="btn primary">Create token</button>`, "wide");
+  `<button class="btn" data-back>Cancel</button><button class="btn primary">Create token</button>`, "wide");
 }
 
 export default { nav: "tokens", default: "tokens",

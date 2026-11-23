@@ -30,7 +30,7 @@ function filters(d) {
   ${dd({ value: f.type, options: O_TYPE, cls: "sm", pre: "Object", name: "type", label: "Object type" })}
   ${dr(range)}
   </div>
-  <div class="afmeta">${chips}<span>${d.events.length} events</span><span class="mono">audit_list · GET /orgs/${esc(d.orgSlug)}/audit${esc(f.query)}</span></div>`;
+  <div class="afmeta">${chips}<span>${d.events.length} events</span></div>`;
 }
 const diffVal = (v, tag) => Array.isArray(v) ? esc(JSON.stringify(v)) : `<${tag}>${esc(v)}</${tag}>`;
 /* a list change shows the old list as is and marks the added items in the new one */

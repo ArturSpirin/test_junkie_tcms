@@ -2,6 +2,9 @@
 
 ## Unreleased
 - Web app: the narrow-width Menu button says whether the menu is open (`aria-expanded`) and which nav it opens (`aria-controls`).
+- A cycle case edited after it has results can be refreshed to the current case version and rerun in the same cycle (no more `409 has_results`); each result records the case version it ran (`case_version`), release and feature reports keep a stale case's last result, and the cycle report counts its `stale` cases.
+- Consumers: `consumers_jobs` lists a machine's jobs, which keep a `reason`; a machine can reject a job with a reason (its open cases cancel); admins can pause and resume a consumer, or pair it paused; admins can preview (`pairings_get`) and deny (`pairings_deny`) a pending pairing; `consumers_roster` lists the inventory refs with their linked case. The detail adds jobs and rejected in the last 24 h and tests found and linked.
+- Web app: toasts, hints, query lines and the reports header no longer show API or MCP operation names; they use plain words, and server error text still shows as sent. The render test that guarded dialog footers now checks every rendered view state.
 - Feature tree: the drag-and-drop hint bar now overlays the search row instead of pushing the tree down, so a drop lands on the row under the pointer.
 - MCP `tools/call` on a tool the caller can't use now says why: 403 `Needs scope <scope>`, or 403 naming its toolset and `?toolsets=`; only a name that isn't a tool is 404 `Unknown tool`.
 - MCP tools list each tool's description, its idempotent and destructive hints and its errors by HTTP status (`errors_by_code`); new `mcp_calls` lists the org's recent MCP calls (kept 7 days) with status and latency.
@@ -11,6 +14,8 @@
 - Web app shell: `web/` ships as package data, is served at `/assets/`, and `/` and `/app/...` return `index.html`; `docs/app-api-contract.md` lists the API each view uses. Plan status shows its enum on reads; consumers show `project_count`; MCP tools and usage take `since`/`until`, usage splits reads and writes, and new `mcp_clients` and `mcp_updates` list callers and server starts and tool-list changes.
 - Bulk results take `comment` as `{"markdown"}` or `{"doc"}`, like a single result; a plain string is now a 422. Each bulk comment's cap moves from 20,000 characters to the single-result limit (200,000 for Markdown).
 - README lists what this release has and documents the MCP endpoint and toolsets; a test keeps it in step with the toolsets and settings.
+- Case titles are stripped of leading and trailing spaces, and a title of only spaces is a 422 on create, update, bulk, CSV and Markdown import, and MCP.
+- Names (products, features, releases, plans, cycles, orgs, members, agents, tokens, invites, consumers) are stripped the same way, and a name of only spaces is a 422; CSV and Markdown import strip each feature path segment, so a path with extra spaces finds the existing feature.
 - Quick start works on Windows: `requirements.lock` is now made by `scripts/lock.py` (uv, universal, with platform markers, checked in CI), and `create-admin` and `sweep-idempotency` apply migrations first.
 - Scaffold: orgs, users, roles, scoped API tokens, session login with CSRF, append-only audit log and outbox; Docker Compose and CI.
 - Catalog: products, feature trees, releases and test plans over the API, with rich text read and written as Markdown.
@@ -28,3 +33,4 @@
 - Release report: one row per release feature, including features with no cases; each row has `in_release` and `ready`, cases outside the release get their own `in_release: false` rows, and a release is not `ready` while a release feature has no case.
 - Tests run on Test Junkie (`test-junkie==0.9a8`), not pytest, locally and in CI: one suite per file, on SQLite and, with `TJ_TCMS_TEST_POSTGRES_URL` set, Postgres.
 - Case import takes an optional `mapping` from your CSV's column names to ours, and `format: "md-bundle"` exports and re-imports cases as a zip of Markdown files, one per case; over MCP a zip arrives as `{content_type, base64}`.
+- `CHANGELOG.md` merges as a union (`.gitattributes`), so branches that each add a line here no longer conflict.

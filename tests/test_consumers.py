@@ -15,7 +15,8 @@ from test_junkie_tcms.db.models import (
     PairingRequest,
 )
 from tests import support
-from tests.catalog_seed import events, make_product, ok
+from tests.catalog_seed import events, make_feature, make_product, ok
+from tests.execution_seed import make_case
 from tests.support import add_member, login
 
 ACME = "/api/v1/orgs/acme"
@@ -23,6 +24,12 @@ CONSUMER_OPS = {
     "pairings_create": (None, False),
     "pairings_token": (None, False),
     "pairings_approve": ("admin", True),
+    "pairings_get": ("admin", True),
+    "pairings_deny": ("admin", True),
+    "consumers_jobs": ("read", True),
+    "consumers_roster": ("read", True),
+    "consumers_pause": ("admin", True),
+    "consumers_resume": ("admin", True),
     "consumers_list": ("read", True),
     "consumers_get": ("read", True),
     "consumers_update": ("admin", True),
@@ -41,8 +48,8 @@ class FakeConsumer:
         self.anon = env.client()
         self.client = None
 
-    def start(self) -> dict:
-        self.pairing = ok(self.anon.post("/api/v1/pair"), 201)
+    def start(self, body: dict | None = None) -> dict:
+        self.pairing = ok(self.anon.post("/api/v1/pair", json=body), 201)
         return self.pairing
 
     def poll(self):
@@ -190,6 +197,59 @@ class Consumers:
         fake = FakeConsumer(self.env)
         code = fake.start()["user_code"]
         assert approve(tester, code, product_ids=[product["id"]]).status_code == 403
+
+    @test()
+    def test_pending_pairing_shows_what_the_machine_sent(self, suite_parameter):
+        owner = self.env.owner
+        fake = FakeConsumer(self.env)
+        machine = {"os": "Linux", "tj_version": "1.9.0", "python": "3.13.1", "projects": ["web", "api"]}
+        code = fake.start(machine)["user_code"]
+        preview = ok(owner.get(f"{ACME}/pair/{code.lower()}"))
+        assert preview["status"] == "pending" and preview["user_code"] == code
+        assert {k: preview[k] for k in machine} == machine
+        bare = FakeConsumer(self.env)
+        quiet = ok(owner.get(f"{ACME}/pair/{bare.start()['user_code']}"))
+        assert (quiet["os"], quiet["python"], quiet["projects"]) == (None, None, [])
+        assert owner.get(f"{ACME}/pair/BBBB-CCCC").status_code == 404
+
+    @test()
+    def test_denied_pairing_gets_access_denied(self, suite_parameter):
+        app, owner, product = self.env.app, self.env.owner, self.product()
+        fake = FakeConsumer(self.env)
+        code = fake.start()["user_code"]
+        assert owner.post(f"{ACME}/pair/deny", json={"user_code": code}).status_code == 204
+        poll = fake.poll()
+        assert poll.status_code == 403 and poll.json()["error"] == "access_denied"
+        again = owner.post(f"{ACME}/pair/deny", json={"user_code": code})
+        assert again.status_code == 409 and again.json()["code"] == "pairing_not_pending"
+        assert approve(owner, code, product_ids=[product["id"]]).status_code == 404  # no longer pending
+        assert ok(owner.get(f"{ACME}/pair/{code}"))["status"] == "denied"
+        assert count(app, Consumer) == 0
+        [deny] = [e for e in events(owner, "pairing_request") if e["action"] == "pairing.deny"]
+        assert deny["changes"]["status"] == {"from": "pending", "to": "denied"}
+        other = self.env.client()
+        login(other, "other@example.com")
+        assert other.get(f"/api/v1/orgs/globex/pair/{code}").status_code == 404
+
+    @test()
+    def test_non_admin_cannot_preview_or_deny(self, suite_parameter):
+        owner = self.env.owner
+        add_member(owner, "tess@example.com", "tester")
+        tester = self.env.client()
+        login(tester, "tess@example.com")
+        code = FakeConsumer(self.env).start()["user_code"]
+        assert tester.get(f"{ACME}/pair/{code}").status_code == 403
+        assert tester.post(f"{ACME}/pair/deny", json={"user_code": code}).status_code == 403
+
+    @test()
+    def test_approve_without_accepting_jobs_pairs_paused(self, suite_parameter):
+        owner, product = self.env.owner, self.product()
+        fake = FakeConsumer(self.env)
+        code = fake.start()["user_code"]
+        body = {"user_code": code, "name": "box", "product_ids": [product["id"]], "accept_jobs": False}
+        consumer = ok(owner.post(f"{ACME}/pair/approve", json=body), 201)
+        assert consumer["paused_at"] is not None
+        assert self.paired(product, "busy-box").consumer["paused_at"] is None  # accept_jobs defaults to true
 
     @test()
     def test_pairing_is_rate_limited(self, suite_parameter):
@@ -371,6 +431,31 @@ class Consumers:
         assert ok(owner.get(f"{ACME}/consumers/{paired.consumer['id']}"))["project_count"] == 2
         renamed = ok(owner.patch(f"{ACME}/consumers/{paired.consumer['id']}", json={"name": "nightly-1"}))
         assert renamed["project_count"] == 2
+
+    @test()
+    def test_roster_links_refs_to_cases(self, suite_parameter):
+        owner = self.env.owner
+        product = self.product()
+        feature = make_feature(owner, product["id"], "Login")
+        case = make_case(owner, product["id"], feature["id"], "Login ok", automation_ref=ROSTER[0]["id"])
+        paired = self.paired(product)
+        ok(paired.upload("web", ROSTER))
+        ok(paired.upload("api", ROSTER[:1]))
+        base = f"{ACME}/consumers/{paired.consumer['id']}"
+        roster = ok(owner.get(f"{base}/roster"))
+        assert [(i["project"], i["ref"], i["case_key"]) for i in roster["items"]] == [
+            ("api", ROSTER[0]["id"], case["key"]),
+            ("web", ROSTER[0]["id"], case["key"]),
+            ("web", ROSTER[1]["id"], None),
+        ]
+        assert roster["total"] == 3 and roster["next_cursor"] is None
+        web = ok(owner.get(f"{base}/roster", params={"project": "web", "limit": 1}))
+        assert web["total"] == 2 and [i["ref"] for i in web["items"]] == [ROSTER[0]["id"]]
+        rest = ok(owner.get(f"{base}/roster", params={"project": "web", "cursor": web["next_cursor"]}))
+        assert [i["ref"] for i in rest["items"]] == [ROSTER[1]["id"]] and rest["next_cursor"] is None
+        assert owner.get(f"{base}/roster", params={"cursor": "abc"}).status_code == 422
+        detail = ok(owner.get(base))
+        assert (detail["tests_found"], detail["tests_linked"]) == (3, 2)
 
     @test()
     def test_inventory_hash_must_match_the_roster(self, suite_parameter):

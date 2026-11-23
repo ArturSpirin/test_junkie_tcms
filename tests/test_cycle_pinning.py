@@ -4,19 +4,7 @@ from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, tes
 
 from tests import support
 from tests.catalog_seed import events, ok, url
-from tests.execution_seed import cycle_cases, make_cycle, record, run_seed
-
-
-def edit_steps(owner, case: dict, version: int = 1) -> dict:
-    """Version 2: the first step reworded (same id), the second dropped, a new one added."""
-    first = case["steps"][0]
-    steps = [
-        {"id": first["id"], "action": {"markdown": "Open the basket"}, "expected": {"markdown": "It opens"}},
-        {"action": {"markdown": "Pay by voucher"}, "expected": {"markdown": "The order is paid"}},
-    ]
-    return ok(
-        owner.patch(url(f"/cases/{case['key']}"), json={"steps": steps}, headers={"If-Match": f'"{version}"'})
-    )
+from tests.execution_seed import cycle_cases, edit_steps, make_cycle, record, run_seed
 
 
 @Suite(parameters=support.DATABASES)
@@ -68,21 +56,47 @@ class CyclePinning:
         ok(record(owner, cc, status="fail", steps=[{"step_id": v1_dropped, "status": "fail"}]), 201)
 
     @test()
-    def test_refresh_version_repins_until_a_result_exists(self, suite_parameter):
+    def test_refresh_version_repins_without_results(self, suite_parameter):
         owner = self.env.owner
         s = run_seed(owner)
         edit_steps(owner, s["case"])
         cc = s["cycle_case"]["id"]
         refreshed = ok(owner.post(url(f"/cycle-cases/{cc}/refresh-version")))
-        assert refreshed["case_version"] == 2
+        assert (refreshed["case_version"], refreshed["status"]) == (2, "untested")
         [event] = events(owner, "cycle_case")
         assert event["action"] == "cycle_case.refresh_version"
+        assert event["changes"] == {"case_version": [1, 2]}
 
+    @test()
+    def test_refresh_version_after_results_reruns_on_the_new_version(self, suite_parameter):
+        owner = self.env.owner
+        s = run_seed(owner)
+        cc = s["cycle_case"]["id"]
+        ok(record(owner, cc, status="fail"), 201)
         ok(record(owner, cc, status="success"), 201)
-        edit_steps(owner, {**s["case"], "steps": refreshed["steps"]}, version=2)
-        again = owner.post(url(f"/cycle-cases/{cc}/refresh-version"))
-        assert again.status_code == 409 and again.json()["code"] == "has_results"
-        assert cycle_cases(owner, s["cycle"]["id"])[0]["case_version"] == 2
+        edited = edit_steps(owner, s["case"])
+
+        refreshed = ok(owner.post(url(f"/cycle-cases/{cc}/refresh-version")))
+        assert (refreshed["case_version"], refreshed["status"]) == (2, "untested")
+        assert refreshed["last_result_at"] is not None
+        [event] = events(owner, "cycle_case")
+        assert event["changes"] == {"case_version": [1, 2], "status": ["success", "untested"]}
+        # Nothing left to move: a second refresh changes nothing and records nothing.
+        assert ok(owner.post(url(f"/cycle-cases/{cc}/refresh-version")))["case_version"] == 2
+        assert len(events(owner, "cycle_case")) == 1
+
+        # The rerun is attempt 3 on version 2, with version 2's step ids; the history stays.
+        v2_only = edited["steps"][1]["id"]
+        rerun = ok(
+            record(owner, cc, status="success", steps=[{"step_id": v2_only, "status": "success"}]), 201
+        )
+        assert (rerun["attempt"], rerun["case_version"]) == (3, 2)
+        history = ok(owner.get(url(f"/cycle-cases/{cc}/results")))["items"]
+        assert [(r["attempt"], r["status"], r["case_version"]) for r in history] == [
+            (1, "fail", 1),
+            (2, "success", 1),
+            (3, "success", 2),
+        ]
 
     @test()
     def test_an_archived_case_keeps_its_place_in_an_existing_cycle(self, suite_parameter):

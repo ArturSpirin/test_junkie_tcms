@@ -134,7 +134,7 @@ function descBlock(o) {
   const fe = o.d.feature;
   const m = o.desc || (fe.agentEdit ? "agent" : "view");
   if (m === "edit") return `<div class="fdesc"><div class="sec-h"><h2>Description</h2></div>
-    ${rte({ html: fe.desc, compact: true, focus: true, label: "Feature description", foot: `<span class="faint">Markdown shortcuts work · saves with <code>PATCH /features/${esc(fe.id)}</code></span>` })}
+    ${rte({ html: fe.desc, compact: true, focus: true, label: "Feature description", foot: `<span class="faint">Markdown shortcuts work</span>` })}
     <div class="row" style="justify-content:flex-end;margin-top:10px"><a class="btn sm" href="#default">Cancel</a><a class="btn sm primary" href="#desc-saved">Save description</a></div></div>`;
   const a = fe.agentEdit;
   const meta = m === "agent"
@@ -171,7 +171,7 @@ function filters(o) {
     ${dd({ multi: true, value: [], options: OPTS.pri, pre: "Priority", placeholder: "Any", cls: "sm hide-n", w: "150px", name: "priority", label: "Priority" })}
     ${v ? '<button class="btn ghost sm">Clear</button>' : ""}<span class="sp"></span>
     ${dd({ value: d.sort, options: OPTS.sort, pre: "Sort", cls: "sm ghost", w: "196px", name: "sort", label: "Sort" })}
-  </div>${v ? `<div class="qline mono faint">GET /products/${esc(d.product.key)}/cases?status=${esc(v.status.join(","))}&amp;automation=${esc(v.automation.join(","))}&amp;tag=${esc(v.tag.join(","))}</div>` : ""}`;
+  </div>`;
 }
 
 const head = (d, ro) => `${crumbs([[esc(`${d.product.key} · ${d.product.name}`), "products.html"], ["Features", "tree.html"], [esc(d.feature.parent)], [esc(d.feature.name)]])}
@@ -228,14 +228,14 @@ function layout(d, ui) {
   return head(d, o.ro) + (o.banner || "") + filters(o) + `<div class="split"><div id="tcol">${treeCard(o)}</div><div id="ccol">${right(o)}</div></div>`;
 }
 
-const newBanner = (d) => `<div class="banner info">${I.info}<div>New feature under <b>${esc(find(d.tree, d.newUnder).node.name)}</b>. Enter saves (<code>features_create</code>), Esc cancels.</div></div>`;
+const newBanner = (d) => `<div class="banner info">${I.info}<div>New feature under <b>${esc(find(d.tree, d.newUnder).node.name)}</b>. Enter saves, Esc cancels.</div></div>`;
 function moveModal(d) {
   const s = find(d.tree, d.move.src).node, t = find(d.tree, d.move.dest).node;
   return modal(`Move '${esc(s.name)}'`,
-    `<p style="margin-top:0">Moving <b>${esc(s.name)}</b> (${count(s)} cases) under <b>${esc(t.name)}</b>. Saves with <code>features_move</code>; its cases and their versions move with it.</p>
+    `<p style="margin-top:0">Moving <b>${esc(s.name)}</b> (${count(s)} cases) under <b>${esc(t.name)}</b>. Its cases and their versions move with it.</p>
     <div class="field"><label>Destination feature</label>${dd({ value: d.move.dest, options: destOpts(d), cls: "block", search: "Find a feature", open: true, label: "Destination feature" })}</div>
     <div class="field mb0"><label>Position</label><div class="seg"><button class="on">Inside, at the end</button><button>Inside, at the top</button></div></div>`,
-    `<span class="l mono">features_move</span><button class="btn" data-back>Cancel</button><button class="btn primary">Move here</button>`);
+    `<button class="btn" data-back>Cancel</button><button class="btn primary">Move here</button>`);
 }
 /* The move toast's text, for the live drop and the dropped state: before/after on a reorder within the same parent, "into" otherwise. */
 function movedMsg(s, same, dest, z, t, product) {
@@ -349,9 +349,9 @@ const states = {
   "error": { render: error },
   "search": S({}),
   "search-empty": S({}),
-  "search-cleared": S({ live: true }, { after: (m, d) => toast(`<div><b>Search cleared.</b> <span class="muted">Showing all ${d.tree.length} top features in ${esc(d.product.key)}.</span></div>`) }),
+  "search-cleared": S({ live: true }, { toast: (d) => `<div><b>Search cleared.</b> <span class="muted">Showing all ${d.tree.length} top features in ${esc(d.product.key)}.</span></div>` }),
   "desc-edit": S({ desc: "edit" }),
-  "desc-saved": S({ live: true }, { after: (m, d) => toast(`<div><b>Description saved.</b> <span class="muted">PATCH /features/${esc(d.feature.id)} · 200</span></div>`) }),
+  "desc-saved": S({ live: true }, { toast: (d) => `<div><b>Description saved.</b></div>` }),
   "desc-agent": S({ live: true }),
   "nav-open": S({}, { navOpen: true }),
   "read-only": S({})

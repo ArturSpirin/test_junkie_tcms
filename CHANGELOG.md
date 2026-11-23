@@ -2,7 +2,9 @@
 
 ## Unreleased
 - Every API time input (`since`, `until`, `updated_since`, `expires_at`, `released_at`) given in another zone is read as the same instant in UTC, so MCP stats buckets start at UTC midnight and echo `Z`; org, member, agent, token and audit times also come back in UTC on SQLite.
+- Migrations: `result_case_version` is now revision `0015` on top of `0014_consumer_f7`, so `upgrade head` has one head again.
 - Web app: the narrow-width Menu button says whether the menu is open (`aria-expanded`) and which nav it opens (`aria-controls`).
+- Reports take a period (`from`, `to`, `tz`; default the last 30 days) and return a daily `trend`; release and feature rows add KPIs, drift and a `verdict`; the org report adds KPIs and per-product rows; the product report adds `whole`, the product as it stands; the feature report adds `last_result`, defects and the last 5 cycles as `history`. All additive to `/api/v1`.
 - A cycle case edited after it has results can be refreshed to the current case version and rerun in the same cycle (no more `409 has_results`); each result records the case version it ran (`case_version`), release and feature reports keep a stale case's last result, and the cycle report counts its `stale` cases.
 - Consumers: `consumers_jobs` lists a machine's jobs, which keep a `reason`; a machine can reject a job with a reason (its open cases cancel); admins can pause and resume a consumer, or pair it paused; admins can preview (`pairings_get`) and deny (`pairings_deny`) a pending pairing; `consumers_roster` lists the inventory refs with their linked case. The detail adds jobs and rejected in the last 24 h and tests found and linked.
 - Web app: toasts, hints, query lines and the reports header no longer show API or MCP operation names; they use plain words, and server error text still shows as sent. The render test that guarded dialog footers now checks every rendered view state.

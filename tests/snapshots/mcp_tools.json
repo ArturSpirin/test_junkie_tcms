@@ -8086,6 +8086,10 @@
     "location": "path",
     "wire": "feature_id"
    },
+   "from": {
+    "location": "query",
+    "wire": "from"
+   },
    "limit": {
     "location": "query",
     "wire": "limit"
@@ -8097,9 +8101,17 @@
    "release": {
     "location": "query",
     "wire": "release"
+   },
+   "to": {
+    "location": "query",
+    "wire": "to"
+   },
+   "tz": {
+    "location": "query",
+    "wire": "tz"
    }
   },
-  "description": "Reports Feature. The feature subtree's cases in the release: totals, and one page of cases by case number.",
+  "description": "Reports Feature. The feature subtree's cases in the release (or, with no release, in the period): totals, one page of\ncases by case number, and the subtree's last 5 runs.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
@@ -8117,6 +8129,18 @@
     "feature_id": {
      "type": "string"
     },
+    "from": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "First day, in `tz`; default 29 days before `to`"
+    },
     "limit": {
      "default": 50,
      "maximum": 200,
@@ -8128,14 +8152,37 @@
      "type": "string"
     },
     "release": {
-     "description": "A release id of the feature's product",
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A release id of the feature's product; default the whole product"
+    },
+    "to": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Last day, in `tz`, included; default today"
+    },
+    "tz": {
+     "default": "UTC",
+     "description": "An IANA time zone, e.g. America/Los_Angeles",
      "type": "string"
     }
    },
    "required": [
     "feature_id",
-    "org",
-    "release"
+    "org"
    ],
    "type": "object"
   },
@@ -8152,6 +8199,10 @@
    "read_only_hint": true
   },
   "args": {
+   "from": {
+    "location": "query",
+    "wire": "from"
+   },
    "org": {
     "location": "path",
     "wire": "org"
@@ -8159,12 +8210,32 @@
    "release_status": {
     "location": "query",
     "wire": "release_status"
+   },
+   "to": {
+    "location": "query",
+    "wire": "to"
+   },
+   "tz": {
+    "location": "query",
+    "wire": "tz"
    }
   },
-  "description": "Reports Org. Every product the caller can see (not archived), with its releases in the given statuses.",
+  "description": "Reports Org. Every product the caller can see (not archived), with its releases in the given statuses, its live\ncases, open cycles and the period's results; the org's KPIs and trend over those products.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
+    "from": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "First day, in `tz`; default 29 days before `to`"
+    },
     "org": {
      "description": "Org slug",
      "type": "string"
@@ -8176,6 +8247,23 @@
       "type": "string"
      },
      "type": "array"
+    },
+    "to": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Last day, in `tz`, included; default today"
+    },
+    "tz": {
+     "default": "UTC",
+     "description": "An IANA time zone, e.g. America/Los_Angeles",
+     "type": "string"
     }
    },
    "required": [
@@ -8196,6 +8284,10 @@
    "read_only_hint": true
   },
   "args": {
+   "from": {
+    "location": "query",
+    "wire": "from"
+   },
    "org": {
     "location": "path",
     "wire": "org"
@@ -8207,12 +8299,32 @@
    "release": {
     "location": "query",
     "wire": "release"
+   },
+   "to": {
+    "location": "query",
+    "wire": "to"
+   },
+   "tz": {
+    "location": "query",
+    "wire": "tz"
    }
   },
-  "description": "Reports Product",
+  "description": "Reports Product. With `release`: that release's totals and its trend. Without: every listed release's totals, the\nproduct's trend, and `whole`, the product as it stands in the period with one row per feature.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
+    "from": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "First day, in `tz`; default 29 days before `to`"
+    },
     "org": {
      "description": "Org slug",
      "type": "string"
@@ -8230,6 +8342,23 @@
       }
      ],
      "description": "A release id; default every release that isn't cancelled"
+    },
+    "to": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Last day, in `tz`, included; default today"
+    },
+    "tz": {
+     "default": "UTC",
+     "description": "An IANA time zone, e.g. America/Los_Angeles",
+     "type": "string"
     }
    },
    "required": [
@@ -8251,6 +8380,10 @@
    "read_only_hint": true
   },
   "args": {
+   "from": {
+    "location": "query",
+    "wire": "from"
+   },
    "org": {
     "location": "path",
     "wire": "org"
@@ -8258,17 +8391,54 @@
    "release_id": {
     "location": "path",
     "wire": "release_id"
+   },
+   "to": {
+    "location": "query",
+    "wire": "to"
+   },
+   "tz": {
+    "location": "query",
+    "wire": "tz"
    }
   },
-  "description": "Reports Release. Release readiness: the counts, `ready`, one row per release feature (`in_release: true`, even with\nno cases), then rows for cases of features outside the release (`in_release: false`). Not ready while\na release feature has no case.",
+  "description": "Reports Release. Release readiness: the counts, `ready`, one row per release feature (`in_release: true`, even with\nno cases), then rows for cases of features outside the release (`in_release: false`). Not ready while\na release feature has no case. `trend` is the release's results in the period.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
+    "from": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "First day, in `tz`; default 29 days before `to`"
+    },
     "org": {
      "description": "Org slug",
      "type": "string"
     },
     "release_id": {
+     "type": "string"
+    },
+    "to": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Last day, in `tz`, included; default today"
+    },
+    "tz": {
+     "default": "UTC",
+     "description": "An IANA time zone, e.g. America/Los_Angeles",
      "type": "string"
     }
    },

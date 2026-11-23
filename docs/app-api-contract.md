@@ -294,7 +294,7 @@ floored and `until` ceiled to the bucket. `since >= until`, or a span over 90 da
 `mcp_server_get`:
 
 ```json
-{"name": "...", "version": "...", "tool_count": 93, "tool_list_hash": "..."}
+{"name": "...", "version": "...", "tool_count": 99, "tool_list_hash": "..."}
 ```
 
 `mcp_tools_list?since&until` (default: the last 30 days):

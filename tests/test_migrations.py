@@ -187,6 +187,26 @@ class Migrations:
         finally:
             engine.dispose()
 
+    @test()
+    def test_0016_drops_activity_and_provenance_on_downgrade_and_adds_them_back(self, suite_parameter):
+        database_url = self.env.settings.database_url
+        engine = create_engine(database_url)
+
+        def columns(conn, table):
+            return {c["name"] for c in inspect(conn).get_columns(table)}
+
+        try:
+            command.downgrade(alembic_config(database_url), "0015")
+            with engine.connect() as conn:
+                assert not {"last_active_at", "description"} & columns(conn, "actor")
+                assert not {"via", "token_id", "on_behalf_of_user_id"} & columns(conn, "case_version")
+            migrate.upgrade(database_url)
+            with engine.connect() as conn:
+                assert {"last_active_at", "description"} <= columns(conn, "actor")
+                assert {"via", "token_id", "on_behalf_of_user_id"} <= columns(conn, "case_version")
+        finally:
+            engine.dispose()
+
     @test(parameters=["UPDATE audit_event SET action = 'x'", "DELETE FROM audit_event"])
     def test_raw_sql_cannot_change_audit_event(self, parameter, suite_parameter):
         statement = parameter

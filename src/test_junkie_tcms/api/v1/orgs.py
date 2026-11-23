@@ -44,7 +44,7 @@ def orgs_list(principal: Principal = Depends(get_principal), db: Session = Depen
     else:
         actors = db.scalars(select(Actor).where(Actor.kind == "user", Actor.user_id == principal.user.id))
     orgs = [db.get(Org, a.org_id) for a in actors if effective_role(db, a)]
-    return Page[OrgOut](items=sorted(orgs, key=lambda o: o.slug))
+    return Page[OrgOut](items=sorted(orgs, key=lambda o: o.slug), total=len(orgs))
 
 
 @router.get(ORG, response_model=OrgOut, **op("orgs_get", READ, "core"))
@@ -124,8 +124,8 @@ def members_list(
     db: Session = Depends(get_db),
 ):
     query = select(Membership).where(Membership.org_id == ctx.org.id, Membership.removed_at.is_(None))
-    rows, cursor = paginate(db, query, Membership.id, params)
-    return Page[MemberOut](items=[_member_out(db, m) for m in rows], next_cursor=cursor)
+    rows, cursor, total = paginate(db, query, Membership.id, params)
+    return Page[MemberOut](items=[_member_out(db, m) for m in rows], next_cursor=cursor, total=total)
 
 
 @router.post(ORG + "/members", status_code=201, response_model=MemberOut, **op("members_add", ADMIN, "admin"))
@@ -217,8 +217,8 @@ def agents_list(
     db: Session = Depends(get_db),
 ):
     query = select(Actor).where(Actor.org_id == ctx.org.id, Actor.kind == "agent", _NOT_CONSUMER)
-    rows, cursor = paginate(db, query, Actor.id, params)
-    return Page[AgentOut](items=rows, next_cursor=cursor)
+    rows, cursor, total = paginate(db, query, Actor.id, params)
+    return Page[AgentOut](items=rows, next_cursor=cursor, total=total)
 
 
 @router.post(ORG + "/agents", status_code=201, response_model=AgentOut, **op("agents_create", ADMIN, "admin"))

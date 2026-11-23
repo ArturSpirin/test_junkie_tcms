@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -303,6 +304,8 @@ class TestCase(TenantMixin, UpdatedMixin, Base):
     product_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
     feature_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
     number: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Index among the cases of its feature (manual order); ties break by id.
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     current_version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     automation: Mapped[str] = mapped_column(String(16), nullable=False)
@@ -668,6 +671,26 @@ class McpToolStat(TenantMixin, Base):
     resp_bytes_sum: Mapped[int] = mapped_column(BigInteger, nullable=False)
     # 24 counts; bucket i holds sizes in [2^i, 2^(i+1)) bytes (0 also holds 0-1 B, 23 everything above)
     resp_bytes_hist: Mapped[list[int]] = mapped_column(JSON, nullable=False)
+    # the errors by HTTP status, e.g. {"409": 3, "422": 1}; its counts add up to `errors`
+    error_codes: Mapped[dict[str, int]] = mapped_column(JSON, nullable=False, server_default=text("'{}'"))
+
+
+class McpToolCall(TenantMixin, Base):
+    """One MCP call: when, which tool, who, its status and latency. Kept 7 days per org."""
+
+    __tablename__ = "mcp_tool_call"
+    __table_args__ = tenant_args(
+        ForeignKeyConstraint(["org_id", "actor_id"], ["actor.org_id", "actor.id"]),
+        Index("ix_mcp_tool_call_org_id_at", "org_id", "at"),
+        Index("ix_mcp_tool_call_org_id_tool_at", "org_id", "tool", "at"),
+    )
+
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    tool: Mapped[str] = mapped_column(String(100), nullable=False)
+    actor_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    status: Mapped[int] = mapped_column(Integer, nullable=False)
+    ms: Mapped[int] = mapped_column(Integer, nullable=False)
+    resp_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
 
 
 MCP_SERVER_EVENT_KINDS = ("server_started", "tools_changed")

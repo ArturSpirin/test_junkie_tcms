@@ -8,6 +8,7 @@ built in the app's lifespan, after plugins have added their routers.
 
 import contextlib
 import json
+import time
 from dataclasses import dataclass, replace
 from urllib.parse import parse_qs
 
@@ -178,7 +179,10 @@ def make_server(app: FastAPI, tools: list[ToolSpec]) -> Server:
         if refused is not None:  # it exists but this caller can't use it: say why, and don't record it
             status, detail = refused
             return _result(_error(status, "Forbidden", detail))
-        result = _result(await dispatch(app, tool, params.arguments or {}, caller.token))
+        started = time.perf_counter()
+        envelope = await dispatch(app, tool, params.arguments or {}, caller.token)
+        ms = round((time.perf_counter() - started) * 1000)
+        result = _result(envelope)
         size = len(result.content[0].text.encode())
         await anyio.to_thread.run_sync(
             stats.safe_record,
@@ -186,8 +190,9 @@ def make_server(app: FastAPI, tools: list[ToolSpec]) -> Server:
             caller.org_id,
             caller.actor_id,
             tool.name,
-            result.is_error,
+            envelope["status"],
             size,
+            ms,
         )
         return result
 

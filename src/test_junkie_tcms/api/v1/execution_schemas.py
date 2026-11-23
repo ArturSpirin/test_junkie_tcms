@@ -167,6 +167,7 @@ class ResultOut(BaseModel):
     id: str
     cycle_case_id: str
     attempt: int
+    case_version: int
     status: str
     actor_id: str
     via: str

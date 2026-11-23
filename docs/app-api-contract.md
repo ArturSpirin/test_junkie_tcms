@@ -15,7 +15,7 @@ app does not show them.
 | F5 | Report periods, trend, org KPIs, product-wide and feature-history reports |
 | F6 | MCP tool descriptions and hints, recent calls, error-code breakdown (done) |
 | F7 | Consumer jobs per machine, rejected reason, pause, deny pairing, pending-pairing preview, roster (done) |
-| F8 | Name search (`q`) on lists, product owner, copy feature tree, ETA and manual case order on Start |
+| F8 | Name search (`q`) on lists, product owner, copy feature tree, ETA and manual case order on Start (done) |
 
 ## Serving
 
@@ -82,8 +82,10 @@ Two kinds of search, and the app never filters a paged list itself (that misses 
   matches the current version's title, preconditions and steps, and needs `q` or `tag` (else 422). The Cases
   list's own `q` (`cases_list?q=`) matches the case key (`PAY-12`) or number, and the current title, steps and
   tag names.
-- **Names on other lists** (products, features, plans, members, consumers): a server-side `q` on each list,
-  **not yet (F8)**. Until then those views show no search box.
+- **Names on other lists** (products, features, plans, members, consumers): `q` on each list, a
+  case-insensitive part of the name (members: the name or email), at most 200 characters. It filters before
+  paging, so it holds on every cursor page and `total` counts the matches; `%` and `_` match only themselves,
+  and a blank `q` is no filter. `features_list?q=` returns each match with its parents, so the tree still nests.
 
 ## Views
 
@@ -119,8 +121,9 @@ also starts a session and sets the cookies. It returns the new `MemberOut`.
 | list, create, edit, archive | `products_list`, `products_create`, `products_update`, `products_archive` | exists |
 | current version, latest results | `releases_list`, `reports_product` | exists |
 | card counts (features, cases) | `products_list`, `products_get`: `feature_count`, `case_count` (live features, live cases in them) | exists |
-| name search | | not yet (F8) |
-| owner, "copy feature tree from" | | not yet (F8) |
+| name search | `products_list?q=` (see Search) | exists (F8) |
+| owner | `owner_actor_id` on `products_create`, `products_update` (null clears) and reads; an active user member's actor, else 422 `owner_not_member` | exists (F8) |
+| "copy feature tree from" | `products_create` `copy_features_from` (id or key): copies the live tree with new ids; a product in another org is 404 | exists (F8) |
 
 ### 2. Versions (releases)
 
@@ -137,7 +140,7 @@ also starts a session and sets the cookies. It returns the new `MemberOut`.
 |---|---|---|
 | tree, cases per feature | `features_list`, `cases_list?feature=` | exists |
 | search case text | `search?q&feature` (see Search) | exists |
-| feature name search | | not yet (F8) |
+| feature name search | `features_list?q=` (matches with their parents, see Search) | exists (F8) |
 | new, rename, describe, move, archive a feature | `features_create`, `features_update`, `features_move`, `features_archive` | exists |
 | move a case | `cases_move` | exists |
 | reports, import, viewer | `reports_feature`, `imports_create`, `cases_get` | exists |
@@ -197,7 +200,7 @@ can't see is a 404.
 | reorder entries | `PUT /plans/{id}/entries/order` (`plans_reorder_entries`) | exists |
 | preview what a plan resolves to | `plans_resolve` | exists |
 | filter by version and status | in the app, from `plans_list` | exists |
-| name search | | not yet (F8) |
+| name search | `plans_list?q=` (see Search) | exists (F8) |
 | cycle from plan | `cycles_create` with `plan_id` (the plan must be `active`) | exists |
 | per-entry resolution counts | | not yet (F3) |
 
@@ -229,7 +232,8 @@ operations.
 | pick plan or features, preview | `plans_list`, `features_list`, `cycles_preview` | exists |
 | mode, environment, tester, machines | `cycles_create`, `members_list`, `consumers_list` | exists |
 | split strategy, retries, queue when offline, cycle-level stop | | not yet (F4) |
-| ETA, manual case order | | not yet (F8) |
+| ETA | `cycles_create`, `cycles_update` `eta` (null clears), read on `CycleOut.eta`; an `eta` sent in the past is 422 `eta_in_past` (an update that doesn't send `eta` still works after it passes) | exists (F8) |
+| run order, manual case order | `cycles_create` `order` (`source`, the default, `feature` or `priority`) and `case_order` (case keys or ids run first, in that order; the rest follow `order`). `CycleOut.order` reads back the strategy, `manual` when `case_order` was given; a request can't send `order: "manual"` (422). A `case_order` case the run doesn't have (unknown, archived or deprecated) is 422 `case_not_in_run`. `cycle_cases_list?sort=position` lists the run order. Not on `cycles_bulk_create` | exists (F8) |
 | "notify the tester" | | out of scope (v1, owner decision) |
 
 ### 10. Run
@@ -265,7 +269,7 @@ operations.
 | invites: list, create, revoke | `invites_list`, `invites_create`, `invites_revoke` | exists |
 | copy the invite link | `InviteCreated.token` from `invites_create`, shown once; the link carries it to the accept view | exists |
 | resend an invite | revoke, then create (a new token) | exists |
-| name search | | not yet (F8) |
+| name search | `members_list?q=` (name or email, see Search) | exists (F8) |
 | last active | `members_list` (`last_active_at`) | exists (F2) |
 | invite emails | | out of scope (v1, owner decision) |
 
@@ -413,7 +417,7 @@ There is no server push (no SSE, no `notifications/tools/list_changed`).
 | Need | Operations | Status |
 |---|---|---|
 | cards, status filter, product filter | `consumers_list?status&product` | exists |
-| name search | | not yet (F8) |
+| name search | `consumers_list?q=` (see Search) | exists (F8) |
 | card "N projects" | `ConsumerOut.project_count` | added |
 | detail, heartbeat last 24 h, inventory | `consumers_get` | exists |
 | rename, set products | `PATCH /consumers/{id}` `{name?, product_ids?}` | exists |

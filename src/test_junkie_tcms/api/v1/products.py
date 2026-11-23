@@ -8,7 +8,14 @@ from test_junkie_tcms import audit
 from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
-from test_junkie_tcms.api.v1.catalog import get_product, rich_mode, rich_out, set_rich, to_doc
+from test_junkie_tcms.api.v1.catalog import (
+    get_product,
+    product_counts,
+    rich_mode,
+    rich_out,
+    set_rich,
+    to_doc,
+)
 from test_junkie_tcms.api.v1.schemas import Page, ProductCreate, ProductOut, ProductUpdate, RichMode
 from test_junkie_tcms.auth.deps import OrgContext, get_db, require_scope
 from test_junkie_tcms.auth.scopes import READ, WRITE_CATALOG
@@ -21,12 +28,15 @@ PRODUCTS = "/orgs/{org}/products"
 PRODUCT = PRODUCTS + "/{product}"
 
 
-def product_out(p: Product, mode: RichMode) -> ProductOut:
+def product_out(db: Session, p: Product, mode: RichMode, counts: tuple[int, int] | None = None) -> ProductOut:
+    features, cases = counts or product_counts(db, p.org_id, [p.id])[p.id]
     return ProductOut(
         id=p.id,
         key=p.key,
         name=p.name,
         description=rich_out(p.description, mode),
+        feature_count=features,
+        case_count=cases,
         archived_at=p.archived_at,
         created_at=p.created_at,
         updated_at=p.updated_at,
@@ -46,8 +56,10 @@ def products_list(
         query = query.where(Product.archived_at.is_(None))
     if ctx.product_ids is not None:
         query = query.where(Product.id.in_(ctx.product_ids))
-    rows, cursor = paginate(db, query, Product.id, params)
-    return Page[ProductOut](items=[product_out(p, mode) for p in rows], next_cursor=cursor)
+    rows, cursor, total = paginate(db, query, Product.id, params)
+    counts = product_counts(db, ctx.org.id, [p.id for p in rows])
+    items = [product_out(db, p, mode, counts[p.id]) for p in rows]
+    return Page[ProductOut](items=items, next_cursor=cursor, total=total)
 
 
 @router.post(
@@ -73,7 +85,7 @@ def products_create(
     changes = {"key": [None, p.key], "name": [None, p.name], "description": [None, doc_to_md(doc)]}
     audit.record(db, ctx, "product.create", "product", p.id, changes)
     db.commit()
-    return product_out(p, mode)
+    return product_out(db, p, mode)
 
 
 @router.get(PRODUCT, response_model=ProductOut, **op("products_get", READ, "catalog"))
@@ -83,7 +95,7 @@ def products_get(
     ctx: OrgContext = Depends(require_scope(READ)),
     db: Session = Depends(get_db),
 ):
-    return product_out(get_product(db, ctx, product), mode)
+    return product_out(db, get_product(db, ctx, product), mode)
 
 
 @router.patch(PRODUCT, response_model=ProductOut, **op("products_update", WRITE_CATALOG, "catalog"))
@@ -104,7 +116,7 @@ def products_update(
     if changes:
         audit.record(db, ctx, "product.update", "product", p.id, changes)
         db.commit()
-    return product_out(p, mode)
+    return product_out(db, p, mode)
 
 
 @router.post(
@@ -122,4 +134,4 @@ def products_archive(
         p.archived_at = utcnow()
         audit.record(db, ctx, "product.archive", "product", p.id)
     db.commit()  # a no-op commits too, so an Idempotency-Key replays it
-    return product_out(p, mode)
+    return product_out(db, p, mode)

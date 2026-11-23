@@ -204,8 +204,8 @@ def results_list(
     """Every attempt for the cycle case, oldest first."""
     cc, _ = get_cycle_case(db, ctx, id)
     query = select(Result).where(Result.org_id == ctx.org.id, Result.cycle_case_id == cc.id)
-    rows, cursor = paginate(db, query, Result.id, params)
-    return Page[ResultOut](items=[result_out(r, mode) for r in rows], next_cursor=cursor)
+    rows, cursor, total = paginate(db, query, Result.id, params)
+    return Page[ResultOut](items=[result_out(r, mode) for r in rows], next_cursor=cursor, total=total)
 
 
 @router.post(

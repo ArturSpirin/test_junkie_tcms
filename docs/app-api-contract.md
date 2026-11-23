@@ -66,8 +66,11 @@ reload from `current_version`.
 ### Paging
 
 List endpoints that page take `cursor` and `limit` (1-200, default 50) and return
-`{"items": [...], "next_cursor": "..." | null}`. Pass `next_cursor` back as `cursor` for the next page.
-Lists have no `total` yet: **not yet (F1)**.
+`{"items": [...], "next_cursor": "..." | null, "total": n}`. Pass `next_cursor` back as `cursor` for the next
+page. `total` counts the rows the list matches with its filters, across all pages ("12 of 64").
+
+A sort on a value that changes (`cases_list?sort=result` or `sort=updated`) pages by keyset, so a case whose
+result or update time changes between two page loads can be skipped or shown twice. Reload from page one to fix.
 
 All paths below are under `/api/v1/orgs/{org}` unless they start with `/api/v1/`.
 
@@ -77,7 +80,8 @@ Two kinds of search, and the app never filters a paged list itself (that misses 
 
 - **Case text:** `GET /orgs/{org}/search` (`search`) `?q&tag&product&feature&include_archived`, paged. It
   matches the current version's title, preconditions and steps, and needs `q` or `tag` (else 422). The Cases
-  list's own `q` (`cases_list?q=`) matches the title only.
+  list's own `q` (`cases_list?q=`) matches the case key (`PAY-12`) or number, and the current title, steps and
+  tag names.
 - **Names on other lists** (products, features, plans, members, consumers): a server-side `q` on each list,
   **not yet (F8)**. Until then those views show no search box.
 
@@ -114,7 +118,7 @@ also starts a session and sets the cookies. It returns the new `MemberOut`.
 |---|---|---|
 | list, create, edit, archive | `products_list`, `products_create`, `products_update`, `products_archive` | exists |
 | current version, latest results | `releases_list`, `reports_product` | exists |
-| card counts (features, cases) | | not yet (F1) |
+| card counts (features, cases) | `products_list`, `products_get`: `feature_count`, `case_count` (live features, live cases in them) | exists |
 | name search | | not yet (F8) |
 | owner, "copy feature tree from" | | not yet (F8) |
 
@@ -125,7 +129,7 @@ also starts a session and sets the cookies. It returns the new `MemberOut`.
 | list, new, detail KPIs, mark released | `releases_list`, `releases_create`, `releases_get`, `releases_update`, `reports_release` | exists |
 | set features | `PUT /releases/{id}/features` (`releases_set_features`) | exists |
 | plans and cycles of a version | `plans_list`, `cycles_list`, filtered on `release_id` in the app | exists |
-| feature case counts | | not yet (F1) |
+| feature case counts | `features_list`: `case_count`, `total_case_count` per node | exists |
 
 ### 3. Tree
 
@@ -137,8 +141,8 @@ also starts a session and sets the cookies. It returns the new `MemberOut`.
 | new, rename, describe, move, archive a feature | `features_create`, `features_update`, `features_move`, `features_archive` | exists |
 | move a case | `cases_move` | exists |
 | reports, import, viewer | `reports_feature`, `imports_create`, `cases_get` | exists |
-| case count per feature, last-result dot, filters, sort, key search | | not yet (F1) |
-| reorder a case within a feature | | not yet (F1) |
+| case count per feature, last-result dot, filters, sort, key search | `features_list` (`case_count` own, `total_case_count` with sub-features); `cases_list` (`last_result`, `last_result_at`; filters, `sort`, `q` as in Cases below) | exists |
+| reorder a case within a feature | `CaseOut.position`; `cases_move` `{feature_id, position?}` (no `position` appends; reordering keeps the other cases' `updated_at`) | exists |
 | "edited by agent via MCP on behalf of", "in cycles" | | not yet (F2) |
 
 ### 4. Cases
@@ -148,7 +152,13 @@ also starts a session and sets the cookies. It returns the new `MemberOut`.
 | table, paging, feature/status/automation filters | `cases_list` | exists |
 | title search | `cases_list?q=` | exists |
 | text search (title, preconditions, steps, tags) | `search?q&tag&product` (see Search) | exists |
-| result and priority filters, sort, total, key search | | not yet (F1) |
+| result and priority filters, sort, total, key search | `cases_list?result&priority&updated_since&edited_by&edited_by_kind&has_ref&sort&q`, `total` on the page | exists |
+
+`result` takes a last result (`fail`, `success`, ...) or `untested`, which means no result in any cycle (the
+mock's hint says "in an open cycle"; the app copy follows the API). `has_ref` reads the case's
+`automation_ref`. `edited_by` is an actor id, `edited_by_kind` is `user` or `agent`. `sort` is `manual` (the
+tree's pre-order, then position), `key`, `title`, `updated` (newest first), `result` (failures first) or
+`priority` (critical first). Per-tag case counts for the tag filter come from `tags_list` (`case_count`).
 | "No feature yet" option | | not in the API (a case always has a feature) |
 
 ### 5. Case editor
@@ -328,7 +338,7 @@ as a read when it is a `GET`; a tool that is no longer in the running tool list 
 ```json
 {"items": [{"id": "...", "at": "...", "kind": "tools_changed", "version": "...", "tool_list_hash": "...",
             "added": ["..."], "removed": ["..."], "changed": ["..."]}],
- "next_cursor": null}
+ "next_cursor": null, "total": 0}
 ```
 
 `kind` is `server_started` or `tools_changed`. The feed is server-wide: every org sees the same rows, which
@@ -342,7 +352,7 @@ its own row, so one deploy can show several `server_started` rows; only the firs
 ```json
 {"items": [{"id": "...", "at": "...", "tool": "...", "actor_id": "...", "name": "...", "kind": "agent",
             "status": 200, "ms": 0, "resp_tokens": 0}],
- "next_cursor": null}
+ "next_cursor": null, "total": 0}
 ```
 
 One row per call that reached a tool, kept 7 days. `status` is the HTTP status the tool got (an error when

@@ -51,7 +51,7 @@ const form = (d) => {
   <div class="field"><label for="pd">Description</label><textarea id="pd" class="in" rows="3">${esc(f.desc)}</textarea></div>
   <div class="field"><label>Copy feature tree from</label>${dd({ value: "none", options: copy, w: "100%", label: "Copy feature tree from" })}</div>
   ${tg(true, "Create version 1.0.0 now", "Adds a planned version so plans and cycles have a target")}`,
-  `<span class="l mono">POST /products</span><button class="btn" data-back>Cancel</button><button class="btn primary">Create product</button>`);
+  `<button class="btn" data-back>Cancel</button><button class="btn primary">Create product</button>`);
 };
 
 const empty = (d) => catalog(d) + `<div class="card"><div class="empty"><div class="ill">${I.build}</div><h3>No products yet</h3><p class="muted">A product holds versions, a feature tree with its cases, and test plans. Start with one.</p><a class="btn primary" href="#new-first">${I.plus}New product</a></div></div>`;

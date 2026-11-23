@@ -60,7 +60,7 @@ const newPlan = (d) => {
   <div class="field"><label>Add tests by</label><div class="seg" role="group" aria-label="Add tests by"><button class="on" aria-pressed="true">${I.folder} Feature</button><button aria-pressed="false">${I.doc} Case</button><button aria-pressed="false">${I.filter} Query</button></div></div>
   ${tg(f.allFeatures, `Start with every feature in ${esc(f.version)}`, `Adds the ${f.featureCount} features from the version’s release_feature list`)}
   <div style="margin-top:14px">${entries(d, true)}</div>`,
-  `<span class="l mono">POST /products/${esc(f.product)}/plans</span><button class="btn" data-back>Cancel</button><button class="btn primary">Create plan</button>`, "wide");
+  `<button class="btn" data-back>Cancel</button><button class="btn primary">Create plan</button>`, "wide");
 };
 
 const createCycle = (d) => {
@@ -74,10 +74,10 @@ const createCycle = (d) => {
     ${c.resolved.map((r) => `<span>${esc(r.label)}</span><b>${r.count}${r.unit ? " " + esc(r.unit) : ""}</b>`).join("")}<span class="tot">Cases pinned at their current version</span><b class="tot">${p.resolve.pinned}</b>
   </div></div></div>
   <div style="margin-top:14px">${tg(c.skipDeprecated, "Skip deprecated cases", `${c.deprecated} deprecated cases match; they're left out by default`)}</div>`,
-  `<span class="l mono">POST /cycles  {"plan_id":"${esc(p.id)}", "environment":"${esc(c.env)}"}</span><button class="btn" data-back>Cancel</button><button class="btn primary">Create cycle with ${p.resolve.pinned} cases</button>`, "wide");
+  `<button class="btn" data-back>Cancel</button><button class="btn primary">Create cycle with ${p.resolve.pinned} cases</button>`, "wide");
 };
 
-const edit = (d) => modal("Edit entries", `<p class="muted" style="margin-top:0">Changes apply to new cycles. Cycles already made keep their pinned cases.</p>${entries(d, true)}<div class="row" style="margin-top:12px;gap:8px"><button class="btn sm">${I.folder}Add feature</button><button class="btn sm">${I.doc}Add case</button><button class="btn sm">${I.filter}Add query</button></div>`, `<span class="l mono">PUT /plans/${esc(d.detail.id)}/entries</span><button class="btn" data-back>Cancel</button><button class="btn primary">Save entries</button>`, "wide");
+const edit = (d) => modal("Edit entries", `<p class="muted" style="margin-top:0">Changes apply to new cycles. Cycles already made keep their pinned cases.</p>${entries(d, true)}<div class="row" style="margin-top:12px;gap:8px"><button class="btn sm">${I.folder}Add feature</button><button class="btn sm">${I.doc}Add case</button><button class="btn sm">${I.filter}Add query</button></div>`, `<button class="btn" data-back>Cancel</button><button class="btn primary">Save entries</button>`, "wide");
 
 const created = (d) => {
   const p = d.detail, r = p.resolve;

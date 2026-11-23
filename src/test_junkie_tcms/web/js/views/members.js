@@ -49,7 +49,7 @@ const invite = (d) => {
     <small class="${err ? "err" : "hint"}">${err ? esc(f.error) : "Each person gets an email with a link that works for 7 days."}</small></div>
   <div class="field"><label>Role</label>${roleDd(d, f.role)}<small class="hint">You can change it later. Admins can invite up to admin; only owners can invite owners.</small></div>
   ${tg(false, "Send me a copy of the invite email")}`,
-  `<span class="l mono">POST /orgs/${esc(d.orgSlug)}/invites</span><a class="btn" href="#list">Cancel</a><a class="btn primary" href="#invite-sent">Send ${f.emails.length} invite${f.emails.length === 1 ? "" : "s"}</a>`);
+  `<a class="btn" href="#list">Cancel</a><a class="btn primary" href="#invite-sent">Send ${f.emails.length} invite${f.emails.length === 1 ? "" : "s"}</a>`);
 };
 
 const removeM = (d) => {
@@ -57,7 +57,7 @@ const removeM = (d) => {
   const m = d.members.find((x) => x.handle === h);
   return modal(`Remove ${esc(nm(h))}?`, `<p style="margin-top:0">${esc(first(h))} loses access to ${esc(d.ctx.org.name)} at once and is signed out. Their cases, results and comments stay, and the audit log keeps their name.</p>
   <div class="banner warn" style="margin:0">${I.warn}<div>Tokens ${esc(first(h))} created are revoked with them. Cycles assigned to ${esc(first(h))} become unassigned (${d.remove.openCycles} open).</div></div>`,
-  `<span class="l mono">DELETE /orgs/${esc(d.orgSlug)}/members/${esc(m.userId)}</span><a class="btn" href="#list">Cancel</a><a class="btn danger" href="#removed">Remove ${esc(first(h))}</a>`);
+  `<a class="btn" href="#list">Cancel</a><a class="btn danger" href="#removed">Remove ${esc(first(h))}</a>`);
 };
 
 export default { nav: "members", default: "list",

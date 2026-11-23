@@ -70,7 +70,7 @@ function restoreConfirm(d) {
   return page(d) + modal(`Restore v${a} as v${next}?`, `<p style="margin-top:0">Restoring copies v${a} into a <b>new version v${next}</b>. ${and(kept)} stay in history; nothing is deleted.</p>
     <div class="field"><label for="cn">Change note</label><input id="cn" class="in" value="${esc(d.draft.note)}"></div>
     <div class="banner warn mb0">${I.info}<div>Open cycles keep their pinned versions (${pinned.join(", ")}). Use “Refresh to v${next}” in a cycle to move an untested case.</div></div>`,
-    `<span class="l mono">POST /cases/${esc(d.case.key)}/versions/${a}:restore</span><button class="btn" data-back>Cancel</button><button class="btn primary">Restore as v${next}</button>`);
+    `<button class="btn" data-back>Cancel</button><button class="btn primary">Restore as v${next}</button>`);
 }
 function restored(d) {
   const { a, b } = d.pick, prev = d.versions[1].n;

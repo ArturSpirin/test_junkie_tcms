@@ -1,6 +1,6 @@
 /* Cycles: the cycle list, the new-cycle form, the bulk cycle wizard (pick a release, preview) and one cycle's detail.
    The data and the writes are data/cycles.js. */
-import { I, st, ver, actor, modal, bar, legend, dd, crumbs, esc, person } from "../ui.js";
+import { I, st, ver, actor, modal, bar, legend, dd, tg, crumbs, esc, person } from "../ui.js";
 import { href, showError } from "../shell.js";
 import { actions } from "../data/cycles.js";
 
@@ -8,6 +8,8 @@ const sum = (c) => Object.values(c).reduce((a, b) => a + b, 0);
 const plural = (n, one) => `${n} ${n === 1 ? one : one + "s"}`;
 const at = (d) => ({ product: d.product.key });
 const who = (x) => (x ? actor(x.kind, esc(x.name), { k: false }) : '<span class="faint">unassigned</span>');
+/* an actor's name as text: a person's display name, an agent's name */
+const nameOf = (x) => esc(x.kind === "person" ? person(x.name)[0] : x.name);
 
 /* option sets, built from data */
 const relOpt = (r) => r.status === "released"
@@ -41,7 +43,7 @@ function list(d) {
     : `<div class="it"><div class="row"><a href="${open(c)}" class="ell" style="flex:1">${esc(c.name)}</a><span class="pill ${c.status}">${c.status}</span></div><div class="row">${c.release ? `<span class="chip mono">${esc(c.release)}</span>` : ""}${c.env ? `<span class="chip">${esc(c.env)}</span>` : ""}<span class="faint" style="font-size:12px">${sum(c.results)} cases</span></div>${bar(c.results)}</div>`;
   return `<div class="card"><div class="tbl-wrap mswap"><table class="t"><thead><tr><th>Cycle</th><th>Release</th><th>Environment</th><th class="hide-m">Default assignee</th><th>Results</th><th class="num">Cases</th><th>Cycle</th></tr></thead><tbody>${d.rows.map(row).join("")}</tbody></table></div><div class="mlist">${d.rows.map(mrow).join("")}</div></div><div style="margin-top:14px">${legend()}</div>`;
 }
-const batchMeta = (c) => `${c.cycles} cycles, one per ${c.per === "plans" ? "test plan" : "affected feature"} · created ${esc(c.on)}`;
+const batchMeta = (c) => `${c.cycles} cycles, one per ${c.per === "plans" ? "test plan" : "affected feature"} · created ${c.by ? `by ${nameOf(c.by)}, ` : ""}${esc(c.on)}${c.closedBy ? ` · closed by ${nameOf(c.closedBy)}` : ""}`;
 const productCrumb = (d) => [`${esc(d.product.key)} · ${esc(d.product.name)}`, href("products", { ...at(d), id: d.product.key })];
 const head = (d) => `${crumbs([productCrumb(d), ["Cycles"]])}
 <div class="eyebrow">Execution</div>
@@ -70,12 +72,13 @@ const newCycle = (d) => {
   <div class="field"><label>Release <span class="muted">optional</span></label>${dd({ value: f.release, options: releaseOpts(d), cls: "block", label: "Release", name: "release" })}</div></div>
   <div class="grid2"><div class="field"><label>Environment</label>${envField(d, f.env, "envnew")}<span class="hint">A free label: staging, prod-eu, iPhone 15 / iOS 18</span></div>
   <div class="field"><label>Default assignee</label>${dd({ value: f.assignee, options: whoOpts(d), cls: "block up", label: "Default assignee", name: "assignee" })}</div></div>
+  <div class="tg-list" style="margin-bottom:18px">${tg(true, "Skip draft cases", "Drafts in these features stay out of the cycle", { name: "skipdrafts" })}</div>
   <div class="banner info mb0" id="pv">${pinned(f)}</div>`,
   `<button class="btn" data-back>Cancel</button><button class="btn primary" data-act="create">Create cycle</button>`, "wide");
 };
 /* what the server says the cycle would pin */
 const pinned = (f) => {
-  const out = [f.deprecated ? `${f.deprecated} deprecated` : "", f.archived ? `${f.archived} archived` : ""].filter(Boolean).join(", ");
+  const out = [f.deprecated ? `${f.deprecated} deprecated` : "", f.archived ? `${f.archived} archived` : "", f.drafts ? `${f.drafts} draft` : ""].filter(Boolean).join(", ");
   return `${I.pin}<div><b>${plural(f.total, "case")}</b>${out ? ` (${out} left out)` : ""}. Each is pinned at its <b>current version</b> now. Later edits don't change this cycle.</div>`;
 };
 
@@ -94,15 +97,18 @@ const bulkTotals = (d) => ({ cycles: d.bulk.features.length, cases: d.bulk.total
 const bulkPreview = (d) => {
   const b = d.bulk, r = bulkRelease(d), n = bulkTotals(d);
   const per = (p, label) => `<button${b.per === p ? ' class="on acc"' : ""} data-go="${href("cycles", { ...at(d), release: b.releaseId, per: p === "plans" ? p : null }, "bulk-preview")}">${label}</button>`;
-  const cases = (f) => (f.cases === null ? '<span class="faint">–</span>' : f.cases);
+  const skipped = (f) => (f.drafts ? `${f.drafts} draft` : "–");
+  const pickWho = (f, cls) => dd({ value: f.assignee, options: whoOpts(d), cls, w: cls === "sm" ? "190px" : "", label: "Assignee for " + f.path, name: "as:" + f.id });
   return modal(`Bulk cycle · 2 of 2 · ${esc(r.ver)} ${esc(r.name)}`, `
   <div class="field"><label>One cycle per</label><div class="seg">${per("features", `Affected feature (${b.featureCount})`)}${per("plans", `Test plan (${b.plans})`)}</div></div>
-  <div class="field"><label>Environment</label>${envField(d, b.env, "bulkenv")}</div>
-  <div class="card"><div class="hd"><span class="eyebrow">Preview</span><span class="r faint" style="font-size:12px">${n.cycles} cycles · ${n.cases} cases</span></div><div class="tbl-wrap mswap"><table class="t"><thead><tr><th>Cycle</th><th class="num">Cases</th></tr></thead><tbody>
-  ${b.features.map((f) => `<tr><td><span class="ell" style="display:block;max-width:300px">${esc(f.path)}</span></td><td class="num">${cases(f)}</td></tr>`).join("")}
+  <div class="grid2"><div class="field"><label>Environment</label>${envField(d, b.env, "bulkenv")}</div>
+  <div class="field"><label for="nm">Name pattern</label><input id="nm" class="in mono" value="${esc(b.pattern)}"><span class="hint">{release}, {env} and {${b.per === "plans" ? "plan" : "feature"}}</span></div></div>
+  <div class="card"><div class="hd"><span class="eyebrow">Preview</span><span class="r faint" style="font-size:12px">${n.cycles} cycles · <span data-n>${n.cases}</span> cases</span></div><div class="tbl-wrap mswap"><table class="t"><thead><tr><th>Cycle</th><th class="num">Cases</th><th class="hide-n">Skipped</th><th>Assignee</th></tr></thead><tbody>
+  ${b.features.map((f) => `<tr><td><span class="ell" style="display:block;max-width:300px">${esc(f.path)}</span></td><td class="num">${f.cases}</td><td class="hide-n faint">${skipped(f)}</td><td>${pickWho(f, "sm")}</td></tr>`).join("")}
   </tbody></table></div>
-  <div class="mlist">${b.features.map((f) => `<div class="it"><span class="ell">${esc(f.path)}</span>${f.cases === null ? "" : `<span class="muted" style="font-size:12px">${f.cases} cases</span>`}</div>`).join("")}</div></div>
-  <div class="banner info mb0" style="margin-top:16px">${I.pin}<div>${n.cases} cases, each <b>pinned at its current version</b>. Grouped as one bulk batch so the release report adds them up.</div></div>`,
+  <div class="mlist">${b.features.map((f) => `<div class="it"><span class="ell">${esc(f.path)}</span><span class="muted" style="font-size:12px">${f.cases} cases${f.drafts ? ` · ${f.drafts} draft skipped` : ""}</span>${pickWho(f, "sm block")}</div>`).join("")}</div></div>
+  <div class="tg-list" style="margin-top:16px">${tg(true, "Skip draft cases", `${b.drafts} drafts stay out`, { name: "skipdrafts" })}</div>
+  <div class="banner info mb0" style="margin-top:16px">${I.pin}<div><span data-n>${n.cases}</span> cases, each <b>pinned at its current version</b>. Grouped as one bulk batch so the release report adds them up.</div></div>`,
   `<a class="btn" href="#bulk-pick-release">${I.chevl}Back</a><button class="btn primary" data-act="bulk"${n.cycles ? "" : " disabled"}>Create ${n.cycles} cycles</button>`, "wide");
 };
 const bulkCreated = (d) => {
@@ -137,7 +143,7 @@ function detail(d, banner = "") {
   <div class="eyebrow">Cycle · ${esc(c.id)}</div>
   <div class="ph" style="margin-top:6px"><h1>${esc(c.name)}</h1><span class="pill ${closed ? "closed" : "open"}">${closed ? "closed" : "open"}</span>${c.release ? `<span class="chip mono">${esc(c.release)}</span>` : ""}${c.env ? `<span class="chip">${esc(c.env)}</span>` : ""}
   <div class="actions">${closed ? `<button class="btn" data-act="reopen">Reopen</button>` : `<button class="btn">${I.plus}Add cases</button><button class="btn" data-act="close">${I.lock}Close cycle</button><a class="btn primary" href="${run()}">${I.run}Run next untested</a>`}</div></div>
-  ${closed ? `<div class="banner">${I.lock}<div>Closed ${esc(c.closedAt)}. Results are read only; reopening is audited.</div></div>` : ""}${banner}
+  ${closed ? `<div class="banner">${I.lock}<div>Closed ${c.closedBy ? `by ${nameOf(c.closedBy)}, ` : ""}${esc(c.closedAt)}. Results are read only; reopening is audited.</div></div>` : ""}${banner}
   <div class="kpis">
     <div class="kpi"><div class="l">Cases</div><div class="v">${sum(k)}</div><div class="d">${bar(k)}</div></div>
     <div class="kpi"><div class="l">Success</div><div class="v">${n("success")}</div><div class="d">${st("success")}</div></div>
@@ -194,27 +200,45 @@ function after(main, id, d) {
     const { name, value } = e.detail;
     if (name === "env") main.querySelectorAll("#envnew, #bulkenv").forEach((x) => { x.hidden = value !== "new"; });
     if (name === "bulk-release") location.assign(href("cycles", { ...at(d), release: relId(d, value) }, "bulk-pick-release"));
-    if (name === "features") {
-      try {
-        const p = await actions.preview(picks(main, "features"), d.ctx, d.product.key);
-        main.querySelector("#pv").innerHTML = pinned({ total: p.total, deprecated: p.skipped.deprecated || 0, archived: p.skipped.archived || 0 });
-      } catch (err) {
-        showError(dlg(), err, "Couldn't count the cases.");
-      }
-    }
+    if (name === "features") count();
   });
+  /* the new-cycle banner: what the server would pin for the features picked, drafts in or out */
+  async function count() {
+    try {
+      const p = await actions.preview(picks(main, "features"), d.ctx, d.product.key, skipDrafts());
+      main.querySelector("#pv").innerHTML = pinned({ total: p.total, deprecated: p.skipped.deprecated || 0, archived: p.skipped.archived || 0, drafts: p.skipped.draft || 0 });
+    } catch (err) {
+      showError(dlg(), err, "Couldn't count the cases.");
+    }
+  }
+  const skipDrafts = () => { const t = main.querySelector("input[name=skipdrafts]"); return !!t && t.checked; };
+  const toggle = main.querySelector("input[name=skipdrafts]");
+  if (toggle && main.querySelector("#pv")) toggle.addEventListener("change", count);
+  // the bulk preview's counts leave drafts out; with the toggle off they go back in
+  if (toggle && d.bulk && d.bulk.features) toggle.addEventListener("change", () => main.querySelectorAll("[data-n]").forEach((x) => {
+    x.textContent = d.bulk.total + (toggle.checked ? 0 : d.bulk.drafts);
+  }));
   act(main, "create", "Couldn't create the cycle.", async () => {
     const release = pick(main, "release");
     const assignee = pick(main, "assignee");
     const c = await actions.create({
       name: main.querySelector("#n").value.trim(), featureIds: picks(main, "features"),
       releaseId: release && release !== "none" ? relId(d, release) : null, environment: envOf(main, "envnew") || null,
-      assigneeId: assignee && assignee !== "none" ? assignee : null
+      assigneeId: assignee && assignee !== "none" ? assignee : null, skipDrafts: skipDrafts()
     }, d.ctx, d.product.key);
     location.assign(href("cycles", { ...at(d), id: c.id }));
   }, dlg);
   act(main, "bulk", "Couldn't create the cycles.", async () => {
-    const b = await actions.bulk(d.bulk.releaseId, { per: d.bulk.per, environment: envOf(main, "bulkenv") || null }, d.ctx);
+    // each row's assignee; the table and the narrow list each hold a picker, so take the one that was set
+    const assignees = {};
+    for (const f of d.bulk.features) {
+      const v = picks(main, "as:" + f.id).find((x) => x && x !== "none");
+      if (v) assignees[f.id] = v;
+    }
+    const b = await actions.bulk(d.bulk.releaseId, {
+      per: d.bulk.per, environment: envOf(main, "bulkenv") || null, namePattern: main.querySelector("#nm").value.trim(),
+      assignees, skipDrafts: skipDrafts()
+    }, d.ctx);
     location.assign(href("cycles", { ...at(d), batch: b.id }, "bulk-created"));
   }, dlg);
   const page = () => main;

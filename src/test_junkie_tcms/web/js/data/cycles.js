@@ -1,9 +1,8 @@
 /* Cycles adapter (docs/app-api-contract.md §8): cycles_list (the status tabs are the server's status filter),
    cycles_get, cycles_create, cycles_preview, cycles_close, cycles_reopen, cycles_bulk_create, cycle_batches_get,
-   cycle_cases_list, cycle_cases_refresh_version and results_list, with releases_list, plans_list, features_list,
-   members_list, actors_list and cases_version_get for names, pickers and the refresh diff. Maps the API onto the
-   shapes views/cycles.js renders. Not served yet (F4), so left out: a batch's "created by", "closed by", the bulk
-   name pattern, per-cycle assignee and per-feature counts, skipping drafts. */
+   cycle_feature_counts, cycle_cases_list, cycle_cases_refresh_version and results_list, with releases_list,
+   plans_list, features_list, members_list, actors_list and cases_version_get for names, pickers and the refresh
+   diff. Maps the API onto the shapes views/cycles.js renders. */
 import { all, get, org, page, post } from "../api.js";
 import { day, flatten, plain, results } from "./map.js";
 
@@ -64,14 +63,30 @@ async function rowsOf(path, cycles, ver, directory) {
     if (done.has(c.batch_id)) continue;
     done.add(c.batch_id);
     const b = batches[c.batch_id];
-    out.push({ kind: "batch", id: b.id, name: b.name, per: b.mode, cycles: b.cycles.length, on: day(b.created_at, { day: true }) });
+    out.push({
+      kind: "batch", id: b.id, name: b.name, per: b.mode, cycles: b.cycles.length, on: day(b.created_at, { day: true }),
+      by: who(directory, b.created_by_actor_id), closedBy: who(directory, b.closed_by_actor_id)
+    });
     out.push(...cycles.filter((x) => x.batch_id === c.batch_id).map(row));
   }
   return out;
 }
 
+/* a preview's cases per affected feature: each case counts under its own feature if affected, else under its
+   nearest affected parent, as cycles_bulk_create files it */
+function perAffected(preview, affected, parents) {
+  const out = {};
+  for (const f of preview.features) {
+    let x = f.feature_id;
+    while (x && !affected.has(x)) x = parents[x];
+    if (x) out[x] = (out[x] || 0) + f.cases;
+  }
+  return out;
+}
+
 /* the bulk wizard: the release picked (?release=, else the product's current version), one cycle per affected
-   feature or per active plan (?per=plans), and the cases the release's features hold */
+   feature or per active plan (?per=plans) with its cases and the drafts skip_drafts leaves out, and the cases the
+   release's features hold */
 async function bulkOf(path, product, releases, tree, plans, params, ctx) {
   const pick = releases.find((r) => r.id === params.release) || releases.find((r) => ctx.version && r.id === ctx.version.id)
     || releases.find((r) => r.status !== "released" && r.status !== "cancelled") || releases[0];
@@ -80,15 +95,26 @@ async function bulkOf(path, product, releases, tree, plans, params, ctx) {
   const features = flatten(tree.items);
   const active = plans.filter((p) => p.release_id === pick.id && p.status === "active");
   const affected = features.filter((f) => pick.feature_ids.includes(f.id));
-  const preview = pick.feature_ids.length
-    ? await post(path("products", product.key, "cycles", "preview"), { feature_ids: pick.feature_ids, mode: "manual" })
-    : { total: 0 };
-  const rows = per === "plans"
-    ? active.map((p) => ({ path: p.name, cases: p.entries.reduce((n, e) => n + (e.new_cases || 0), 0) }))
-    : affected.map((f) => ({ path: f.path, cases: null }));
+  const preview = (body) => post(path("products", product.key, "cycles", "preview"), { mode: "manual", ...body });
+  const none = { total: 0, features: [], skipped: {} };
+  const [held, kept] = pick.feature_ids.length
+    ? await Promise.all([preview({ feature_ids: pick.feature_ids }), preview({ feature_ids: pick.feature_ids, skip_drafts: true })])
+    : [none, none];
+  let rows;
+  if (per === "plans") {
+    const pv = await Promise.all(active.map((p) => preview({ plan_id: p.id, skip_drafts: true })));
+    rows = active.map((p, i) => ({ id: p.id, path: p.name, cases: pv[i].total, drafts: pv[i].skipped.draft || 0, assignee: "none" }));
+  } else {
+    const ids = new Set(affected.map((f) => f.id));
+    const parents = Object.fromEntries(features.map((f) => [f.id, f.parent_id]));
+    const all = perAffected(held, ids, parents);
+    const live = perAffected(kept, ids, parents);
+    rows = affected.map((f) => ({ id: f.id, path: f.path, cases: live[f.id] || 0, drafts: (all[f.id] || 0) - (live[f.id] || 0), assignee: "none" }));
+  }
   return {
     release: pick.version, releaseId: pick.id, env: "", per, plans: active.length, featureCount: affected.length,
-    cases: preview.total, total: per === "plans" ? rows.reduce((n, r) => n + r.cases, 0) : preview.total, features: rows
+    cases: held.total, total: rows.reduce((n, r) => n + r.cases, 0), drafts: rows.reduce((n, r) => n + r.drafts, 0),
+    pattern: per === "plans" ? "{release} · {plan}" : "{release} · {feature}", features: rows
   };
 }
 
@@ -121,7 +147,7 @@ async function list(path, ctx, params) {
     const tree = await get(P("features"));
     const cur = releases.find((r) => ctx.version && r.id === ctx.version.id);
     data.featureGroups = groupsOf(tree);
-    data.draft = { name: "", features: [], release: cur && cur.status !== "released" ? cur.version : "none", env: "", assignee: "none", total: 0, deprecated: 0, archived: 0 };
+    data.draft = { name: "", features: [], release: cur && cur.status !== "released" ? cur.version : "none", env: "", assignee: "none", total: 0, deprecated: 0, archived: 0, drafts: 0 };
   }
   if (ui === "bulk-pick-release" || ui === "bulk-preview") {
     const [tree, plans] = await Promise.all([get(P("features")), all(P("plans"))]);
@@ -156,20 +182,23 @@ async function refreshOf(path, cc, results) {
 async function detail(path, ctx, params) {
   const c = await get(path("cycles", params.id));
   const product = productOf(ctx, c.product_id);
-  const [cases, directory, release, plan] = await Promise.all([
+  const [cases, directory, release, plan, counts, tree] = await Promise.all([
     all(path("cycles", c.id, "cases"), { sort: "position" }),
     get(path("actors")),
     c.release_id ? get(path("releases", c.release_id)) : null,
-    c.plan_id ? get(path("plans", c.plan_id)) : null
+    c.plan_id ? get(path("plans", c.plan_id)) : null,
+    get(path("cycles", c.id, "features")),
+    get(path("products", product.key, "features"))
   ]);
   // each case's attempts: the result count, and the last one's defect or comment as its note
   const attempts = await Promise.all(cases.map((x) => (x.last_result_at ? all(path("cycle-cases", x.id, "results")) : [])));
-  const feature = c.feature_id ? flatten((await get(path("products", product.key, "features"))).items).find((f) => f.id === c.feature_id) : null;
+  // cycle_feature_counts: the cycle's cases by their own feature, named by the feature's path; no feature last
+  const paths = Object.fromEntries(flatten(tree.items).map((f) => [f.id, f.path]));
   const cycle = {
     id: c.id, name: c.name, status: c.status, env: c.environment || "",
     release: release ? release.version : "", releaseId: c.release_id || "", plan: plan ? plan.name : "", planId: c.plan_id || "", batch: c.batch_id || "",
-    closedAt: stamp(c.closed_at), counts: c.counts,
-    features: feature ? [{ id: feature.id, path: feature.path, cases: sum(c.counts) }] : [],
+    closedAt: stamp(c.closed_at), closedBy: who(directory, c.closed_by_actor_id), counts: c.counts,
+    features: counts.map((f) => ({ id: f.feature_id, path: f.feature_id ? paths[f.feature_id] || f.name : "No feature", cases: f.total })),
     cases: cases.map((x, i) => {
       const last = attempts[i][attempts[i].length - 1];
       const defect = last && last.defects.find((d) => d.key || d.url);
@@ -206,15 +235,20 @@ const pathOf = (ctx) => (...rest) => org(ctx.org.id, ...rest);
 
 /* The view's writes; each resolves to what the server returns. */
 export const actions = {
-  /* form: { name, featureIds, releaseId (or null), environment (or null), assigneeId (or null) } -> CycleOut */
+  /* form: { name, featureIds, releaseId (or null), environment (or null), assigneeId (or null), skipDrafts } -> CycleOut */
   create: (form, ctx, productKey) => post(pathOf(ctx)("products", productKey, "cycles"), {
     name: form.name, feature_ids: form.featureIds, release_id: form.releaseId || null, environment: form.environment || null,
-    default_assignee_actor_id: form.assigneeId || null, mode: "manual"
+    default_assignee_actor_id: form.assigneeId || null, mode: "manual", skip_drafts: !!form.skipDrafts
   }),
-  /* what a cycle from these features would pin: CyclePreviewOut { total, skipped: { archived, deprecated } } */
-  preview: (featureIds, ctx, productKey) => post(pathOf(ctx)("products", productKey, "cycles", "preview"), { feature_ids: featureIds, mode: "manual" }),
-  /* one cycle per affected feature (per: "features") or active plan ("plans") of the release -> CycleBatchOut */
-  bulk: (releaseId, form, ctx) => post(pathOf(ctx)("releases", releaseId, "cycles", "bulk"), { mode: form.per, environment: form.environment || null }),
+  /* what a cycle from these features would pin: CyclePreviewOut { total, skipped: { archived, deprecated, draft } } */
+  preview: (featureIds, ctx, productKey, skipDrafts = false) => post(pathOf(ctx)("products", productKey, "cycles", "preview"), { feature_ids: featureIds, mode: "manual", skip_drafts: skipDrafts }),
+  /* one cycle per affected feature (per: "features") or active plan ("plans") of the release -> CycleBatchOut.
+     form: { per, environment, namePattern (blank keeps the server's "<release> · <feature>"), assignees
+     { featureId or planId: actorId }, skipDrafts } */
+  bulk: (releaseId, form, ctx) => post(pathOf(ctx)("releases", releaseId, "cycles", "bulk"), {
+    mode: form.per, environment: form.environment || null, ...(form.namePattern ? { name_pattern: form.namePattern } : {}),
+    assignees: form.assignees || {}, skip_drafts: !!form.skipDrafts
+  }),
   close: (id, ctx) => post(pathOf(ctx)("cycles", id, "close")),
   reopen: (id, ctx) => post(pathOf(ctx)("cycles", id, "reopen")),
   /* re-pin a cycle case to its case's current version -> CycleCaseOut */

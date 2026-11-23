@@ -1,9 +1,9 @@
 /* Start a cycle adapter (docs/app-api-contract.md §9 and §10): the wizard reads plans_list, features_list,
    releases_list, members_list (the testers), consumers_list (the machines, each busy one's queue ETA from its
    job's cycle, consumers_jobs and cycles_get) and cycles_preview (the case counts per runner), and starts with
-   cycles_create (mode, environment, tester, order, machines). The live cycle reads cycles_get (counts, ETA),
-   jobs_list and cycle_cases_list, and writes jobs_reassign and jobs_cancel. Maps the API onto the shapes
-   views/start.js renders. */
+   cycles_create (mode, environment, tester, order, machines, split, retries, queue_when_offline). The live cycle
+   reads cycles_get (counts, ETA, stopped), jobs_list and cycle_cases_list, and writes jobs_reassign, jobs_cancel
+   and cycles_stop. Maps the API onto the shapes views/start.js renders. */
 import { all, get, org, page, post } from "../api.js";
 import { flatten, results } from "./map.js";
 
@@ -106,6 +106,8 @@ async function wizard(at, ctx, params, ui) {
       env: params.env || null, name: params.name || null, tester: params.tester || null, order: params.order || null, machines: params.machines || null
     },
     order,
+    /* the machines' defaults: whole features per machine, a failed case retried once (the v4 mock) */
+    split: "by_feature", retries: 1,
     product, version: release ? release.version : "any version", versionId: release ? release.id : null,
     products: ctx.products.map((p) => ({ key: p.key, name: p.name, markCls: p.markCls })),
     versions: releases.map((r) => ({ id: r.id, ver: r.version, hint: r.status.replace("_", " ") + (r.feature_ids.length ? ` · ${plural(r.feature_ids.length, "feature")}` : "") })),
@@ -170,7 +172,9 @@ async function live(at, ctx, params) {
       results: auto.slice(0, 12).map((x) => ({ id: x.id, key: x.key, title: x.title, machine: name(x.consumer_id), status: x.status, time: "" })),
       manual: { count: manual.length, done: manual.filter((x) => x.status !== "untested").length, cases: manual.slice(0, 2).map((x) => ({ key: x.key, title: x.title })) },
       manualTester: c.default_assignee_actor_id || "",
-      stalled
+      stalled,
+      /* cycles_stop: queued jobs cancelled, running ones finish */
+      stopped: !!c.stopped_at, stoppedBy: c.stopped_by_actor_id ? ((members.find((x) => x.actor_id === c.stopped_by_actor_id) || {}).name || "") : ""
     },
     moved: params.moved ? { count: Number(params.moved), to: params.to || "" } : null
   };
@@ -193,22 +197,30 @@ export async function load(params, ctx) {
 const at = (ctx) => (...rest) => org(ctx.org.id, ...rest);
 /* the Order menu's values, as cycles_create's order */
 const ORDER = { feature: "feature", priority: "priority", plan: "source" };
+/* cycles_create's split strategies */
+const SPLITS = ["even", "by_feature", "first_free"];
 
 /* The view's writes; each resolves to the server's object (CycleOut or JobOut). */
 export const actions = {
   /* form: { plan (id) | features ([id]), name, environment, mode ("manual", "auto", "mixed"), tester (actor id or
-     "none"), order ("feature", "priority", "plan"), machines ([consumer id]), release (id) } */
+     "none"), order ("feature", "priority", "plan"), machines ([consumer id]), release (id), and for machines split
+     ("even", "by_feature", "first_free"), retries (0-2), offline (queue on offline machines) } */
   start(form, ctx, productKey) {
     const mode = MODES[form.mode] || "manual";
+    const auto = mode !== "manual";
     return post(at(ctx)("products", productKey, "cycles"), {
       ...(form.plan ? { plan_id: form.plan } : { feature_ids: form.features || [] }),
       name: form.name, environment: form.environment || null, mode,
-      consumer_ids: mode === "manual" ? undefined : form.machines,
+      consumer_ids: auto ? form.machines : undefined,
       default_assignee_actor_id: form.tester && form.tester !== "none" ? form.tester : null,
       order: ORDER[form.order] || "source",
-      release_id: form.plan ? undefined : form.release || undefined
+      release_id: form.plan ? undefined : form.release || undefined,
+      split: auto && SPLITS.includes(form.split) ? form.split : undefined,
+      retries: auto && form.retries !== undefined && form.retries !== "" ? Number(form.retries) : undefined,
+      queue_when_offline: auto ? !!form.offline : undefined
     });
   },
   reassign: (jobId, consumerId, ctx) => post(at(ctx)("jobs", jobId, "reassign"), { consumer_id: consumerId }),
-  cancel: (jobId, ctx) => post(at(ctx)("jobs", jobId, "cancel"))
+  cancel: (jobId, ctx) => post(at(ctx)("jobs", jobId, "cancel")),
+  stop: (cycleId, ctx) => post(at(ctx)("cycles", cycleId, "stop"))
 };

@@ -27,7 +27,7 @@ from tests import support
 
 SNAPSHOT = Path(__file__).parent / "snapshots" / "mcp_tools.json"
 # The one count of MCP tools; the other MCP suites import it.
-TOOL_COUNT = 99
+TOOL_COUNT = 103
 
 
 def _as_json(tools) -> list[dict]:

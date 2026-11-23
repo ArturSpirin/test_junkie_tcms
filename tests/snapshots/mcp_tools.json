@@ -3,9 +3,45 @@
   "annotations": {
    "destructive_hint": false,
    "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Actors List. Every actor and token name in the org, past ones too, so old rows still show a name.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "actors_list",
+  "path": "/api/v1/orgs/{org}/actors",
+  "scope": "read",
+  "toolset": "core"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
    "read_only_hint": false
   },
   "args": {
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
    "idempotency_key": {
     "location": "header",
     "wire": "Idempotency-Key"
@@ -31,6 +67,17 @@
   "input_schema": {
    "additionalProperties": false,
    "properties": {
+    "description": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
     "idempotency_key": {
      "anyOf": [
       {
@@ -146,6 +193,62 @@
   "annotations": {
    "destructive_hint": false,
    "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "agent_id": {
+    "location": "path",
+    "wire": "agent_id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Agents Enable. 422 when the owner has left or the agent's role is now above the owner's, as on create.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "agent_id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "agent_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "agents_enable",
+  "path": "/api/v1/orgs/{org}/agents/{agent_id}/enable",
+  "scope": "admin",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
    "read_only_hint": true
   },
   "args": {
@@ -210,6 +313,10 @@
     "location": "path",
     "wire": "agent_id"
    },
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
    "name": {
     "location": "body",
     "wire": "name"
@@ -229,6 +336,17 @@
    "properties": {
     "agent_id": {
      "type": "string"
+    },
+    "description": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
     },
     "name": {
      "anyOf": [
@@ -359,6 +477,10 @@
     "location": "query",
     "wire": "actor_id"
    },
+   "actor_kind": {
+    "location": "query",
+    "wire": "actor_kind"
+   },
    "cursor": {
     "location": "query",
     "wire": "cursor"
@@ -378,6 +500,10 @@
    "org": {
     "location": "path",
     "wire": "org"
+   },
+   "q": {
+    "location": "query",
+    "wire": "q"
    },
    "since": {
     "location": "query",
@@ -416,6 +542,23 @@
        "type": "null"
       }
      ]
+    },
+    "actor_kind": {
+     "anyOf": [
+      {
+       "enum": [
+        "user",
+        "agent",
+        "token",
+        "consumer"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "user: a member in the app; token: a member through a token; agent; consumer"
     },
     "cursor": {
      "anyOf": [
@@ -457,6 +600,18 @@
     "org": {
      "description": "Org slug",
      "type": "string"
+    },
+    "q": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Text in the action, entity or actor name"
     },
     "since": {
      "anyOf": [
@@ -506,6 +661,38 @@
   "method": "GET",
   "name": "audit_list",
   "path": "/api/v1/orgs/{org}/audit",
+  "scope": "audit:read",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Audit Retention. The stated retention policy, and the oldest row actually kept: nothing purges audit_event yet.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "audit_retention",
+  "path": "/api/v1/orgs/{org}/audit/retention",
   "scope": "audit:read",
   "toolset": "admin"
  },
@@ -1370,6 +1557,46 @@
   "name": "cases_create",
   "path": "/api/v1/orgs/{org}/products/{product}/cases",
   "scope": "write:cases",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "case": {
+    "location": "path",
+    "wire": "case"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Cases Cycles. The cycles the case is in, newest first, with the version each pinned.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "case",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "cases_cycles",
+  "path": "/api/v1/orgs/{org}/cases/{case}/cycles",
+  "scope": "read",
   "toolset": "cases"
  },
  {

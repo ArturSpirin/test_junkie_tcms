@@ -1,6 +1,6 @@
 """The audit log names the person, the agent and the token behind every change, and feeds the outbox."""
 
-from datetime import timedelta, timezone
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
@@ -8,7 +8,9 @@ from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, tes
 from test_junkie_tcms.db.base import aware
 from test_junkie_tcms.db.models import AuditEvent, Outbox
 from tests import support
+from tests.catalog_seed import make_product
 from tests.support import add_member, login
+from tests.test_consumers import ROSTER, FakeConsumer, approve
 
 
 def _events(owner, **params):
@@ -150,6 +152,72 @@ class Audit:
         assert _events(owner, via="api", action="member.add") == []
         combined = _events(owner, via="ui", action="member.add", until="2999-01-01T00:00:00Z")
         assert [e["action"] for e in combined] == ["member.add"]
+
+    @test()
+    def test_audit_filters_by_actor_kind(self, suite_parameter):
+        owner = self.env.owner
+        add_member(owner, "vic@example.com", "viewer")  # a member in the app
+        token = owner.post("/api/v1/orgs/acme/tokens", json={"name": "t", "scopes": ["read", "admin"]}).json()
+        self.env.bearer(token["token"]).patch("/api/v1/orgs/acme", json={"name": "By token"})
+        agent = owner.post("/api/v1/orgs/acme/agents", json={"name": "bot", "role": "admin"}).json()
+        agent_token = owner.post(
+            "/api/v1/orgs/acme/tokens",
+            json={"name": "bot", "scopes": ["read", "admin"], "actor_id": agent["id"]},
+        ).json()
+        self.env.bearer(agent_token["token"]).patch("/api/v1/orgs/acme", json={"name": "By bot"})
+        fake = FakeConsumer(self.env)
+        fake.start()
+        approve(owner, fake.pairing["user_code"], "build-box", [make_product(owner)["id"]])
+        fake.claim()
+        assert fake.upload("web", ROSTER).status_code == 200
+
+        by_kind = {kind: _events(owner, actor_kind=kind) for kind in ("user", "token", "agent", "consumer")}
+        assert {e["action"] for e in by_kind["token"]} == {"org.update"}
+        assert {e["token_id"] for e in by_kind["token"]} == {token["id"]}
+        assert {e["action"] for e in by_kind["agent"]} == {"org.update"}
+        assert {e["actor_id"] for e in by_kind["agent"]} == {agent["id"]}
+        assert "consumer.inventory" in {e["action"] for e in by_kind["consumer"]}
+        assert {e["actor_id"] for e in by_kind["consumer"]} == {by_kind["consumer"][0]["actor_id"]}
+        assert {"member.add", "agent.create", "token.create"} <= {e["action"] for e in by_kind["user"]}
+        assert all(e["token_id"] is None for e in by_kind["user"])
+        # The four kinds split the log with no overlap and nothing left out.
+        ids = [e["id"] for events in by_kind.values() for e in events]
+        assert sorted(ids) == sorted(e["id"] for e in _events(owner))
+        assert owner.get("/api/v1/orgs/acme/audit", params={"actor_kind": "robot"}).status_code == 422
+
+    @test()
+    def test_audit_q_matches_action_entity_and_actor_name(self, suite_parameter):
+        owner = self.env.owner
+        member = add_member(owner, "vic@example.com", "viewer")
+        agent = owner.post("/api/v1/orgs/acme/agents", json={"name": "Nightly Bot", "role": "admin"}).json()
+        agent_token = owner.post(
+            "/api/v1/orgs/acme/tokens",
+            json={"name": "bot", "scopes": ["read", "admin"], "actor_id": agent["id"]},
+        ).json()
+        self.env.bearer(agent_token["token"]).patch("/api/v1/orgs/acme", json={"name": "Acme Inc"})
+
+        assert {e["action"] for e in _events(owner, q="MEMBER.")} == {"member.add"}  # action, any case
+        assert [e["action"] for e in _events(owner, q=member["user_id"])] == ["member.add"]  # entity id
+        assert {e["action"] for e in _events(owner, q="nightly")} == {"org.update"}  # the actor's name
+        assert _events(owner, q="%") == []  # wildcards are literal
+        assert owner.get("/api/v1/orgs/acme/audit", params={"q": "x" * 201}).status_code == 422
+
+    @test()
+    def test_audit_retention_states_the_policy_and_the_oldest_row_kept(self, suite_parameter):
+        owner = self.env.owner
+        app = self.env.app
+        empty = owner.get("/api/v1/orgs/acme/audit/retention")
+        assert empty.status_code == 200, empty.text
+        assert empty.json() == {"days": 90, "oldest_kept": None}
+        add_member(owner, "vic@example.com", "viewer")
+        owner.patch("/api/v1/orgs/acme", json={"name": "Acme Inc"})
+        with app.state.sessionmaker() as db:
+            oldest = min(e.created_at for e in db.scalars(select(AuditEvent)))
+        kept = owner.get("/api/v1/orgs/acme/audit/retention").json()["oldest_kept"]
+        assert datetime.fromisoformat(kept.replace("Z", "+00:00")) == aware(oldest)
+        viewer = self.env.client()
+        login(viewer, "vic@example.com")
+        assert viewer.get("/api/v1/orgs/acme/audit/retention").status_code == 403
 
     @test()
     def test_audit_range_in_another_zone_is_the_same_instant(self, suite_parameter):

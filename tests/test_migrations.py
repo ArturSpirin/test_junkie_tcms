@@ -1,5 +1,7 @@
 """Migrations build the models' schema, and the database itself keeps audit_event append-only."""
 
+from pathlib import Path
+
 from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
@@ -31,6 +33,21 @@ class MigrationScripts:
         # Branches that each add a revision off the same parent give two heads; re-chain before merging.
         script = ScriptDirectory.from_config(alembic_config("sqlite://"))
         assert len(script.get_heads()) == 1, script.get_heads()
+
+    @test()
+    def test_migrations_form_one_numbered_chain(self):
+        # Two branches can each add "0011" off 0010; Alembic then keeps only one file per id, so the
+        # duplicate is lost silently. Each file's prefix is its id, and each revises the number before it.
+        script = ScriptDirectory.from_config(alembic_config("sqlite://"))
+        revisions = list(script.walk_revisions())
+        prefixes = sorted(Path(revision.path).name.split("_", 1)[0] for revision in revisions)
+        files = sorted(path.name.split("_", 1)[0] for path in Path(script.versions).glob("[0-9]*.py"))
+        assert files == prefixes, (files, prefixes)
+        for revision in revisions:
+            assert Path(revision.path).name.startswith(f"{revision.revision}_"), revision.path
+            number = int(revision.revision)
+            expected = None if number == 1 else f"{number - 1:04d}"
+            assert revision.down_revision == expected, (revision.revision, revision.down_revision)
 
 
 @Suite(parameters=support.DATABASES)
@@ -167,6 +184,26 @@ class Migrations:
             with engine.connect() as conn:
                 assert list(conn.execute(text(rows))) == [(kept, "pending")]
                 assert conn.scalar(text("SELECT machine FROM pairing_request")) is None
+        finally:
+            engine.dispose()
+
+    @test()
+    def test_0016_drops_activity_and_provenance_on_downgrade_and_adds_them_back(self, suite_parameter):
+        database_url = self.env.settings.database_url
+        engine = create_engine(database_url)
+
+        def columns(conn, table):
+            return {c["name"] for c in inspect(conn).get_columns(table)}
+
+        try:
+            command.downgrade(alembic_config(database_url), "0015")
+            with engine.connect() as conn:
+                assert not {"last_active_at", "description"} & columns(conn, "actor")
+                assert not {"via", "token_id", "on_behalf_of_user_id"} & columns(conn, "case_version")
+            migrate.upgrade(database_url)
+            with engine.connect() as conn:
+                assert {"last_active_at", "description"} <= columns(conn, "actor")
+                assert {"via", "token_id", "on_behalf_of_user_id"} <= columns(conn, "case_version")
         finally:
             engine.dispose()
 

@@ -91,6 +91,9 @@ class Actor(TenantMixin, Base):
     owner_user_id: Mapped[str | None] = mapped_column(String(26))
     role: Mapped[str | None] = mapped_column(String(16))
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    description: Mapped[str | None] = mapped_column(String(500))
+    # Touched in get_org_context, at most once per tokens.LAST_USED_EVERY.
+    last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ApiToken(TenantMixin, Base):
@@ -319,10 +322,13 @@ class CaseVersion(TenantMixin, Base):
         UniqueConstraint("org_id", "case_id", "version"),
         ForeignKeyConstraint(["org_id", "case_id"], ["test_case.org_id", "test_case.id"]),
         ForeignKeyConstraint(["org_id", "created_by_actor_id"], ["actor.org_id", "actor.id"]),
+        ForeignKeyConstraint(["org_id", "token_id"], ["api_token.org_id", "api_token.id"]),
+        ForeignKeyConstraint(["org_id", "on_behalf_of_user_id"], ["membership.org_id", "membership.user_id"]),
         CheckConstraint(f"priority IN {PRIORITIES}", name="priority"),
         CheckConstraint(f"type IN {CASE_TYPES}", name="type"),
         CheckConstraint(f"status IN {CASE_STATUSES}", name="status"),
         CheckConstraint(f"automation IN {AUTOMATIONS}", name="automation"),
+        CheckConstraint("via IS NULL OR via IN ('ui', 'api', 'mcp')", name="via"),
     )
 
     case_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
@@ -343,6 +349,10 @@ class CaseVersion(TenantMixin, Base):
     custom: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     change_note: Mapped[str | None] = mapped_column(String(500))
     created_by_actor_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    # Provenance, set as audit.record sets it; null on versions written before 0012.
+    via: Mapped[str | None] = mapped_column(String(8))
+    token_id: Mapped[str | None] = mapped_column(String(26))
+    on_behalf_of_user_id: Mapped[str | None] = mapped_column(String(26))
 
 
 class Tag(TenantMixin, Base):

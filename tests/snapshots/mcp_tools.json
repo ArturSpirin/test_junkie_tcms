@@ -1441,9 +1441,21 @@
     "location": "query",
     "wire": "cursor"
    },
+   "edited_by": {
+    "location": "query",
+    "wire": "edited_by"
+   },
+   "edited_by_kind": {
+    "location": "query",
+    "wire": "edited_by_kind"
+   },
    "feature": {
     "location": "query",
     "wire": "feature"
+   },
+   "has_ref": {
+    "location": "query",
+    "wire": "has_ref"
    },
    "include_archived": {
     "location": "query",
@@ -1457,6 +1469,10 @@
     "location": "path",
     "wire": "org"
    },
+   "priority": {
+    "location": "query",
+    "wire": "priority"
+   },
    "product": {
     "location": "path",
     "wire": "product"
@@ -1465,9 +1481,17 @@
     "location": "query",
     "wire": "q"
    },
+   "result": {
+    "location": "query",
+    "wire": "result"
+   },
    "rich": {
     "location": "query",
     "wire": "rich"
+   },
+   "sort": {
+    "location": "query",
+    "wire": "sort"
    },
    "status": {
     "location": "query",
@@ -1476,6 +1500,10 @@
    "tag": {
     "location": "query",
     "wire": "tag"
+   },
+   "updated_since": {
+    "location": "query",
+    "wire": "updated_since"
    }
   },
   "description": "Cases List",
@@ -1500,6 +1528,29 @@
      ],
      "description": "next_cursor from the previous page"
     },
+    "edited_by": {
+     "default": [],
+     "description": "Repeatable actor ids; who made the current version",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "edited_by_kind": {
+     "anyOf": [
+      {
+       "enum": [
+        "user",
+        "agent"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Who made the current version"
+    },
     "feature": {
      "anyOf": [
       {
@@ -1510,6 +1561,17 @@
       }
      ],
      "description": "A feature id; its subtree is included"
+    },
+    "has_ref": {
+     "anyOf": [
+      {
+       "type": "boolean"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Whether the case has an automation_ref"
     },
     "include_archived": {
      "default": false,
@@ -1525,6 +1587,14 @@
      "description": "Org slug",
      "type": "string"
     },
+    "priority": {
+     "default": [],
+     "description": "Repeatable",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
     "product": {
      "type": "string"
     },
@@ -1538,7 +1608,15 @@
        "type": "null"
       }
      ],
-     "description": "Case-insensitive part of the title"
+     "description": "An exact key (PAY-12) or number, or a case-insensitive part of the title, steps or a tag"
+    },
+    "result": {
+     "default": [],
+     "description": "Repeatable; the last result in any cycle, `untested` when the case has none",
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
     },
     "rich": {
      "default": "markdown",
@@ -1549,6 +1627,25 @@
       "both"
      ],
      "type": "string"
+    },
+    "sort": {
+     "anyOf": [
+      {
+       "enum": [
+        "manual",
+        "key",
+        "title",
+        "updated",
+        "result",
+        "priority"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "manual (the tree's order), key, title, updated (newest first), result (failures first), priority (critical first); none orders by id"
     },
     "status": {
      "default": [],
@@ -1564,6 +1661,18 @@
       "type": "string"
      },
      "type": "array"
+    },
+    "updated_since": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Cases changed at or after this time"
     }
    },
    "required": [
@@ -1601,12 +1710,16 @@
     "location": "path",
     "wire": "org"
    },
+   "position": {
+    "location": "body",
+    "wire": "position"
+   },
    "rich": {
     "location": "query",
     "wire": "rich"
    }
   },
-  "description": "Cases Move. Moves the case to another feature of its product; not a content edit, so no new version.",
+  "description": "Cases Move. Moves the case to another feature of its product, or to another place in its feature; not a content\nedit, so no new version. Renumbering the other cases doesn't change their `updated_at`.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
@@ -1631,6 +1744,18 @@
     "org": {
      "description": "Org slug",
      "type": "string"
+    },
+    "position": {
+     "anyOf": [
+      {
+       "minimum": 0.0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Index among the live cases of the feature; omitted or past the end appends"
     },
     "rich": {
      "default": "markdown",

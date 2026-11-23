@@ -4,12 +4,12 @@ import re
 from typing import Any
 
 from fastapi import HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms.api.v1.schemas import DocIn, RichIn, RichMode
 from test_junkie_tcms.auth.deps import OrgContext
-from test_junkie_tcms.db.models import Feature, Product, Release, TestPlan
+from test_junkie_tcms.db.models import Feature, Product, Release, TestCase, TestPlan
 from test_junkie_tcms.richtext import RichTextError, doc_to_md, doc_to_text, empty_doc, md_to_doc, validate
 
 KEY = re.compile(r"^[A-Z][A-Z0-9]{1,9}$")
@@ -83,6 +83,41 @@ def get_plan(db: Session, ctx: OrgContext, id_: str) -> TestPlan:
 def require_active_product(db: Session, product_id: str) -> None:
     if db.get(Product, product_id).archived_at is not None:
         raise HTTPException(409, "Product is archived")
+
+
+def case_counts(db: Session, org_id: str, feature_ids: list[str]) -> dict[str, int]:
+    """Live (not archived) cases per feature; a feature without any is left out."""
+    if not feature_ids:
+        return {}
+    rows = db.execute(
+        select(TestCase.feature_id, func.count())
+        .where(
+            TestCase.org_id == org_id, TestCase.feature_id.in_(feature_ids), TestCase.archived_at.is_(None)
+        )
+        .group_by(TestCase.feature_id)
+    )
+    return dict(rows.all())
+
+
+def product_counts(db: Session, org_id: str, product_ids: list[str]) -> dict[str, tuple[int, int]]:
+    """(features, cases) per product, both live: a case counts when it and its feature aren't archived, as
+    the feature tree shows it."""
+    out = {p: (0, 0) for p in product_ids}
+    if not product_ids:
+        return out
+    live = and_(Feature.org_id == org_id, Feature.product_id.in_(product_ids), Feature.archived_at.is_(None))
+    features = dict(
+        db.execute(select(Feature.product_id, func.count()).where(live).group_by(Feature.product_id)).all()
+    )
+    cases = dict(
+        db.execute(
+            select(Feature.product_id, func.count(TestCase.id))
+            .join(TestCase, and_(TestCase.feature_id == Feature.id, TestCase.archived_at.is_(None)))
+            .where(live)
+            .group_by(Feature.product_id)
+        ).all()
+    )
+    return {p: (features.get(p, 0), cases.get(p, 0)) for p in product_ids}
 
 
 def product_features(db: Session, ctx: OrgContext, product_id: str, ids: list[str]) -> list[Feature]:

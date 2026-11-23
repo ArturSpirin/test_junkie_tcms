@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Web app: the narrow-width Menu button says whether the menu is open (`aria-expanded`) and which nav it opens (`aria-controls`).
 - MCP `tools/call` on a tool the caller can't use now says why: 403 `Needs scope <scope>`, or 403 naming its toolset and `?toolsets=`; only a name that isn't a tool is 404 `Unknown tool`.
 - MCP tools list each tool's description, its idempotent and destructive hints and its errors by HTTP status (`errors_by_code`); new `mcp_calls` lists the org's recent MCP calls (kept 7 days) with status and latency.
 - Lists return `total`; products show `feature_count` and `case_count`, feature tree nodes `case_count` and `total_case_count`. The cases list filters by last result, priority, updated since, editor and automation ref, sorts (manual, key, title, updated, result, priority) and its `q` matches keys and steps; cases have a `position` that `cases_move` reorders. SQLite migrations run with foreign keys off and check them after.

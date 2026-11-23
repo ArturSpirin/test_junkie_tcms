@@ -53,14 +53,14 @@ export function shell(nav, ctx) {
   const me = actor("person", ctx.user.handle);
   return `
 <header class="top">
-  <button class="burger" aria-label="Menu" data-nav-toggle>${I.menu}</button>
+  <button class="burger" aria-label="Menu" aria-expanded="false" aria-controls="side" data-nav-toggle>${I.menu}</button>
   <a class="brand" href="${lnk("tree.html")}"><span class="mark">TJ</span><span class="hide-n">Test Junkie</span> <small>TCMS</small></a>
   ${dd({ value: ctx.org.id, options: ORGS(ctx), cls: "org sm hide-n", label: "Switch org" })}
   <div class="search">${I.search}<span class="ell">Search cases, cycles, releases</span><kbd>/</kbd></div>
   <div class="spacer"></div>
   <div class="me">${me.replace(/<span>([^<]*)<\/span><\/span>$/, '<span class="who">$1</span></span>')}<span class="chip hide-n">${esc(ctx.user.role)}</span></div>
 </header>
-<nav class="side" aria-label="Main">
+<nav class="side" id="side" aria-label="Main">
   ${ctxDd}
   ${NAVS(ctx).map(([h, ls], i) => `${i ? `<h6>${h}</h6>` : `<h6 style="margin-top:4px">${h}</h6>`}${ls.map(link).join("")}`).join("")}
   <div class="foot">v${esc(ctx.app.version)} · ${esc(ctx.app.hosting)}<br><span class="mono">${esc(ctx.app.openapi)}</span></div>
@@ -82,9 +82,15 @@ export function mount(name, view, ctx, load) {
   const main = document.getElementById("main");
   main.dataset.view = name;
   if (view.flush) main.classList.add("flush");
+  // the one writer of the menu's open state: the sidebar class and the Menu button's aria-expanded move together
+  const burger = document.querySelector("[data-nav-toggle]");
+  const setNav = (open) => {
+    document.body.classList.toggle("nav-open", open);
+    burger.setAttribute("aria-expanded", String(open));
+  };
   document.addEventListener("click", (e) => {
-    if (e.target.closest("[data-nav-toggle]")) document.body.classList.toggle("nav-open");
-    else if (e.target.closest("[data-nav-close]")) document.body.classList.remove("nav-open");
+    if (e.target.closest("[data-nav-toggle]")) setNav(burger.getAttribute("aria-expanded") !== "true");
+    else if (e.target.closest("[data-nav-close]")) setNav(false);
   });
   let seq = 0;
   async function render() {
@@ -94,7 +100,7 @@ export function mount(name, view, ctx, load) {
     const d = await load(id);
     if (mine !== seq) return; // a newer hash change won
     d.ctx = ctx;
-    document.body.classList.toggle("nav-open", !!s.navOpen);
+    setNav(!!s.navOpen);
     document.querySelectorAll(".toast.live-t").forEach((t) => t.remove());
     main.innerHTML = s.render(d);
     if (s.after) s.after(main, d);

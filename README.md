@@ -3,8 +3,20 @@
 An AI-native, open-source test case management system for [Test Junkie](https://github.com/ArturSpirin/test_junkie).
 Apache-2.0.
 
-Early days: this release has orgs, users, roles, API tokens, the session login and the audit log. Test cases, runs
-and reports come next.
+## What's in this release
+
+- **Orgs and access:** orgs, members, invites, roles, scoped API tokens, agents, the session login and an
+  append-only audit log.
+- **Catalog:** products, feature trees, releases and test plans.
+- **Cases:** test cases with version history, tags, search, and CSV and markdown-bundle import and export.
+- **Execution:** cycles pinned to case versions, bulk cycles by release, single and bulk results with per-step
+  status, attachments, and automated runs on paired consumers.
+- **Reports:** org, product, release, feature and cycle reports.
+- **MCP server** at `/mcp`, so AI agents can use all of the above (see [MCP](#mcp)).
+
+The interactive API docs are at `/api/v1/docs` and the schema at `/api/v1/openapi.json`. Over MCP, `tools/list`
+shows the tools your token and toolsets give you; an org admin (or a token with `audit:read`) also sees every tool
+at `GET /api/v1/orgs/{org}/mcp/tools`.
 
 ## Try it (SQLite, one command)
 
@@ -38,6 +50,10 @@ count plus normal traffic.
 | `TJ_TCMS_SECRET_KEY` | a dev value | Key for session hashing. Set it in every real deployment |
 | `TJ_TCMS_INSECURE_COOKIES` | `false` | `true` drops the `Secure` cookie flag, for plain http on localhost |
 | `TJ_TCMS_SESSION_TTL_HOURS` | `336` | Session lifetime |
+| `TJ_TCMS_ATTACHMENTS_DIR` | `./attachments` | Where uploaded result attachments are kept |
+| `TJ_TCMS_ATTACHMENT_MAX_BYTES` | `26214400` (25 MiB) | Largest attachment accepted |
+| `TJ_TCMS_MCP_DEFAULT_TOOLSETS` | `core,cases,execution` | MCP toolsets `/mcp` serves when the client names none; a comma list or `all` |
+| `TJ_TCMS_MCP_ALLOWED_HOSTS` | empty | `Host` headers `/mcp` accepts (comma list, `*` wildcards); empty turns the DNS-rebinding check off |
 | `TJ_TCMS_ADMIN_PASSWORD` | prompt | Password for `create-admin` |
 
 ## Commands
@@ -49,6 +65,8 @@ count plus normal traffic.
 - `test-junkie-tcms sweep-idempotency [--batch-size N] [--max-batches M]`: deletes `Idempotency-Key` records
   past their 24 h window, `N` (default 1000) per commit. A record still pending is kept an hour longer. Run it
   hourly, e.g. from cron: `0 * * * * test-junkie-tcms sweep-idempotency`.
+- `test-junkie-tcms mcp --url URL [--token-env VAR] [--toolsets LIST]`: a stdio MCP server that relays to a
+  TCMS server's `/mcp` (see [MCP](#mcp)).
 
 ## Auth
 
@@ -58,6 +76,34 @@ count plus normal traffic.
   revoked. No CSRF header is needed.
 
 Every change is written to an append-only audit log naming the person, the agent and the token behind it.
+
+## MCP
+
+The server speaks MCP (streamable HTTP) at `/mcp`, with the same `Authorization: Bearer tjt_...` token as the API.
+A token only sees the tools its scopes allow.
+
+Tools come in toolsets. By default `/mcp` serves `core,cases,execution`; ask for others with `?toolsets=`, e.g.
+`/mcp?toolsets=reports,planning` or `/mcp?toolsets=all`. `core` is always on, and an unknown name is rejected with
+a 400. To change the server's default, set `TJ_TCMS_MCP_DEFAULT_TOOLSETS`.
+
+| Toolset | Tools |
+| --- | --- |
+| `core` | who am I, my orgs |
+| `cases` | cases and their versions, tags, search, import and export |
+| `execution` | cycles and their cases, results (single and bulk), attachments, automated jobs |
+| `planning` | creating and changing cycles (bulk by release too), test plans |
+| `catalog` | products, features, releases |
+| `admin` | members, invites, agents, tokens, the audit log, MCP usage |
+| `consumers` | paired consumers and pairing approval |
+| `reports` | org, product, release, feature and cycle reports |
+
+For a client that only speaks stdio, `test-junkie-tcms mcp` relays to a server's `/mcp`:
+
+```sh
+TJ_TCMS_TOKEN=tjt_... test-junkie-tcms mcp --url https://tcms.example.com --toolsets reports,planning
+```
+
+`--token-env` names another env var for the token; without `--toolsets` the server's default applies.
 
 ## Develop
 

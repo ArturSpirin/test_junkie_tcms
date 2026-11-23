@@ -247,7 +247,15 @@ operations.
 | Need | Operations | Status |
 |---|---|---|
 | release, feature, cycle, product, org reports | `reports_release`, `reports_feature`, `reports_cycle`, `reports_product`, `reports_org` | exists |
-| period filters, trend, org KPIs, product-wide report, feature history in the mock's shape | | not yet (F5) |
+| period filter: `from`, `to` (days in `tz`, both included), `tz` (IANA, default UTC); default the last 30 days ending today in `tz`; 422 for an unknown `tz`, `from` after `to`, or more than 366 days | `reports_release`, `reports_feature`, `reports_product`, `reports_org` | exists |
+| trend: `trend{days[{date, success..cancel}], total, peak_day{date, total} or null, by_agents_pct}`, one zero-filled row per day of the period | `reports_release`, `reports_product`, `reports_org` | exists |
+| release KPIs: `kpis{cases, ran, fail, error, skip, drift, success_rate}`; ran = all - untested, success rate = success / ran (ignore, skip and cancel count as ran) | `reports_release` | exists |
+| feature rows: `path`, `drift`, `drifted[{key, ran_version, current_version}]`, `verdict` (`at_risk` on fail, error, stale or drift; else `not_started`, `ready` or `in_progress`) | `reports_release`, `reports_product` | exists |
+| org KPIs: `kpis{ready_cases, products, success_rate, automated_pct, open_cycles, open_untested}`; product rows add `name, cases, automated_pct, results, success_rate, open_cycles` (`results.untested` counts untested cases in open cycles) | `reports_org` | exists |
+| product-wide report: without `release`, `whole{counts, kpis, features}`, the product as it stands in the period | `reports_product` | exists |
+| feature report: `release` optional (none: the period); items add `ran_version, current_version, actor{kind, name}, attempt, comment, defects, last_result{status, version, at, actor, attempt}` (`last_result` is set for a stale case too); `kpis{cases, success, success_rate_last5, drift}` | `reports_feature` | exists |
+| feature history: `history[]`, the feature's last 5 cycles `{cycle_id, release_version, environment, status, at, counts, success_rate}`; ignores the period and the release | `reports_feature` | exists |
+| "since last release" period | the app sets `from` to the latest `Release.released_at` from `releases_list` | exists |
 
 ### 12. Members
 

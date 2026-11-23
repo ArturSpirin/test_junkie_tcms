@@ -1,15 +1,15 @@
 """consumers F7: job.reason, consumer.paused_at, pairing_request.machine, denied pairings
 
-Revision ID: 0015
-Revises: 0014
+Revision ID: 0014
+Revises: 0013
 Create Date: 2026-11-22 22:00:00.000000
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0015"
-down_revision = "0014"
+revision = "0014"
+down_revision = "0013"
 branch_labels = None
 depends_on = None
 

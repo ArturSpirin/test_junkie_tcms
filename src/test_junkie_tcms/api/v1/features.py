@@ -11,6 +11,7 @@ from test_junkie_tcms import audit
 from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.v1.catalog import (
+    case_counts,
     get_feature,
     get_product,
     require_active_product,
@@ -114,12 +115,16 @@ def features_list(
         children[f.parent_id if f.parent_id in ids else None].append(f)
 
     last = _last_edits(db, ctx.org.id, p.id)
+    counts = case_counts(db, ctx.org.id, list(ids))
 
     def node(f: Feature) -> FeatureNode:
         data = feature_out(f, mode).model_dump()
         if f.id in last:
             data["updated_at"], data["updated_by"] = last[f.id]
-        return FeatureNode(**data, children=build(f.id))
+        kids = build(f.id)
+        own = counts.get(f.id, 0)
+        total = own + sum(k.total_case_count for k in kids)
+        return FeatureNode(**data, case_count=own, total_case_count=total, children=kids)
 
     def build(parent_id: str | None) -> list[FeatureNode]:
         return [node(f) for f in sorted(children[parent_id], key=_order)]

@@ -169,12 +169,12 @@ def consumers_list(
     visible = _visible(ctx)
     if visible is not None:
         query = query.where(visible)
-    rows, cursor = paginate(db, query, Consumer.id, params)
+    rows, cursor, total = paginate(db, query, Consumer.id, params)
     ids = [r.id for r in rows]
     products = consumer_product_ids(db, ids)
     projects = consumer_project_counts(db, ids)
     items = [consumer_out(r, products[r.id], projects[r.id], now) for r in rows]
-    return Page[ConsumerOut](items=items, next_cursor=cursor)
+    return Page[ConsumerOut](items=items, next_cursor=cursor, total=total)
 
 
 @router.get(

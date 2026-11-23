@@ -79,8 +79,8 @@ def invites_list(
         query = query.where(Invite.revoked_at.is_(None), Invite.accepted_at.is_not(None))
     else:
         query = query.where(Invite.revoked_at.is_not(None))
-    rows, cursor = paginate(db, query, Invite.id, params)
-    return Page[InviteOut](items=[_invite_out(r, now) for r in rows], next_cursor=cursor)
+    rows, cursor, total = paginate(db, query, Invite.id, params)
+    return Page[InviteOut](items=[_invite_out(r, now) for r in rows], next_cursor=cursor, total=total)
 
 
 # No Idempotency-Key here: its stored response would keep the plaintext token (as tokens_create).

@@ -3,17 +3,19 @@
 
 import json
 import re
-from typing import Any
+from datetime import UTC, datetime
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import and_, func, select, update
+from sqlalchemy import and_, func, literal, or_, select, update
+from sqlalchemy import case as when
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
 from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.if_match import if_match, stale
 from test_junkie_tcms.api.operations import op
-from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
+from test_junkie_tcms.api.pagination import PageParams, SortKey, count, page_params, paginate
 from test_junkie_tcms.api.v1.catalog import (
     get_product,
     product_features,
@@ -42,8 +44,19 @@ from test_junkie_tcms.api.v1.schemas import (
 )
 from test_junkie_tcms.auth.deps import OrgContext, get_db, require_scope
 from test_junkie_tcms.auth.scopes import READ, WRITE_CASES
-from test_junkie_tcms.db.base import new_id, utcnow
-from test_junkie_tcms.db.models import CaseVersion, CaseVersionTag, Feature, Product, Tag, TestCase
+from test_junkie_tcms.db.base import aware, new_id, utcnow
+from test_junkie_tcms.db.models import (
+    CYCLE_CASE_STATUSES,
+    PRIORITIES,
+    Actor,
+    CaseVersion,
+    CaseVersionTag,
+    CycleCase,
+    Feature,
+    Product,
+    Tag,
+    TestCase,
+)
 from test_junkie_tcms.richtext import doc_to_md, doc_to_text, empty_doc
 
 router = APIRouter(tags=["cases"])
@@ -157,6 +170,104 @@ def subtree(db: Session, org_id: str, product_id: str, feature_ids: list[str]) -
             seen.add(f_id)
             todo.extend(children.get(f_id, []))
     return seen
+
+
+def feature_rank(db: Session, org_id: str, product_id: str) -> dict[str, int]:
+    """Each feature's place in the tree read top to bottom (pre-order, siblings by position then id), so a
+    subtree's cases sort as the tree shows them."""
+    children: dict[str | None, list[tuple[int, str]]] = {}
+    for f_id, parent, position in db.execute(
+        select(Feature.id, Feature.parent_id, Feature.position).where(
+            Feature.org_id == org_id, Feature.product_id == product_id
+        )
+    ):
+        children.setdefault(parent, []).append((position, f_id))
+    rank: dict[str, int] = {}
+    todo = [f_id for _, f_id in sorted(children.get(None, []), reverse=True)]
+    while todo:
+        f_id = todo.pop()
+        rank[f_id] = len(rank)
+        todo.extend(f for _, f in sorted(children.get(f_id, []), reverse=True))
+    return rank
+
+
+def end_position(db: Session, org_id: str, feature_id: str) -> int:
+    """The position after the last case of the feature, archived ones too."""
+    last = db.scalar(
+        select(func.max(TestCase.position)).where(
+            TestCase.org_id == org_id, TestCase.feature_id == feature_id
+        )
+    )
+    return 0 if last is None else last + 1
+
+
+## Last results
+
+
+def _has_result():
+    return and_(CycleCase.last_result_at.is_not(None), CycleCase.status != "untested")
+
+
+def last_results(db: Session, org_id: str, case_ids: list[str]) -> dict[str, tuple[str, datetime]]:
+    """Each case's last result in any cycle: the status and time of its newest result, ties by id."""
+    out: dict[str, tuple[str, datetime]] = {}
+    if not case_ids:
+        return out
+    rows = db.execute(
+        select(CycleCase.case_id, CycleCase.status, CycleCase.last_result_at)
+        .where(CycleCase.org_id == org_id, CycleCase.case_id.in_(case_ids), _has_result())
+        .order_by(CycleCase.last_result_at.desc(), CycleCase.id.desc())
+    )
+    for case_id, status, at in rows:
+        out.setdefault(case_id, (status, aware(at)))
+    return out
+
+
+def last_status():
+    """The same last result as `last_results`, as a column of a TestCase query; `untested` when none."""
+    newest = (
+        select(CycleCase.status)
+        .where(CycleCase.org_id == TestCase.org_id, CycleCase.case_id == TestCase.id, _has_result())
+        .order_by(CycleCase.last_result_at.desc(), CycleCase.id.desc())
+        .limit(1)
+        .correlate(TestCase)
+        .scalar_subquery()
+    )
+    return func.coalesce(newest, "untested")
+
+
+# Sort ranks: failures first, and the most urgent priority first.
+RESULT_ORDER = ("fail", "error", "cancel", "skip", "ignore", "untested", "success")
+RESULT_RANK = {s: i for i, s in enumerate(RESULT_ORDER)}
+PRIORITY_RANK = {p: i for i, p in enumerate(("critical", "high", "medium", "low"))}
+CaseSort = Literal["manual", "key", "title", "updated", "result", "priority"]
+
+
+def case_sort(db: Session, org_id: str, product_id: str, sort: CaseSort) -> SortKey:
+    if sort == "manual":
+        rank = feature_rank(db, org_id, product_id)
+        feature = when(rank, value=TestCase.feature_id, else_=len(rank)) if rank else literal(0)
+        return SortKey((feature, TestCase.position))
+    if sort == "key":
+        return SortKey((TestCase.number,))
+    if sort == "title":
+        return SortKey((func.lower(CaseVersion.title),))
+    if sort == "updated":
+        return SortKey((TestCase.updated_at,), desc=True)
+    if sort == "result":
+        return SortKey((when(RESULT_RANK, value=last_status(), else_=len(RESULT_RANK)),))
+    return SortKey((when(PRIORITY_RANK, value=CaseVersion.priority, else_=len(PRIORITY_RANK)),))
+
+
+def _check_values(name: str, values: list[str], allowed: tuple[str, ...]) -> None:
+    bad = sorted(set(values) - set(allowed))
+    if bad:
+        raise HTTPException(422, f"{name} must be one of {', '.join(allowed)}; got {', '.join(bad)}")
+
+
+def _utc(value: datetime) -> datetime:
+    """A query time as stored: UTC; a time without a zone is taken as UTC."""
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
 
 
 ## Content: what a version holds
@@ -336,6 +447,7 @@ def create_case(
         product_id=product.id,
         feature_id=feature_id,
         number=number,
+        position=end_position(db, ctx.org.id, feature_id),
         current_version=1,
         **{c: content[c] for c in CASE_COLUMNS},
     )
@@ -391,8 +503,19 @@ def _steps_out(steps: list[dict[str, Any]], mode: RichMode) -> list[StepOut]:
     ]
 
 
-def case_out(db: Session, case: TestCase, v: CaseVersion, tags: list[str], mode: RichMode) -> CaseOut:
+def case_out(
+    db: Session,
+    case: TestCase,
+    v: CaseVersion,
+    tags: list[str],
+    mode: RichMode,
+    last: dict[str, tuple[str, datetime]] | None = None,
+) -> CaseOut:
+    """`last` holds the last results of a page of cases (`last_results`); without it this case's is read."""
     product = db.get(Product, case.product_id)
+    if last is None:
+        last = last_results(db, case.org_id, [case.id])
+    result, result_at = last.get(case.id, (None, None))
     return CaseOut(
         id=case.id,
         key=case_key(product, case),
@@ -400,6 +523,9 @@ def case_out(db: Session, case: TestCase, v: CaseVersion, tags: list[str], mode:
         product_id=case.product_id,
         feature_id=case.feature_id,
         current_version=case.current_version,
+        position=case.position,
+        last_result=result,
+        last_result_at=result_at,
         title=v.title,
         preconditions=rich_out(v.preconditions, mode),
         steps=_steps_out(v.steps, mode),
@@ -455,9 +581,27 @@ def cases_list(
     product: str,
     feature: str | None = Query(None, description="A feature id; its subtree is included"),
     tag: list[str] = Query([], description="Repeatable; a case must have every tag"),
-    q: str | None = Query(None, max_length=200, description="Case-insensitive part of the title"),
+    q: str | None = Query(
+        None,
+        max_length=200,
+        description="An exact key (PAY-12) or number, or a case-insensitive part of the title, steps"
+        " or a tag",
+    ),
     status: list[str] = Query([]),
     automation: list[str] = Query([]),
+    result: list[str] = Query(
+        [], description="Repeatable; the last result in any cycle, `untested` when the case has none"
+    ),
+    priority: list[str] = Query([], description="Repeatable"),
+    updated_since: datetime | None = Query(None, description="Cases changed at or after this time"),
+    edited_by: list[str] = Query([], description="Repeatable actor ids; who made the current version"),
+    edited_by_kind: Literal["user", "agent"] | None = Query(None, description="Who made the current version"),
+    has_ref: bool | None = Query(None, description="Whether the case has an automation_ref"),
+    sort: CaseSort | None = Query(
+        None,
+        description="manual (the tree's order), key, title, updated (newest first), result (failures first),"
+        " priority (critical first); none orders by id",
+    ),
     include_archived: bool = Query(False),
     params: PageParams = Depends(page_params),
     mode: RichMode = Depends(rich_mode),
@@ -483,8 +627,31 @@ def cases_list(
         query = query.where(TestCase.status.in_(status))
     if automation:
         query = query.where(TestCase.automation.in_(automation))
-    if q:
-        query = query.where(func.lower(CaseVersion.title).contains(q.lower(), autoescape=True))
+    if result:
+        _check_values("result", result, CYCLE_CASE_STATUSES)
+        query = query.where(last_status().in_(result))
+    if priority:
+        _check_values("priority", priority, PRIORITIES)
+        query = query.where(CaseVersion.priority.in_(priority))
+    if updated_since is not None:
+        query = query.where(TestCase.updated_at >= _utc(updated_since))
+    if edited_by:
+        query = query.where(CaseVersion.created_by_actor_id.in_(edited_by))
+    if edited_by_kind is not None:
+        query = query.where(
+            select(Actor.id)
+            .where(
+                Actor.org_id == CaseVersion.org_id,
+                Actor.id == CaseVersion.created_by_actor_id,
+                Actor.kind == edited_by_kind,
+            )
+            .exists()
+        )
+    if has_ref is not None:
+        with_ref = and_(TestCase.automation_ref.is_not(None), TestCase.automation_ref != "")
+        query = query.where(with_ref if has_ref else ~with_ref)
+    if q and q.strip():
+        query = query.where(_search(p, q.strip()))
     for name in {t.strip().lower() for t in tag}:
         query = query.where(
             select(CaseVersionTag.id)
@@ -492,7 +659,8 @@ def cases_list(
             .where(CaseVersionTag.case_version_id == CaseVersion.id, Tag.name == name)
             .exists()
         )
-    rows, cursor = paginate(db, query, TestCase.id, params)
+    order = case_sort(db, ctx.org.id, p.id, sort) if sort else None
+    rows, cursor, total = paginate(db, query, TestCase.id, params, sort=order)
     versions = {
         v.case_id: v
         for v in db.scalars(
@@ -500,8 +668,32 @@ def cases_list(
         )
     }
     tags = version_tags(db, [v.id for v in versions.values()])
-    items = [case_out(db, c, versions[c.id], tags[versions[c.id].id], mode) for c in rows]
-    return Page[CaseOut](items=items, next_cursor=cursor)
+    last = last_results(db, ctx.org.id, [c.id for c in rows])
+    items = [case_out(db, c, versions[c.id], tags[versions[c.id].id], mode, last) for c in rows]
+    return Page[CaseOut](items=items, next_cursor=cursor, total=total)
+
+
+def _search(p: Product, q: str):
+    """`q` of cases_list: an exact key of this product or a bare number, or a part of the current version's
+    title, steps or one of its tags. Tags match through EXISTS, so a case with two matching tags counts
+    once."""
+    text = q.lower()
+    tag = (
+        select(CaseVersionTag.id)
+        .join(Tag, Tag.id == CaseVersionTag.tag_id)
+        .where(CaseVersionTag.case_version_id == CaseVersion.id, Tag.name.contains(text, autoescape=True))
+        .exists()
+    )
+    match = [
+        func.lower(CaseVersion.title).contains(text, autoescape=True),
+        func.lower(CaseVersion.steps_text).contains(text, autoescape=True),
+        tag,
+    ]
+    m = CASE_KEY.match(q.upper())
+    number = m.group(2) if m and m.group(1) == p.key else q if q.isdigit() else None
+    if number is not None and len(number) <= 9:  # beyond that it is no case number, and overflows INTEGER
+        match.append(TestCase.number == int(number))
+    return or_(*match)
 
 
 @router.post(CASES, status_code=201, response_model=CaseOut, **op("cases_create", WRITE_CASES, "cases"))
@@ -569,6 +761,7 @@ def cases_versions_list(
     """Newest first; the cursor is the last version number of the previous page."""
     c = get_case(db, ctx, case)
     query = select(CaseVersion).where(CaseVersion.org_id == c.org_id, CaseVersion.case_id == c.id)
+    total = count(db, query)
     if params.cursor:
         if not params.cursor.isdigit():
             raise HTTPException(422, "cursor must be a version number")
@@ -588,7 +781,7 @@ def cases_versions_list(
         )
         for v in rows
     ]
-    return Page[CaseVersionSummary](items=items, next_cursor=cursor)
+    return Page[CaseVersionSummary](items=items, next_cursor=cursor, total=total)
 
 
 @router.get(
@@ -645,17 +838,64 @@ def cases_move(
     idem: Idem = Depends(idempotency),
     db: Session = Depends(get_db),
 ):
-    """Moves the case to another feature of its product; not a content edit, so no new version."""
+    """Moves the case to another feature of its product, or to another place in its feature; not a content
+    edit, so no new version. Renumbering the other cases doesn't change their `updated_at`."""
     c = get_case(db, ctx, case)
     if c.archived_at is not None:
         raise HTTPException(409, "Case is archived")
     product_features(db, ctx, c.product_id, [body.feature_id])
-    if body.feature_id != c.feature_id:
-        changes = {"feature_id": [c.feature_id, body.feature_id], "entity_version": [c.current_version] * 2}
-        c.feature_id = body.feature_id
+    moved = body.feature_id != c.feature_id
+    if not moved and body.position is None:
+        db.commit()  # a no-op commits too, so an Idempotency-Key replays it
+        return current_out(db, c, mode, response)
+    before = [c.feature_id, c.position]
+    order = _live_cases(db, ctx.org.id, body.feature_id, c.id)
+    order.insert(len(order) if body.position is None else min(body.position, len(order)), c)
+    if moved:
+        c.feature_id = body.feature_id  # the moved case's own updated_at changes, as before
+        db.flush()
+        _renumber(db, _live_cases(db, ctx.org.id, before[0], c.id))
+    _renumber(db, order)
+    db.refresh(c)
+    changes: dict[str, list] = {
+        "position": [before[1], c.position],
+        "entity_version": [c.current_version] * 2,
+    }
+    if moved:
+        changes["feature_id"] = [before[0], c.feature_id]
+    if moved or before[1] != c.position:
         audit.record(db, ctx, "case.move", "test_case", c.id, changes)
     db.commit()
     return current_out(db, c, mode, response)
+
+
+def _live_cases(db: Session, org_id: str, feature_id: str, but: str) -> list[TestCase]:
+    """The feature's live cases in manual order, leaving out the case `but`."""
+    return list(
+        db.scalars(
+            select(TestCase)
+            .where(
+                TestCase.org_id == org_id,
+                TestCase.feature_id == feature_id,
+                TestCase.archived_at.is_(None),
+                TestCase.id != but,
+            )
+            .order_by(TestCase.position, TestCase.id)
+        )
+    )
+
+
+def _renumber(db: Session, rows: list[TestCase]) -> None:
+    """Positions 0..n-1 in the rows' order, written in Core with `updated_at` kept: a new place in the list is
+    not a change to the case, so it must not show under "updated since" or sort=updated."""
+    for i, row in enumerate(rows):
+        if row.position != i:
+            db.execute(
+                update(TestCase)
+                .where(TestCase.org_id == row.org_id, TestCase.id == row.id)
+                .values(position=i, updated_at=TestCase.updated_at)
+                .execution_options(synchronize_session=False)
+            )
 
 
 @router.post(CASE + "/archive", response_model=CaseOut, **op("cases_archive", WRITE_CASES, "cases"))
@@ -751,4 +991,5 @@ def tags_list(
         .group_by(Tag.id, Tag.name)
         .order_by(Tag.name)
     )
-    return Page[TagOut](items=[TagOut(id=i, name=n, case_count=c) for i, n, c in rows], next_cursor=None)
+    items = [TagOut(id=i, name=n, case_count=c) for i, n, c in rows]
+    return Page[TagOut](items=items, next_cursor=None, total=len(items))

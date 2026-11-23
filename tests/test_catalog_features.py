@@ -168,3 +168,22 @@ class CatalogFeatures:
         assert nodes["A2"]["updated_by"]["id"] == event["actor_id"]
         assert nodes["A2"]["updated_at"].removesuffix("Z") == event["created_at"].removesuffix("Z")
         assert nodes["B"]["updated_by"]["name"] == "Olive Owner"  # its create event
+
+    @test()
+    def test_tree_counts_own_and_subtree_cases(self, suite_parameter):
+        owner = self.env.owner
+        p = make_product(owner)["id"]
+        a = make_feature(owner, p, "A")["id"]
+        a1 = make_feature(owner, p, "A1", parent_id=a)["id"]
+        a2 = make_feature(owner, p, "A2", parent_id=a1)["id"]
+        make_feature(owner, p, "B")
+        for feature, title in ((a, "a"), (a1, "b"), (a1, "c"), (a2, "d"), (a2, "gone")):
+            case = owner.post(url(f"/products/{p}/cases"), json={"feature_id": feature, "title": title})
+            ok(case, 201)
+        ok(owner.post(url("/cases/PAY-5/archive")))  # an archived case counts nowhere
+
+        def counts(nodes):
+            return [(n["name"], n["case_count"], n["total_case_count"], counts(n["children"])) for n in nodes]
+
+        tree = ok(owner.get(url(f"/products/{p}/features")))["items"]
+        assert counts(tree) == [("A", 1, 4, [("A1", 2, 3, [("A2", 1, 1, [])])]), ("B", 0, 0, [])]

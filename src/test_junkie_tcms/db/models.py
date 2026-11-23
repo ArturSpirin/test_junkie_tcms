@@ -303,6 +303,8 @@ class TestCase(TenantMixin, UpdatedMixin, Base):
     product_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
     feature_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
     number: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Index among the cases of its feature (manual order); ties break by id.
+    position: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
     current_version: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     automation: Mapped[str] = mapped_column(String(16), nullable=False)

@@ -2,9 +2,11 @@
 
 ## Unreleased
 - Members can read an actor directory (`GET /actors`: names of users, agents, consumers and tokens); case versions record `via`, token and on-behalf-of; `GET /cases/{case}/cycles` lists a case's cycles; members and agents show `last_active_at`; agents take a `description` and can be re-enabled; audit filters by `actor_kind` and `q`, and `GET /audit/retention` states the policy and the oldest row kept.
+- Web app: the narrow-width Menu button says whether the menu is open (`aria-expanded`) and which nav it opens (`aria-controls`).
 - A cycle case edited after it has results can be refreshed to the current case version and rerun in the same cycle (no more `409 has_results`); each result records the case version it ran (`case_version`), release and feature reports keep a stale case's last result, and the cycle report counts its `stale` cases.
 - Consumers: `consumers_jobs` lists a machine's jobs, which keep a `reason`; a machine can reject a job with a reason (its open cases cancel); admins can pause and resume a consumer, or pair it paused; admins can preview (`pairings_get`) and deny (`pairings_deny`) a pending pairing; `consumers_roster` lists the inventory refs with their linked case. The detail adds jobs and rejected in the last 24 h and tests found and linked.
 - Web app: toasts, hints, query lines and the reports header no longer show API or MCP operation names; they use plain words, and server error text still shows as sent. The render test that guarded dialog footers now checks every rendered view state.
+- On a Postgres server whose time zone isn't UTC, every time the API returns is now UTC (`+00:00`), as on SQLite, and MCP stats day buckets start at UTC midnight.
 - Feature tree: the drag-and-drop hint bar now overlays the search row instead of pushing the tree down, so a drop lands on the row under the pointer.
 - MCP `tools/call` on a tool the caller can't use now says why: 403 `Needs scope <scope>`, or 403 naming its toolset and `?toolsets=`; only a name that isn't a tool is 404 `Unknown tool`.
 - MCP tools list each tool's description, its idempotent and destructive hints and its errors by HTTP status (`errors_by_code`); new `mcp_calls` lists the org's recent MCP calls (kept 7 days) with status and latency.

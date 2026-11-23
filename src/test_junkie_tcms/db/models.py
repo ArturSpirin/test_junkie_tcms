@@ -482,13 +482,17 @@ class ConsumerInventory(TenantMixin, UpdatedMixin, Base):
 
 CYCLE_CASE_STATUSES = ("untested", "success", "fail", "error", "ignore", "skip", "cancel")
 RESULT_STATUSES = CYCLE_CASE_STATUSES[1:]
-STEP_STATUSES = ("untested", "success", "fail", "error", "skip")
+STEP_STATUSES = ("untested", "success", "fail", "error", "ignore", "skip", "cancel")
 CYCLE_STATUSES = ("open", "closed")
 BATCH_MODES = ("features", "plans")
 RESULT_VIAS = ("ui", "api", "mcp", "consumer")
 CYCLE_MODES = ("manual", "automated", "both")
 RUNNERS = ("person", "consumer")
 JOB_STATUSES = ("queued", "claimed", "running", "done", "failed", "cancelled", "rejected")
+# How a cycle start shares its automated cases among the chosen consumers (F4).
+SPLIT_STRATEGIES = ("even", "by_feature", "first_free")
+MAX_RETRIES = 2
+SKIP_REASONS = ("defect", "env", "data", "dep", "na_env", "flag", "other")
 
 
 class CycleBatch(TenantMixin, Base):
@@ -518,8 +522,12 @@ class Cycle(TenantMixin, UpdatedMixin, Base):
         ForeignKeyConstraint(["org_id", "feature_id"], ["feature.org_id", "feature.id"]),
         ForeignKeyConstraint(["org_id", "default_assignee_actor_id"], ["actor.org_id", "actor.id"]),
         ForeignKeyConstraint(["org_id", "created_by_actor_id"], ["actor.org_id", "actor.id"]),
+        ForeignKeyConstraint(["org_id", "closed_by_actor_id"], ["actor.org_id", "actor.id"]),
+        ForeignKeyConstraint(["org_id", "stopped_by_actor_id"], ["actor.org_id", "actor.id"]),
         CheckConstraint(f"status IN {CYCLE_STATUSES}", name="status"),
         CheckConstraint(f"mode IN {CYCLE_MODES}", name="mode"),
+        CheckConstraint(f"split IN {SPLIT_STRATEGIES}", name="split"),
+        CheckConstraint(f"retries >= 0 AND retries <= {MAX_RETRIES}", name="retries"),
         Index("ix_cycle_org_id_batch_id", "org_id", "batch_id"),
     )
 
@@ -537,7 +545,14 @@ class Cycle(TenantMixin, UpdatedMixin, Base):
     default_assignee_actor_id: Mapped[str | None] = mapped_column(String(26))
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_by_actor_id: Mapped[str | None] = mapped_column(String(26))
     created_by_actor_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    # Set at start: how automated cases are shared, and how often a failed one is run again.
+    split: Mapped[str] = mapped_column(String(10), nullable=False, default="even", server_default="even")
+    retries: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # Stop run: queued jobs are cancelled and no retry is queued after it.
+    stopped_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stopped_by_actor_id: Mapped[str | None] = mapped_column(String(26))
 
 
 class CycleCase(TenantMixin, UpdatedMixin, Base):
@@ -601,6 +616,7 @@ class Result(TenantMixin, Base):
         ForeignKeyConstraint(["org_id", "actor_id"], ["actor.org_id", "actor.id"]),
         CheckConstraint(f"status IN {RESULT_STATUSES}", name="status"),
         CheckConstraint(f"via IN {RESULT_VIAS}", name="via"),
+        CheckConstraint(f"skip_reason IS NULL OR skip_reason IN {SKIP_REASONS}", name="skip_reason"),
     )
 
     cycle_case_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
@@ -616,6 +632,9 @@ class Result(TenantMixin, Base):
     attachment_ids: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     # [{"url", "key"?}]
     defects: Mapped[list[dict[str, Any]]] = mapped_column(JSON, nullable=False)
+    skip_reason: Mapped[str | None] = mapped_column(String(10))
+    # The build under test, as the tester or consumer named it.
+    build: Mapped[str | None] = mapped_column(String(120))
     at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 

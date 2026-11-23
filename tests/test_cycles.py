@@ -216,6 +216,41 @@ class Cycles:
         ok(record(owner, cc, status="success"), 201)
 
     @test()
+    def test_a_cycle_says_who_created_and_who_closed_it(self, suite_parameter):
+        owner = self.env.owner
+        s = run_seed(owner)
+        cycle = s["cycle"]
+        assert cycle["created_by_actor_id"] and cycle["closed_by_actor_id"] is None
+        closed = ok(owner.post(url(f"/cycles/{cycle['id']}/close")))
+        assert closed["closed_by_actor_id"] == cycle["created_by_actor_id"]
+        [close] = [e for e in events(owner, "cycle") if e["action"] == "cycle.close"]
+        assert close["changes"]["closed_by_actor_id"] == [None, cycle["created_by_actor_id"]]
+        reopened = ok(owner.post(url(f"/cycles/{cycle['id']}/reopen")))
+        assert reopened["closed_by_actor_id"] is None
+
+    @test()
+    def test_cycle_feature_counts_give_each_features_case_statuses(self, suite_parameter):
+        owner = self.env.owner
+        s = seed(owner)
+        p, parent, child = s["product"]["id"], s["parent"]["id"], s["child"]["id"]
+        a = make_case(owner, p, child, "Card one")
+        b = make_case(owner, p, child, "Card two")
+        c = make_case(owner, p, parent, "Parent one")
+        cycle = make_cycle(owner, p, case_ids=[a["id"], b["id"], c["id"]])
+        by_case = {cc["case_id"]: cc["id"] for cc in cycle_cases(owner, cycle["id"])}
+        ok(record(owner, by_case[a["id"]], status="success"), 201)
+        ok(record(owner, by_case[b["id"]], status="fail"), 201)
+
+        rows = ok(owner.get(url(f"/cycles/{cycle['id']}/features")))
+        by_feature = {r["feature_id"]: r for r in rows}
+        assert set(by_feature) == {parent, child}
+        assert by_feature[child]["name"] == s["child"]["name"] and by_feature[child]["total"] == 2
+        assert (by_feature[child]["counts"]["success"], by_feature[child]["counts"]["fail"]) == (1, 1)
+        assert by_feature[parent]["counts"] == UNTESTED
+        assert [r["name"] for r in rows] == sorted(r["name"] for r in rows)
+        assert owner.get(url("/cycles/nope/features")).status_code == 404
+
+    @test()
     def test_rename_a_cycle(self, suite_parameter):
         owner = self.env.owner
         s = run_seed(owner)

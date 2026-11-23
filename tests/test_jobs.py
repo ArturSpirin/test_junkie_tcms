@@ -183,6 +183,95 @@ class Jobs:
         assert create(owner, world, mode="both", consumer_ids=["01NOPE"]).status_code == 404
         assert count(app, Cycle) == 0
 
+    # F4: split, queue when offline, retries, stop
+
+    @test()
+    def test_split_strategies_share_cases_as_named(self, suite_parameter):
+        owner = self.env.owner
+        clock = make_clock(self.env)
+        world = make_world(self.env, owner, clock)
+        a, b = world["a"], world["b"]
+        aid, bid = a.consumer["id"], b.consumer["id"]
+
+        def shares(cycle):
+            return sorted((j["consumer_id"], tuple(j["refs"])) for j in job_list(owner, cycle["id"]))
+
+        even = ok(create(owner, world, a, b), 201)
+        assert (even["split"], even["retries"]) == ("even", 0)
+        assert shares(even) == sorted([(aid, (REF_OK,)), (bid, (REF_BAD,))])
+        by_feature = ok(create(owner, world, a, b, split="by_feature"), 201)
+        assert by_feature["split"] == "by_feature"
+        assert shares(by_feature) == [(aid, (REF_OK, REF_BAD))]  # one feature: one consumer runs it all
+        ok(next_job(a))  # a now holds a job, so it is busy
+        first_free = ok(create(owner, world, a, b, split="first_free"), 201)
+        assert shares(first_free) == [(bid, (REF_OK, REF_BAD))]
+        assert create(owner, world, a, b, split="random").status_code == 422
+        assert create(owner, world, a, b, retries=3).status_code == 422
+
+    @test()
+    def test_queue_when_offline_queues_jobs_for_an_offline_consumer_but_not_a_revoked_one(
+        self, suite_parameter
+    ):
+        app = self.env.app
+        owner = self.env.owner
+        clock = make_clock(self.env)
+        world = make_world(self.env, owner, clock)
+        a, b = world["a"], world["b"]
+        set_column(app, Consumer, "last_heartbeat_at", clock.now - timedelta(minutes=5), id=a.consumer["id"])
+        assert create(owner, world, a).status_code == 409
+        cycle = ok(create(owner, world, a, queue_when_offline=True), 201)
+        assert cycle["queued_offline"] == 1
+        [job] = job_list(owner, cycle["id"])
+        assert (job["consumer_id"], job["status"]) == (a.consumer["id"], "queued")
+        set_column(app, Consumer, "revoked_at", clock.now, id=b.consumer["id"])
+        revoked = create(owner, world, b, queue_when_offline=True)
+        assert revoked.status_code == 409 and "revoked" in revoked.text
+        ok(a.heartbeat())
+        assert ok(owner.get(url(f"/cycles/{cycle['id']}")))["queued_offline"] == 0
+
+    @test()
+    def test_retries_requeue_failed_cases_until_their_attempts_run_out(self, suite_parameter):
+        owner = self.env.owner
+        clock = make_clock(self.env)
+        world = make_world(self.env, owner, clock)
+        a = world["a"]
+        cycle = ok(create(owner, world, a, retries=1), 201)
+        job = ok(next_job(a))
+        ok(report(a, job["id"], "done", (REF_OK, "success"), (REF_BAD, "fail")))
+        retry = next(j for j in job_list(owner, cycle["id"]) if j["id"] != job["id"])
+        assert (retry["status"], retry["consumer_id"], retry["refs"]) == (
+            "queued",
+            a.consumer["id"],
+            [REF_BAD],
+        )
+        assert ok(next_job(a))["id"] == retry["id"]
+        ok(report(a, retry["id"], "done", (REF_BAD, "fail")))  # attempt 2: retries used up
+        assert len(job_list(owner, cycle["id"])) == 2
+        assert next_job(a).status_code == 204
+        bad = statuses(owner, cycle["id"])[world["cases"]["bad"]["id"]]
+        assert bad[2] == "fail"
+
+    @test()
+    def test_stop_cancels_queued_jobs_lets_held_ones_finish_and_retries_nothing(self, suite_parameter):
+        owner = self.env.owner
+        clock = make_clock(self.env)
+        world = make_world(self.env, owner, clock)
+        a, b = world["a"], world["b"]
+        cycle = ok(create(owner, world, a, b, retries=2), 201)
+        held = ok(next_job(a))  # a holds REF_OK; b's REF_BAD job stays queued
+        stopped = ok(owner.post(url(f"/cycles/{cycle['id']}/stop")))
+        assert stopped["stopped_at"] and stopped["stopped_by_actor_id"] and stopped["status"] == "open"
+        by_consumer = {j["consumer_id"]: j for j in job_list(owner, cycle["id"])}
+        assert by_consumer[b.consumer["id"]]["status"] == "cancelled"
+        assert by_consumer[a.consumer["id"]]["status"] == "claimed"
+        cases = world["cases"]
+        assert statuses(owner, cycle["id"])[cases["bad"]["id"]][2] == "cancel"
+        assert statuses(owner, cycle["id"])[cases["manual"]["id"]][2] == "untested"
+        ok(report(a, held["id"], "done", (REF_OK, "fail")))
+        assert len(job_list(owner, cycle["id"])) == 2  # no retry after a stop
+        again = owner.post(url(f"/cycles/{cycle['id']}/stop"))
+        assert again.status_code == 409 and again.json()["code"] == "cycle_stopped"
+
     # Claim and report
 
     @test()

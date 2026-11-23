@@ -5,6 +5,7 @@ from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, tes
 from tests import support
 from tests.catalog_seed import events, make_feature, make_plan, make_release, ok, seed, url
 from tests.execution_seed import activate, cycle_cases, make_case
+from tests.support import add_member
 
 
 def bulk(owner, release: str, status: int = 201, **body):
@@ -130,3 +131,87 @@ class BulkCycles:
         assert ok(owner.get(url(f"/products/{p}/cycles")))["items"] == []
         assert events(owner, "cycle_batch") == []
         bulk(owner, release, 422, mode="features", plan_ids=[s["plan"]["id"]])
+
+    @test()
+    def test_a_name_pattern_names_each_cycle_and_refuses_unknown_placeholders(self, suite_parameter):
+        owner = self.env.owner
+        s = seed(owner)
+        p, child = s["product"]["id"], s["child"]["id"]
+        make_case(owner, p, child, "Card")
+        release = s["release"]["id"]
+        ok(owner.put(url(f"/releases/{release}/features"), json={"feature_ids": [child]}))
+        bad = owner.post(url(f"/releases/{release}/cycles/bulk"), json={"name_pattern": "{plan} on {env}"})
+        assert bad.status_code == 422 and bad.json()["code"] == "bad_name_pattern"
+        assert ok(owner.get(url(f"/products/{p}/cycles")))["items"] == []
+        [cycle] = bulk(owner, release, name_pattern="{feature} {release} ({env})", environment="qa")["cycles"]
+        assert cycle["name"] == "Card 1.0 (qa)"
+
+    @test()
+    def test_assignees_set_each_cycles_default_assignee(self, suite_parameter):
+        owner = self.env.owner
+        s = seed(owner)
+        p, child = s["product"]["id"], s["child"]["id"]
+        other = make_feature(owner, p, "Refunds")
+        make_case(owner, p, child, "Card")
+        make_case(owner, p, other["id"], "Refund")
+        release = s["release"]["id"]
+        ok(owner.put(url(f"/releases/{release}/features"), json={"feature_ids": [child, other["id"]]}))
+        tess = add_member(owner, "tess@example.com", "tester")["actor_id"]
+        bulk(owner, release, 422, assignees={child: "nobody"})
+        bulk(owner, release, 422, assignees={s["parent"]["id"]: tess})  # not a feature of this batch
+        by_feature = {c["feature_id"]: c for c in bulk(owner, release, assignees={child: tess})["cycles"]}
+        assert by_feature[child]["default_assignee_actor_id"] == tess
+        assert by_feature[other["id"]]["default_assignee_actor_id"] is None
+
+    @test()
+    def test_skip_drafts_leaves_draft_cases_out_and_counts_them(self, suite_parameter):
+        owner = self.env.owner
+        s = seed(owner)
+        p, child = s["product"]["id"], s["child"]["id"]
+        make_case(owner, p, child, "Draft")  # PAY-1
+        make_case(owner, p, child, "Ready", status="ready")  # PAY-2
+        release = s["release"]["id"]
+        ok(owner.put(url(f"/releases/{release}/features"), json={"feature_ids": [child]}))
+        [kept] = bulk(owner, release)["cycles"]
+        assert keys(owner, kept) == ["PAY-1", "PAY-2"]
+        [cycle] = bulk(owner, release, skip_drafts=True)["cycles"]
+        assert keys(owner, cycle) == ["PAY-2"]
+        assert cycle["skipped"] == {"archived": 0, "deprecated": 0, "draft": 1}
+
+    @test()
+    def test_a_released_release_gets_no_new_cycles(self, suite_parameter):
+        owner = self.env.owner
+        s = seed(owner)
+        p, child = s["product"]["id"], s["child"]["id"]
+        case = make_case(owner, p, child, "Card")
+        release = s["release"]["id"]
+        ok(owner.put(url(f"/releases/{release}/features"), json={"feature_ids": [child]}))
+        ok(owner.patch(url(f"/releases/{release}"), json={"status": "released"}))
+        refused = owner.post(url(f"/releases/{release}/cycles/bulk"), json={})
+        assert refused.status_code == 409 and refused.json()["code"] == "release_closed"
+        one = owner.post(
+            url(f"/products/{p}/cycles"), json={"name": "R", "release_id": release, "case_ids": [case["id"]]}
+        )
+        assert one.status_code == 409 and one.json()["code"] == "release_closed"
+        assert ok(owner.get(url(f"/products/{p}/cycles")))["items"] == []
+
+    @test()
+    def test_a_batch_is_closed_by_whoever_closes_its_last_cycle(self, suite_parameter):
+        owner = self.env.owner
+        s = seed(owner)
+        p, child = s["product"]["id"], s["child"]["id"]
+        other = make_feature(owner, p, "Refunds")
+        make_case(owner, p, child, "Card")
+        make_case(owner, p, other["id"], "Refund")
+        release = s["release"]["id"]
+        ok(owner.put(url(f"/releases/{release}/features"), json={"feature_ids": [child, other["id"]]}))
+        batch = bulk(owner, release)
+        assert batch["created_by_actor_id"] and batch["closed_by_actor_id"] is None
+        first, second = batch["cycles"]
+        ok(owner.post(url(f"/cycles/{first['id']}/close")))
+        half = ok(owner.get(url(f"/cycle-batches/{batch['id']}")))
+        assert (half["closed_at"], half["closed_by_actor_id"]) == (None, None)
+        last = ok(owner.post(url(f"/cycles/{second['id']}/close")))
+        done = ok(owner.get(url(f"/cycle-batches/{batch['id']}")))
+        assert done["closed_at"] == last["closed_at"]
+        assert done["closed_by_actor_id"] == batch["created_by_actor_id"]

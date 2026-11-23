@@ -230,6 +230,38 @@ class Cases:
         assert [c["key"] for c in ok(owner.get(url(f"/products/{p}/cases")))["items"]] == ["PAY-1", "PAY-2"]
 
     @test()
+    def test_a_title_of_only_spaces_is_a_422_on_every_write(self, suite_parameter):
+        owner = self.env.owner
+        s = self.s()
+        p, f = s["product"]["id"], s["child"]["id"]
+        make_case(owner, p, f)
+        for title in ("", "   ", "\t \n"):
+            created = owner.post(url(f"/products/{p}/cases"), json={"feature_id": f, "title": title})
+            assert created.status_code == 422, (title, created.text)
+            assert patch(owner, "PAY-1", 1, {"title": title}).status_code == 422, title
+            edit = {"key": "PAY-1", "expected_version": 1, "title": title}
+            for item in ({"feature_id": f, "title": title}, edit):
+                bulk = owner.post(url(f"/products/{p}/cases/bulk"), json={"items": [item]})
+                assert bulk.status_code == 422, (item, bulk.text)
+        assert [c["key"] for c in ok(owner.get(url(f"/products/{p}/cases")))["items"]] == ["PAY-1"]
+        assert ok(owner.get(url("/cases/PAY-1")))["title"] == "Pay by card"
+
+    @test()
+    def test_spaces_around_a_title_are_stripped(self, suite_parameter):
+        owner = self.env.owner
+        s = self.s()
+        p, f = s["product"]["id"], s["child"]["id"]
+        assert make_case(owner, p, f, "  Pay by card \t")["title"] == "Pay by card"
+        assert ok(patch(owner, "PAY-1", 1, {"title": " Pay by saved card  "}))["title"] == "Pay by saved card"
+        same = patch(owner, "PAY-1", 2, {"title": "  Pay by saved card"})
+        assert ok(same)["current_version"] == 2  # the same title once stripped adds no version
+        body = {"items": [{"feature_id": f, "title": " Refund "}]}
+        assert ok(owner.post(url(f"/products/{p}/cases/bulk"), json=body))["items"][0]["key"] == "PAY-2"
+        assert ok(owner.get(url("/cases/PAY-2")))["title"] == "Refund"
+        long = " " + "x" * 500 + " "
+        assert make_case(owner, p, f, long)["title"] == "x" * 500  # the limit counts after stripping
+
+    @test()
     def test_case_writes_need_write_cases_and_stay_in_the_org(self, suite_parameter):
         owner = self.env.owner
         s = self.s()

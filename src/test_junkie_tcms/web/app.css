@@ -712,6 +712,9 @@ html.dark .kpi { background: linear-gradient(180deg, rgba(255,255,255,.035), rgb
 .side a.on, .tree .n.on, .dd-o.sel, .vlist .vi.on, .queue .qi.on, html.light .queue .qi.on, .tabs a.on, html.light .tabs a.on, .seg button.on, html.light .seg button.on, .pick.on, .lrow.on,
 .side a.on:hover, .tree .n.on:hover, .dd-o.sel:hover, .pick.on:hover, .lrow.on:hover {
   background: var(--sel); color: var(--text); font-weight: 600; box-shadow: none; }
+/* keyboard focus on a tree row: the ring wins over the selected, drop and just-moved styles */
+.tree .n:focus-visible, .tree .n.on:focus-visible, .tree .n.on:focus-visible:hover { box-shadow: var(--ring); }
+.tree .n.drop:focus-visible, .tree .n.just:focus-visible { box-shadow: var(--ring), var(--glow); }
 .t tbody tr.sel td, .t tbody tr.sel:hover td { background: var(--sel); }
 .t tbody tr:hover td { background: var(--hov); }
 .side a.on svg, .tree .n.on > svg, .pick.on > .pi svg { color: var(--accent); filter: none; }

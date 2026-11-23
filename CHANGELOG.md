@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Feature tree works by keyboard: one tab stop, arrows move between rows and open or close features, Enter opens a case; Space picks a row up, arrows move the drop bar, Enter drops and Esc cancels, with the same toast, and Ctrl+Z undoes while it shows. Focused rows show the focus ring.
 - MCP `tools/call` on a tool the caller can't use now says why: 403 `Needs scope <scope>`, or 403 naming its toolset and `?toolsets=`; only a name that isn't a tool is 404 `Unknown tool`.
 - MCP tools list each tool's description, its idempotent and destructive hints and its errors by HTTP status (`errors_by_code`); new `mcp_calls` lists the org's recent MCP calls (kept 7 days) with status and latency.
 - Lists return `total`; products show `feature_count` and `case_count`, feature tree nodes `case_count` and `total_case_count`. The cases list filters by last result, priority, updated since, editor and automation ref, sorts (manual, key, title, updated, result, priority) and its `q` matches keys and steps; cases have a `position` that `cases_move` reorders. SQLite migrations run with foreign keys off and check them after.

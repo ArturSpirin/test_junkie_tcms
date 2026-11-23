@@ -1,5 +1,7 @@
 """Migrations build the models' schema, and the database itself keeps audit_event append-only."""
 
+from pathlib import Path
+
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
@@ -28,6 +30,21 @@ class MigrationScripts:
         # Branches that each add a revision off the same parent give two heads; re-chain before merging.
         script = ScriptDirectory.from_config(alembic_config("sqlite://"))
         assert len(script.get_heads()) == 1, script.get_heads()
+
+    @test()
+    def test_migrations_form_one_numbered_chain(self):
+        # Two branches can each add "0011" off 0010; Alembic then keeps only one file per id, so the
+        # duplicate is lost silently. Each file's prefix is its id, and each revises the number before it.
+        script = ScriptDirectory.from_config(alembic_config("sqlite://"))
+        revisions = list(script.walk_revisions())
+        prefixes = sorted(Path(revision.path).name.split("_", 1)[0] for revision in revisions)
+        files = sorted(path.name.split("_", 1)[0] for path in Path(script.versions).glob("[0-9]*.py"))
+        assert files == prefixes, (files, prefixes)
+        for revision in revisions:
+            assert Path(revision.path).name.startswith(f"{revision.revision}_"), revision.path
+            number = int(revision.revision)
+            expected = None if number == 1 else f"{number - 1:04d}"
+            assert revision.down_revision == expected, (revision.revision, revision.down_revision)
 
 
 @Suite(parameters=support.DATABASES)

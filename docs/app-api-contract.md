@@ -99,7 +99,7 @@ All paths below are under `/api/v1/orgs/{org}` unless they start with `/api/v1/`
 | reports, import, viewer | `reports_feature`, `imports_create`, `cases_get` | exists |
 | case count per feature, last-result dot, filters, sort, key search | | not yet (F1) |
 | reorder a case within a feature | | not yet (F1) |
-| "edited by agent via MCP on behalf of", "in cycles" | | not yet (F2) |
+| "edited by agent via MCP on behalf of", "in cycles" | `cases_versions_list` (`via`, `token_id`, `on_behalf_of_user_id`), `actors_list`, `cases_cycles` | exists (F2) |
 
 ### 4. Cases
 
@@ -117,14 +117,22 @@ All paths below are under `/api/v1/orgs/{org}` unless they start with `/api/v1/`
 | new case | `cases_create` | exists |
 | tags | `tags_list` | exists |
 | separate Description field, Markdown get/put | | not yet (F3) |
-| version provenance (via, on behalf of), "in cycles" | | not yet (F2) |
+| version provenance (via, on behalf of), "in cycles" | `cases_get` / `cases_version_get` (`via`, `token_id`, `on_behalf_of_user_id`), `cases_cycles` | exists (F2) |
 
 ### 6. Version history
 
 | Need | Operations | Status |
 |---|---|---|
 | list, compare (two gets), restore | `cases_versions_list`, `cases_version_get`, `cases_restore` | exists |
-| via / on-behalf-of per version, "used in cycles" | | not yet (F2) |
+| via / on-behalf-of per version, "used in cycles" | `cases_versions_list`, `cases_cycles` | exists (F2) |
+
+Each version carries `via` (`ui`, `api`, `mcp`; null on versions saved before F2), `token_id` and
+`on_behalf_of_user_id` (the agent's owner, set only when an agent saved it). Names come from `actors_list`.
+
+`GET /cases/{case}/cycles` (`cases_cycles`, read) lists the cycles the case is in, newest first:
+`CaseCycleOut {cycle_id, name, cycle_status, environment, started_at, closed_at, cycle_case_id, case_version,
+status, last_result_at}`, where `case_version` is the version the cycle pinned. A case in a product the caller
+can't see is a 404.
 
 ### 7. Plans
 
@@ -194,7 +202,7 @@ operations.
 | list, add, change role, remove | `members_list`, `members_add`, `members_update`, `members_remove` | exists |
 | invites: list, create, revoke | `invites_list`, `invites_create`, `invites_revoke` | exists |
 | resend an invite | revoke, then create | exists |
-| last active | | not yet (F2) |
+| last active | `members_list` (`last_active_at`) | exists (F2) |
 | invite emails | | not in the API (create returns the invite token) |
 
 ### 13. Tokens and agents
@@ -203,14 +211,44 @@ operations.
 |---|---|---|
 | tokens: list, create, revoke | `tokens_list`, `tokens_create`, `tokens_revoke` | exists |
 | agents: list, create, edit, disable | `agents_list`, `agents_create`, `agents_update`, `agents_disable` | exists |
-| agent enable, description, name rule | | not yet (F2) |
+| agent enable, description, last active | `agents_enable`, `agents_create` / `agents_update` (`description`), `agents_list` (`last_active_at`) | exists (F2) |
+| agent name rule | | not yet (follow-up) |
+
+`POST /agents/{agent_id}/enable` (`agents_enable`, admin) clears `disabled_at` and is idempotent. It is a 422
+when the agent's owner is no longer a member or the agent's role is now above the owner's, the same rule as
+`agents_create`. `description` is at most 500
+characters; an empty string clears it.
+
+`last_active_at` is the actor's latest authenticated request in the org, any method, written at most once a
+minute.
+
+### Actor directory
+
+`GET /actors` (`actors_list`, read, any member) gives names for every actor and token that can appear on a
+row, past ones included, with no emails or roles:
+
+```json
+{"actors": [{"id": "...", "kind": "user|agent|consumer", "name": "...", "disabled": false}],
+ "tokens": [{"id": "...", "name": "...", "actor_id": "..."}]}
+```
+
+`disabled` is true for a removed member, a disabled agent or a revoked consumer.
 
 ### 14. Audit
 
 | Need | Operations | Status |
 |---|---|---|
 | rows, diff, actor/action/via/entity/date filters, one case's history | `audit_list` | exists |
-| actor kind filter, `q`, request id and tool on rows, retention | | not yet (F2) |
+| actor kind filter, `q`, retention | `audit_list?actor_kind=&q=`, `audit_retention` | exists (F2) |
+| request id and tool on rows | | not yet (follow-up) |
+
+`actor_kind` is one of `user` (a member in the app, no token), `token` (a member through a token), `agent` or
+`consumer`; the four split the log. Agents use tokens too, but their rows are `agent`, not `token`. `q` (at
+most 200 characters) matches, case-insensitively, the action, entity type, entity id or the actor's name.
+
+`GET /audit/retention` (`audit_retention`) returns `{days, oldest_kept}`. `days` is the stated policy (90);
+**it is not enforced yet**: nothing deletes audit rows. `oldest_kept` is the `created_at` of the oldest stored
+row, null when there is none.
 
 Action names are singular (`product.create`), not the mock's `products.create`.
 

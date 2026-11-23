@@ -9,9 +9,12 @@ from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
 from test_junkie_tcms.api.v1.schemas import (
+    ActorDirectory,
     AgentCreate,
     AgentOut,
     AgentUpdate,
+    DirectoryActor,
+    DirectoryToken,
     MemberAdd,
     MemberOut,
     MemberUpdate,
@@ -31,7 +34,7 @@ from test_junkie_tcms.auth.deps import (
 from test_junkie_tcms.auth.passwords import hash_password
 from test_junkie_tcms.auth.scopes import ADMIN, READ, ROLE_RANK
 from test_junkie_tcms.db.base import utcnow
-from test_junkie_tcms.db.models import Actor, Consumer, Membership, Org, User
+from test_junkie_tcms.db.models import Actor, ApiToken, Consumer, Membership, Org, User
 
 router = APIRouter(tags=["orgs"])
 ORG = "/orgs/{org}"
@@ -76,6 +79,7 @@ def _member_out(db: Session, m: Membership) -> MemberOut:
         name=user.name,
         role=m.role,
         removed_at=m.removed_at,
+        last_active_at=actor.last_active_at,
     )
 
 
@@ -230,10 +234,20 @@ def agents_create(
 ):
     owner = body.owner_user_id or ctx.actor.user_id or ctx.actor.owner_user_id
     _check_agent_role(db, ctx, owner, body.role)
-    agent = Actor(org_id=ctx.org.id, kind="agent", name=body.name, owner_user_id=owner, role=body.role)
+    agent = Actor(
+        org_id=ctx.org.id,
+        kind="agent",
+        name=body.name,
+        owner_user_id=owner,
+        role=body.role,
+        description=body.description or None,
+    )
     db.add(agent)
     db.flush()
-    audit.record(db, ctx, "agent.create", "actor", agent.id, {"name": body.name, "role": body.role})
+    changes = {"name": body.name, "role": body.role}
+    if agent.description:
+        changes["description"] = agent.description
+    audit.record(db, ctx, "agent.create", "actor", agent.id, changes)
     db.commit()
     return agent
 
@@ -254,6 +268,10 @@ def agents_update(
     if body.name is not None and body.name != agent.name:
         changes["name"] = [agent.name, body.name]
         agent.name = body.name
+    description = (body.description or None) if body.description is not None else agent.description
+    if description != agent.description:
+        changes["description"] = [agent.description, description]
+        agent.description = description
     if changes:
         audit.record(db, ctx, "agent.update", "actor", agent.id, changes)
         db.commit()
@@ -275,3 +293,52 @@ def agents_disable(
         audit.record(db, ctx, "agent.disable", "actor", agent.id)
     db.commit()  # a no-op commits too, so an Idempotency-Key replays it
     return agent
+
+
+@router.post(
+    ORG + "/agents/{agent_id}/enable", response_model=AgentOut, **op("agents_enable", ADMIN, "admin")
+)
+def agents_enable(
+    agent_id: str,
+    ctx: OrgContext = Depends(require_scope(ADMIN)),
+    idem: Idem = Depends(idempotency),
+    db: Session = Depends(get_db),
+):
+    """422 when the owner has left or the agent's role is now above the owner's, as on create."""
+    agent = _get_agent(db, ctx, agent_id)
+    if agent.disabled_at is not None:
+        _check_agent_role(db, ctx, agent.owner_user_id, agent.role)
+        agent.disabled_at = None
+        audit.record(db, ctx, "agent.enable", "actor", agent.id)
+    db.commit()  # a no-op commits too, so an Idempotency-Key replays it
+    return agent
+
+
+@router.get(ORG + "/actors", response_model=ActorDirectory, **op("actors_list", READ, "core"))
+def actors_list(ctx: OrgContext = Depends(require_scope(READ)), db: Session = Depends(get_db)):
+    """Every actor and token name in the org, past ones too, so old rows still show a name."""
+    consumers = {c.actor_id: c for c in db.scalars(select(Consumer).where(Consumer.org_id == ctx.org.id))}
+    removed = set(
+        db.scalars(
+            select(Membership.user_id).where(
+                Membership.org_id == ctx.org.id, Membership.removed_at.is_not(None)
+            )
+        )
+    )
+    actors = []
+    for a in db.scalars(select(Actor).where(Actor.org_id == ctx.org.id).order_by(Actor.id)):
+        consumer = consumers.get(a.id)
+        if consumer is not None:
+            actors.append(
+                DirectoryActor(
+                    id=a.id, kind="consumer", name=consumer.name, disabled=consumer.revoked_at is not None
+                )
+            )
+        else:
+            disabled = a.disabled_at is not None or a.user_id in removed
+            actors.append(DirectoryActor(id=a.id, kind=a.kind, name=a.name, disabled=disabled))
+    tokens = [
+        DirectoryToken(id=t.id, name=t.name, actor_id=t.actor_id)
+        for t in db.scalars(select(ApiToken).where(ApiToken.org_id == ctx.org.id).order_by(ApiToken.id))
+    ]
+    return ActorDirectory(actors=actors, tokens=tokens)

@@ -119,6 +119,21 @@ class CycleCaseOut(BaseModel):
     steps: list[StepOut]
 
 
+class CaseCycleOut(BaseModel):
+    """A cycle a case is in, with the version the cycle pinned and the case's status there."""
+
+    cycle_id: str
+    name: str
+    cycle_status: str
+    environment: str | None
+    started_at: UtcDateTime
+    closed_at: UtcDateTime | None
+    cycle_case_id: str
+    case_version: int
+    status: str
+    last_result_at: UtcDateTime | None
+
+
 class BulkCycleCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     mode: Literal["features", "plans"] = "features"

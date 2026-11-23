@@ -18,14 +18,11 @@ def record(
     entity_id: str,
     changes: dict[str, Any] | None = None,
 ) -> AuditEvent:
-    principal = ctx.principal
     event = AuditEvent(
         id=new_id(),
         org_id=ctx.org.id,
         actor_id=ctx.actor.id,
-        token_id=principal.token.id if principal.token is not None else None,
-        on_behalf_of_user_id=ctx.actor.owner_user_id,
-        via=principal.via,
+        **ctx.provenance(),
         action=action,
         entity_type=entity_type,
         entity_id=entity_id,

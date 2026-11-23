@@ -62,6 +62,7 @@ class MemberOut(BaseModel):
     name: str
     role: str
     removed_at: datetime | None = None
+    last_active_at: UtcDateTime | None = None
 
 
 class MemberAdd(BaseModel):
@@ -81,13 +82,16 @@ class AgentOut(Out):
     name: str
     role: str
     owner_user_id: str
+    description: str | None = None
     disabled_at: datetime | None = None
+    last_active_at: UtcDateTime | None = None
     created_at: datetime
 
 
 class AgentCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     role: Role
+    description: str | None = Field(None, max_length=500)
     # Defaults to the calling user.
     owner_user_id: str | None = None
 
@@ -95,6 +99,28 @@ class AgentCreate(BaseModel):
 class AgentUpdate(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=200)
     role: Role | None = None
+    # An empty string clears it.
+    description: str | None = Field(None, max_length=500)
+
+
+class DirectoryActor(BaseModel):
+    id: str
+    kind: Literal["user", "agent", "consumer"]
+    name: str
+    disabled: bool = Field(description="A removed member, a disabled agent or a revoked consumer")
+
+
+class DirectoryToken(BaseModel):
+    id: str
+    name: str
+    actor_id: str
+
+
+class ActorDirectory(BaseModel):
+    """Names for every actor and token that can appear on a row, past ones included; no emails or roles."""
+
+    actors: list[DirectoryActor]
+    tokens: list[DirectoryToken]
 
 
 class TokenOut(Out):
@@ -482,6 +508,9 @@ class CaseVersionOut(BaseModel):
     tags: list[str]
     change_note: str | None = None
     created_by_actor_id: str
+    via: str | None = Field(None, description="ui, api or mcp; null on versions saved before provenance")
+    token_id: str | None = None
+    on_behalf_of_user_id: str | None = Field(None, description="The owner of the agent that saved it")
     created_at: UtcDateTime
 
 
@@ -490,6 +519,9 @@ class CaseVersionSummary(BaseModel):
     title: str
     change_note: str | None = None
     created_by_actor_id: str
+    via: str | None = Field(None, description="ui, api or mcp; null on versions saved before provenance")
+    token_id: str | None = None
+    on_behalf_of_user_id: str | None = Field(None, description="The owner of the agent that saved it")
     created_at: UtcDateTime
 
 
@@ -544,6 +576,13 @@ class AuditOut(Out):
     entity_type: str
     entity_id: str
     changes: dict[str, Any] | None
+
+
+class AuditRetentionOut(BaseModel):
+    days: int = Field(description="The retention policy; not enforced yet, so no row is deleted")
+    oldest_kept: UtcDateTime | None = Field(
+        description="The oldest stored audit row; null when there is none"
+    )
 
 
 ConsumerStatus = Literal["online", "offline", "busy", "revoked"]

@@ -1,5 +1,7 @@
 /* Page styles for each view, scoped by the view's main element with :where([data-view="<view>"]),
-   which adds no specificity, so each rule meets app.css with the same weight it has in the design. */
+   which adds no specificity, so each rule meets app.css with the same weight it has in the design.
+   The views layer comes after app (declared at the top of app.css), so these rules still override it. */
+@layer views {
 
 /* products */
 :where([data-view="products"]) .plist { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 16px; }
@@ -389,3 +391,4 @@ html.dark :where([data-view="mcp"]) .drw { background: linear-gradient(180deg, r
 :where([data-view="consumers"]) .t td code { font: 500 12px var(--mono); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 520px; }
 @media (max-width: 1180px) { :where([data-view="consumers"]) .g3.ms { grid-template-columns: repeat(2, minmax(0,1fr)); } }
 @media (max-width: 760px) { :where([data-view="consumers"]) .g3.ms { grid-template-columns: minmax(0,1fr); } :where([data-view="consumers"]) .kv { grid-template-columns: 1fr; gap: 2px 0; } :where([data-view="consumers"]) .kv dd { margin-bottom: 8px; } }
+}

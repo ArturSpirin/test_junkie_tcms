@@ -70,6 +70,11 @@ svg { flex: none; }
 .search { flex: 1; max-width: 440px; display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 8px 0 14px; border: 1px solid var(--edge);
   border-radius: var(--r-sm); background: var(--field); color: var(--faint); transition: border-color var(--dur), box-shadow var(--dur); cursor: text; }
 .search:hover { border-color: var(--edge2); }
+.search:focus-within { border-color: var(--ring-edge); box-shadow: var(--ring); }
+.search input { flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; background: none; color: var(--text); font: inherit; outline: none; box-shadow: none; }
+.search input:focus, .search input:focus-visible { outline: none; box-shadow: none; }
+.search input::placeholder { color: var(--faint); opacity: 1; }
+.search input::-webkit-search-decoration, .search input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; }
 .search kbd { margin-left: auto; }
 .top .spacer { flex: 1; }
 .me { display: flex; align-items: center; gap: 10px; color: var(--muted); white-space: nowrap; }

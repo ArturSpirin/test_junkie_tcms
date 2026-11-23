@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Web app shell: `web/` ships as package data, is served at `/assets/`, and `/` and `/app/...` return `index.html`; `docs/app-api-contract.md` lists the API each view uses. Plan status shows its enum on reads; consumers show `project_count`; MCP tools and usage take `since`/`until`, usage splits reads and writes, and new `mcp_clients` and `mcp_updates` list callers and server starts and tool-list changes.
 - README lists what this release has and documents the MCP endpoint and toolsets; a test keeps it in step with the toolsets and settings.
 - Quick start works on Windows: `requirements.lock` is now made by `scripts/lock.py` (uv, universal, with platform markers, checked in CI), and `create-admin` and `sweep-idempotency` apply migrations first.
 - Scaffold: orgs, users, roles, scoped API tokens, session login with CSRF, append-only audit log and outbox; Docker Compose and CI.

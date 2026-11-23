@@ -312,8 +312,9 @@ class PlanQuery(BaseModel):
 
 
 class PlanEntryIn(BaseModel):
-    """Exactly one of `case_id`, `feature_id`, `query` or `release_id`. A `release_id` adds one feature entry
-    per feature of that release at write time; the release itself is not stored."""
+    """Exactly one of `case_id` (a case key like PAY-12, or an id), `feature_id`, `query` or `release_id`. A
+    `release_id` adds one feature entry per feature of that release at write time; the release itself is not
+    stored."""
 
     model_config = ConfigDict(extra="forbid")
     case_id: str | None = None

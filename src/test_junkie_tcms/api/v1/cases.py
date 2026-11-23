@@ -90,6 +90,32 @@ def get_case(db: Session, ctx: OrgContext, ref: str) -> TestCase:
     return case
 
 
+def resolve_cases(db: Session, ctx: OrgContext, product: Product, refs: list[str]) -> dict[str, TestCase]:
+    """Each ref (a case key like PAY-12, or an id) to its case of the product, in the refs' order; 422 naming
+    the first ref that isn't one."""
+    numbers: dict[int, list[str]] = {}
+    ids: list[str] = []
+    for ref in refs:
+        m = CASE_KEY.match(ref)
+        if m and m.group(1) == product.key:
+            numbers.setdefault(int(m.group(2)), []).append(ref)
+        else:
+            ids.append(ref)
+    scope = (TestCase.org_id == ctx.org.id, TestCase.product_id == product.id)
+    found: dict[str, TestCase] = {}
+    if numbers:
+        for c in db.scalars(select(TestCase).where(*scope, TestCase.number.in_(numbers))):
+            for ref in numbers[c.number]:
+                found[ref] = c
+    if ids:
+        for c in db.scalars(select(TestCase).where(*scope, TestCase.id.in_(ids))):
+            found[c.id] = c
+    for ref in refs:
+        if ref not in found:
+            raise HTTPException(422, f"case_id {ref} is not a case of this product")
+    return {ref: found[ref] for ref in refs}
+
+
 def get_version(db: Session, case: TestCase, version: int) -> CaseVersion | None:
     return db.scalar(
         select(CaseVersion).where(

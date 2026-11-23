@@ -2585,7 +2585,7 @@
     "wire": "org"
    }
   },
-  "description": "Cycle Cases Add. Adds live cases at their current version; a case already in the cycle is listed, not added again.",
+  "description": "Cycle Cases Add. Adds live cases (each a case key like PAY-12, or an id) at their current version; a case already in the\ncycle is listed, not added again.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
@@ -5465,12 +5465,12 @@
     "wire": "rich"
    }
   },
-  "description": "Plans Add Entries. Appends entries in order: `{case_id}` (a live case of the plan's product), `{feature_id}` (an active\nfeature of it), `{query}`, or `{release_id}` (a release of the product).\n\nA release expands now to one feature entry per feature of the release, in feature tree order, skipping\nfeatures the plan (or this request) already has and archived ones. The release id isn't stored, so a\nlater change to the release doesn't change the plan. Nothing new to add returns the plan unchanged.",
+  "description": "Plans Add Entries. Appends entries in order: `{case_id}` (a live case of the plan's product, by key like PAY-12 or id;\nthe entry stores the id), `{feature_id}` (an active feature of it), `{query}`, or `{release_id}` (a\nrelease of the product).\n\nA release expands now to one feature entry per feature of the release, in feature tree order, skipping\nfeatures the plan (or this request) already has and archived ones. The release id isn't stored, so a\nlater change to the release doesn't change the plan. Nothing new to add returns the plan unchanged.",
   "input_schema": {
    "$defs": {
     "PlanEntryIn": {
      "additionalProperties": false,
-     "description": "Exactly one of `case_id`, `feature_id`, `query` or `release_id`. A `release_id` adds one feature entry\nper feature of that release at write time; the release itself is not stored.",
+     "description": "Exactly one of `case_id` (a case key like PAY-12, or an id), `feature_id`, `query` or `release_id`. A\n`release_id` adds one feature entry per feature of that release at write time; the release itself is not\nstored.",
      "properties": {
       "case_id": {
        "anyOf": [

@@ -13,7 +13,8 @@ Environment = Field(None, max_length=64)
 
 
 class CycleSource(BaseModel):
-    """At most one source: a whole product, an active plan, features (with sub-features), or case ids."""
+    """At most one source: a whole product, an active plan, features (with sub-features), or cases (each a
+    case key like PAY-12, or an id)."""
 
     model_config = ConfigDict(extra="forbid")
     product_id: str | None = None
@@ -85,6 +86,8 @@ class CyclePreviewOut(BaseModel):
 
 
 class CycleCasesAdd(BaseModel):
+    """Cases to add, each a case key like PAY-12, or an id."""
+
     model_config = ConfigDict(extra="forbid")
     case_ids: list[str] = Field(min_length=1, max_length=1000)
 

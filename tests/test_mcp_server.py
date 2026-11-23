@@ -12,7 +12,7 @@ from test_junkie_tcms.mcp_server.dispatch import envelope
 from test_junkie_tcms.plugins import PluginContext
 from tests import support
 from tests.catalog_seed import events, make_product, ok, url
-from tests.execution_seed import run_seed
+from tests.execution_seed import make_case, run_seed
 from tests.support import add_member, login
 from tests.test_csv_io import source
 from tests.test_mcp_drift import demo_router
@@ -240,6 +240,26 @@ class McpServer:
             assert event["via"] == "mcp"
             audited = ok(owner.get(url("/audit"), params={"entity_type": "result", "via": "mcp"}))["items"]
             assert [e["entity_id"] for e in audited] == [result["data"]["id"]]
+
+    @test()
+    def test_cycle_cases_add_takes_a_key_or_an_id(self, suite_parameter):
+        self.env.app.state.settings.mcp_default_toolsets = "all"
+        with mcp_client(self.env.app) as mcp:
+            owner = self.env.owner
+            admin_token = make_admin_token(owner)
+            s = run_seed(owner)
+            p, cycle = s["product"]["id"], s["cycle"]["id"]
+            second = make_case(owner, p, s["child"]["id"], "Second")
+            third = make_case(owner, p, s["child"]["id"], "Third")
+            args = {"org": "acme", "id": cycle}
+            by_key = call(mcp, admin_token, "cycle_cases_add", **args, case_ids=["PAY-2", "PAY-1"])
+            assert by_key["status"] == 200, by_key
+            assert by_key["data"] == {"added": [second["id"]], "already_present": [s["case"]["id"]]}
+            by_id = call(mcp, admin_token, "cycle_cases_add", **args, case_ids=[third["id"]])
+            assert by_id["data"] == {"added": [third["id"]], "already_present": []}
+            unknown = call(mcp, admin_token, "cycle_cases_add", **args, case_ids=["PAY-99"])
+            assert unknown["status"] == 422
+            assert unknown["error"]["detail"] == "case_id PAY-99 is not a case of this product"
 
     @test()
     def test_an_ext_router_is_served_over_mcp(self, suite_parameter):

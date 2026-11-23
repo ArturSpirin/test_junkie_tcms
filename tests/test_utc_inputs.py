@@ -35,7 +35,7 @@ def _is_aware(item) -> bool:
 
 
 def _times(annotation, metadata, seen) -> list[tuple[str, bool]]:
-    """Each datetime in `annotation` (through Annotated, unions, lists, nested models) as (path, has aware)."""
+    """Each datetime in `annotation` (via Annotated, unions, lists, nested models) as (path, has aware)."""
     if get_origin(annotation) is Annotated:
         base, *extra = get_args(annotation)
         return _times(base, [*metadata, *extra], seen)

@@ -2,6 +2,7 @@
 
 ## Unreleased
 - Products, features, plans, members and consumers lists take a `q` name search that holds across pages; a product has an owner (`owner_actor_id`, an active member) and can copy another product's feature tree on create (`copy_features_from`); starting a cycle takes an `eta`, an `order` and a manual `case_order`, read back on the cycle, and `cycle_cases_list?sort=position` lists the run order.
+- Cases have a versioned `description`, in CSV and md-bundle files and in text search; `GET`/`PUT /cases/{case}/markdown` read and save one case as a Markdown file; each plan entry shows `cases` and `new_cases`. Migration `0017`. Two new MCP tools.
 - Members can read an actor directory (`GET /actors`: names of users, agents, consumers and tokens); case versions record `via`, token and on-behalf-of; `GET /cases/{case}/cycles` lists a case's cycles; members and agents show `last_active_at`; agents take a `description` and can be re-enabled; audit filters by `actor_kind` and `q`, and `GET /audit/retention` states the policy and the oldest row kept.
 - Every API time input (`since`, `until`, `updated_since`, `expires_at`, `released_at`) given in another zone is read as the same instant in UTC, so MCP stats buckets start at UTC midnight and echo `Z`; org, member, agent, token and audit times also come back in UTC on SQLite.
 - Migrations: `result_case_version` is now revision `0015` on top of `0014_consumer_f7`, so `upgrade head` has one head again.

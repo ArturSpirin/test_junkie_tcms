@@ -270,7 +270,7 @@ class SearchHit(BaseModel):
     feature_id: str
     title: str
     current_version: int
-    matched_in: list[Literal["title", "preconditions", "steps"]]
+    matched_in: list[Literal["title", "description", "preconditions", "steps"]]
 
 
 class ExportIn(BaseModel):

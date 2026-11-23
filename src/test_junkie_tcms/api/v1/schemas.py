@@ -388,6 +388,10 @@ class PlanEntryOut(Out):
     feature_id: str | None = None
     query: dict[str, Any] | None = None
     position: int
+    cases: int = Field(0, description="How many live cases the entry selects now")
+    new_cases: int = Field(
+        0, description="How many of those no earlier entry selects; they sum to the plans_resolve total"
+    )
 
 
 PlanStatus = Literal["draft", "active", "archived"]
@@ -468,6 +472,7 @@ class CaseFields(BaseModel):
     """The versioned content; on an update, a field left out keeps its current value."""
 
     model_config = ConfigDict(extra="forbid")
+    description: RichIn | None = None
     preconditions: RichIn | None = None
     steps: list[StepIn] | None = Field(None, max_length=200)
     priority: Priority | None = None
@@ -501,6 +506,7 @@ class CaseOut(BaseModel):
     current_version: int
     position: int = Field(description="Index among the cases of its feature, for manual order")
     title: str
+    description: RichOut
     preconditions: RichOut
     steps: list[StepOut]
     priority: str
@@ -526,6 +532,7 @@ class CaseVersionOut(BaseModel):
     key: str
     version: int
     title: str
+    description: RichOut
     preconditions: RichOut
     steps: list[StepOut]
     priority: str
@@ -553,6 +560,21 @@ class CaseVersionSummary(BaseModel):
     token_id: str | None = None
     on_behalf_of_user_id: str | None = Field(None, description="The owner of the agent that saved it")
     created_at: UtcDateTime
+
+
+class CaseMarkdownOut(BaseModel):
+    case_id: str
+    key: str
+    version: int
+    markdown: str = Field(description="The case as one md-bundle file: JSON front matter, title, sections")
+
+
+class CaseMarkdownIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    markdown: str = Field(
+        max_length=1024 * 1024, description="One md-bundle file, as cases_markdown_get gives"
+    )
+    change_note: str | None = ChangeNote
 
 
 class CaseRestore(BaseModel):

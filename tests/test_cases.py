@@ -310,6 +310,124 @@ class Cases:
                 db.rollback()
         assert ok(owner.get(url("/cases/PAY-1")))["title"] == "Pay by card"
 
+    # Description
+
+    @test()
+    def test_description_is_versioned_and_restored_like_the_other_fields(self, suite_parameter):
+        owner = self.env.owner
+        s = self.s()
+        make_case(owner, s["product"]["id"], s["child"]["id"], description={"markdown": "Card payments"})
+        assert ok(owner.get(url("/cases/PAY-1")))["description"].strip() == "Card payments"
+        assert (
+            ok(patch(owner, "PAY-1", 1, {"preconditions": {"markdown": "Logged in"}}))["description"].strip()
+            == "Card payments"
+        )  # a field left out keeps its value
+        edited = ok(patch(owner, "PAY-1", 2, {"description": {"markdown": "Card and wallet payments"}}))
+        assert (edited["current_version"], edited["description"].strip()) == (3, "Card and wallet payments")
+        assert ok(owner.get(url("/cases/PAY-1/versions/1")))["description"].strip() == "Card payments"
+        restored = ok(owner.post(url("/cases/PAY-1/restore"), json={"version": 1}, headers={"If-Match": "3"}))
+        assert (restored["current_version"], restored["description"].strip()) == (4, "Card payments")
+        assert (
+            make_case(owner, s["product"]["id"], s["child"]["id"], title="Plain")["description"].strip() == ""
+        )
+
+    # One case as Markdown
+
+    @test()
+    def test_markdown_get_and_put_edit_the_case_through_the_bundle_parser(self, suite_parameter):
+        owner = self.env.owner
+        s = self.s()
+        case = make_case(
+            owner,
+            s["product"]["id"],
+            s["child"]["id"],
+            description={"markdown": "Card payments"},
+            steps=STEPS,
+        )
+        r = owner.get(url("/cases/PAY-1/markdown"))
+        got = ok(r)
+        assert r.headers["ETag"] == '"1"'
+        assert (got["case_id"], got["key"], got["version"]) == (case["id"], "PAY-1", 1)
+        text = got["markdown"]
+        assert " description -->\nCard payments" in text and "\n# Pay by card\n" in text
+        edited = text.replace("# Pay by card", "# Pay by debit card").replace("Card payments", "Debit only")
+        r = put_markdown(owner, "PAY-1", 1, edited, change_note="from the editor")
+        saved = ok(r)
+        assert r.headers["ETag"] == '"2"'
+        assert (saved["current_version"], saved["title"], saved["description"].strip()) == (
+            2,
+            "Pay by debit card",
+            "Debit only",
+        )
+        assert [st["id"] for st in saved["steps"]] == [st["id"] for st in case["steps"]]
+        assert ok(owner.get(url("/cases/PAY-1/versions/2")))["change_note"] == "from the editor"
+        assert [e["action"] for e in events(owner, "test_case")][-1] == "case.update"
+        same = ok(owner.get(url("/cases/PAY-1/markdown")))["markdown"]
+        assert ok(put_markdown(owner, "PAY-1", 2, same))["current_version"] == 2  # unchanged: no version
+
+    @test()
+    def test_markdown_put_without_a_description_section_keeps_the_description(self, suite_parameter):
+        owner = self.env.owner
+        s = self.s()
+        make_case(owner, s["product"]["id"], s["child"]["id"], description={"markdown": "Card payments"})
+        text = ok(owner.get(url("/cases/PAY-1/markdown")))["markdown"]
+        old = drop_section(text, "description").replace("# Pay by card", "# Renamed")
+        saved = ok(put_markdown(owner, "PAY-1", 1, old))
+        assert (saved["current_version"], saved["title"], saved["description"].strip()) == (
+            2,
+            "Renamed",
+            "Card payments",
+        )
+
+    @test()
+    def test_markdown_put_refuses_stale_wrong_case_moved_archived_and_read_only(self, suite_parameter):
+        owner = self.env.owner
+        s = self.s()
+        p, f = s["product"]["id"], s["child"]["id"]
+        make_case(owner, p, f)
+        make_case(owner, p, f, title="Second")
+        text = ok(owner.get(url("/cases/PAY-1/markdown")))["markdown"]
+        ok(patch(owner, "PAY-1", 1, {"title": "Moved on"}))
+        assert put_markdown(owner, "PAY-1", 1, text).status_code == 409  # If-Match is stale
+        stale = put_markdown(owner, "PAY-1", 2, text)  # the file is still at version 1
+        assert stale.status_code == 422 and stale.json()["errors"][0]["column"] == "version"
+        text = ok(owner.get(url("/cases/PAY-1/markdown")))["markdown"]
+        other = ok(owner.get(url("/cases/PAY-2/markdown")))["markdown"]
+        wrong = put_markdown(owner, "PAY-1", 2, other)
+        assert wrong.status_code == 422 and wrong.json()["errors"][0]["column"] == "key"
+        moved = text.replace('feature: "Checkout > Card"', 'feature: "Checkout"')
+        assert moved != text
+        bad = put_markdown(owner, "PAY-1", 2, moved)
+        assert bad.status_code == 422 and bad.json()["errors"][0]["column"] == "feature"
+        broken = put_markdown(owner, "PAY-1", 2, "no front matter")
+        assert broken.status_code == 422
+        token = ok(owner.post(url("/tokens"), json={"name": "ro", "scopes": ["read"]}), 201)["token"]
+        reader = self.env.bearer(token)
+        assert reader.get(url("/cases/PAY-1/markdown")).status_code == 200
+        assert put_markdown(reader, "PAY-1", 2, text).status_code == 403
+        ok(owner.post(url("/cases/PAY-1/archive")))
+        assert put_markdown(owner, "PAY-1", 2, text).status_code == 409
+        assert ok(owner.get(url("/cases/PAY-1")))["current_version"] == 2
+
+
+def put_markdown(client, case: str, version: int, markdown: str, org: str = "acme", **body):
+    return client.put(
+        url(f"/cases/{case}/markdown", org),
+        json={"markdown": markdown, **body},
+        headers={"If-Match": f'"{version}"'},
+    )
+
+
+def drop_section(text: str, name: str) -> str:
+    """The bundle file without one section: its marker line and the lines up to the next marker."""
+    out, dropping = [], False
+    for line in text.split("\n"):
+        if line.startswith("<!-- tcms-"):
+            dropping = line.endswith(f" {name} -->")
+        if not dropping:
+            out.append(line)
+    return "\n".join(out)
+
 
 def walk(client, product: str, **params) -> tuple[list[str], set[int]]:
     """Every case key of the list, read two to a page so the cursor is crossed, and each page's total."""

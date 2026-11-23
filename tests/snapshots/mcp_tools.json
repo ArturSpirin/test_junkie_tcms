@@ -850,6 +850,20 @@
        "description": "Free-form, for plugins; at most 16 KB as JSON",
        "title": "Custom"
       },
+      "description": {
+       "anyOf": [
+        {
+         "$ref": "#/$defs/MarkdownIn"
+        },
+        {
+         "$ref": "#/$defs/DocIn"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Description"
+      },
       "expected_version": {
        "anyOf": [
         {
@@ -1187,6 +1201,10 @@
     "location": "body",
     "wire": "custom"
    },
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
    "feature_id": {
     "location": "body",
     "wire": "feature_id"
@@ -1400,6 +1418,19 @@
       }
      ],
      "description": "Free-form, for plugins; at most 16 KB as JSON"
+    },
+    "description": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MarkdownIn"
+      },
+      {
+       "$ref": "#/$defs/DocIn"
+      },
+      {
+       "type": "null"
+      }
+     ]
     },
     "feature_id": {
      "type": "string"
@@ -1918,6 +1949,135 @@
   "annotations": {
    "destructive_hint": false,
    "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "case": {
+    "location": "path",
+    "wire": "case"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Cases Markdown Get. The case's current version as one md-bundle file, the same file an `md-bundle` export holds for\nit. The ETag is the version, for `cases_markdown_put`'s `If-Match`.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "case",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "cases_markdown_get",
+  "path": "/api/v1/orgs/{org}/cases/{case}/markdown",
+  "scope": "read",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "case": {
+    "location": "path",
+    "wire": "case"
+   },
+   "change_note": {
+    "location": "body",
+    "wire": "change_note"
+   },
+   "expected_version": {
+    "location": "header",
+    "wire": "If-Match"
+   },
+   "markdown": {
+    "location": "body",
+    "wire": "markdown"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Cases Markdown Put. Save an edited `cases_markdown_get` file as the case's next version, through the same parser and\nwrite path as an `md-bundle` import. The file's `key` must be this case and its `version` the\n`If-Match` one; a file with no description section keeps the stored description; a changed `feature`\nis 422 (use `cases_move`). An unchanged file writes no version.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case": {
+     "type": "string"
+    },
+    "change_note": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "expected_version": {
+     "description": "The version you last read; a stale one fails with 409 and current_version",
+     "minimum": 0,
+     "type": "integer"
+    },
+    "markdown": {
+     "description": "One md-bundle file, as cases_markdown_get gives",
+     "maxLength": 1048576,
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "case",
+    "expected_version",
+    "markdown",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "PUT",
+  "name": "cases_markdown_put",
+  "path": "/api/v1/orgs/{org}/cases/{case}/markdown",
+  "scope": "write:cases",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
    "read_only_hint": false
   },
   "args": {
@@ -2139,6 +2299,10 @@
     "location": "body",
     "wire": "custom"
    },
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
    "expected_version": {
     "location": "header",
     "wire": "If-Match"
@@ -2347,6 +2511,19 @@
       }
      ],
      "description": "Free-form, for plugins; at most 16 KB as JSON"
+    },
+    "description": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MarkdownIn"
+      },
+      {
+       "$ref": "#/$defs/DocIn"
+      },
+      {
+       "type": "null"
+      }
+     ]
     },
     "expected_version": {
      "description": "The version you last read; a stale one fails with 409 and current_version",
@@ -9531,7 +9708,7 @@
        "type": "null"
       }
      ],
-     "description": "Case-insensitive text in the title, preconditions or steps"
+     "description": "Case-insensitive text in the title, description, preconditions or steps"
     },
     "tag": {
      "default": [],

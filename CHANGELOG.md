@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- On a Postgres server whose time zone isn't UTC, every time the API returns is now UTC (`+00:00`), as on SQLite, and MCP stats day buckets start at UTC midnight.
 - Feature tree: the drag-and-drop hint bar now overlays the search row instead of pushing the tree down, so a drop lands on the row under the pointer.
 - MCP `tools/call` on a tool the caller can't use now says why: 403 `Needs scope <scope>`, or 403 naming its toolset and `?toolsets=`; only a name that isn't a tool is 404 `Unknown tool`.
 - MCP tools list each tool's description, its idempotent and destructive hints and its errors by HTTP status (`errors_by_code`); new `mcp_calls` lists the org's recent MCP calls (kept 7 days) with status and latency.

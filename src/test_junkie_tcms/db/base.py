@@ -18,7 +18,9 @@ GLOBAL_TABLES = {
     "user": "a person's account spans orgs; per-org rights live in membership",
     "session": "a login spans orgs; it holds no org data",
     "alembic_version": "migration bookkeeping",
-    "mcp_server_event": "server-wide MCP start and tool-list history; holds only tool names, hashes and versions",
+    "mcp_server_event": (
+        "server-wide MCP start and tool-list history; holds only tool names, hashes and versions"
+    ),
 }
 
 # Tenant tables whose rows start with no org: org_id may be NULL until the row is bound to one.

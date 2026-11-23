@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- `python scripts/check.py` runs the CI gate (ruff check, ruff format --check with the locked ruff, then every suite); CI's test job calls it, and `--lint` runs only the ruff steps.
 - Cases have a versioned `description`, in CSV and md-bundle files and in text search; `GET`/`PUT /cases/{case}/markdown` read and save one case as a Markdown file; each plan entry shows `cases` and `new_cases`. Migration `0017`. Two new MCP tools.
 - Members can read an actor directory (`GET /actors`: names of users, agents, consumers and tokens); case versions record `via`, token and on-behalf-of; `GET /cases/{case}/cycles` lists a case's cycles; members and agents show `last_active_at`; agents take a `description` and can be re-enabled; audit filters by `actor_kind` and `q`, and `GET /audit/retention` states the policy and the oldest row kept.
 - Every API time input (`since`, `until`, `updated_since`, `expires_at`, `released_at`) given in another zone is read as the same instant in UTC, so MCP stats buckets start at UTC midnight and echo `Z`; org, member, agent, token and audit times also come back in UTC on SQLite.

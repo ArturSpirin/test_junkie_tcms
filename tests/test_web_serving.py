@@ -1,5 +1,5 @@
-"""The app is served from TCMS's own origin: the shell at `/` and `/app/...`, its files at `/assets`, and every
-other route (`/api/v1`, `/mcp`, `/healthz`, the docs) answers as before."""
+"""The app is served from TCMS's own origin: the shell at `/` and `/app/...`, its files at `/assets`, and
+every other route (`/api/v1`, `/mcp`, `/healthz`, the docs) answers as before."""
 
 import glob
 import shutil
@@ -21,7 +21,9 @@ SHELL_PATHS = ("/", "/app", "/app/", "/app/cases/01J00000000000000000000000", "/
 
 
 def web_files() -> list[str]:
-    return sorted(p.relative_to(app_shell.WEB_DIR).as_posix() for p in app_shell.WEB_DIR.rglob("*") if p.is_file())
+    return sorted(
+        p.relative_to(app_shell.WEB_DIR).as_posix() for p in app_shell.WEB_DIR.rglob("*") if p.is_file()
+    )
 
 
 def packaged(root: Path) -> set[str]:
@@ -107,7 +109,12 @@ class WebServing:
     @test()
     def test_a_missing_or_escaping_asset_is_a_problem_404(self, suite_parameter):
         client = self.env.client()
-        for path in ("/assets/nope.js", "/assets/%2e%2e/app.py", "/assets/..%2fapp.py", "/assets/js/../../app.py"):
+        for path in (
+            "/assets/nope.js",
+            "/assets/%2e%2e/app.py",
+            "/assets/..%2fapp.py",
+            "/assets/js/../../app.py",
+        ):
             response = client.get(path)
             assert response.status_code == 404, (path, response.status_code)
             assert response.headers["content-type"].startswith("application/problem+json"), path
@@ -129,7 +136,15 @@ class WebServing:
     @test()
     def test_api_unknown_paths_stay_problem_404s(self, suite_parameter):
         client = self.env.client()
-        for path in ("/api/v1/nope", "/api/v1/orgs/acme/nope", "/api", "/mcpx", "/other", "/apps", "/app.css"):
+        for path in (
+            "/api/v1/nope",
+            "/api/v1/orgs/acme/nope",
+            "/api",
+            "/mcpx",
+            "/other",
+            "/apps",
+            "/app.css",
+        ):
             response = client.get(path)
             assert response.status_code == 404, (path, response.status_code)
             assert response.headers["content-type"].startswith("application/problem+json"), path

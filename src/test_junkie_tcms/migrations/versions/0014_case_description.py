@@ -1,15 +1,15 @@
 """case_version.description: a case's Description, versioned like its preconditions
 
-Revision ID: 0012
-Revises: 0011
+Revision ID: 0014
+Revises: 0013
 Create Date: 2026-11-22 20:00:00.000000
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0012"
-down_revision = "0011"
+revision = "0014"
+down_revision = "0013"
 branch_labels = None
 depends_on = None
 

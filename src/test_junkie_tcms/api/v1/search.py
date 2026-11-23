@@ -75,7 +75,7 @@ def search(
             .where(CaseVersionTag.case_version_id == CaseVersion.id, Tag.name == name)
             .exists()
         )
-    rows, cursor = paginate(db, query, TestCase.id, params)
+    rows, cursor, total = paginate(db, query, TestCase.id, params)
     versions = {
         v.case_id: v
         for v in db.scalars(
@@ -100,4 +100,4 @@ def search(
                 matched_in=matched,
             )
         )
-    return Page[SearchHit](items=items, next_cursor=cursor)
+    return Page[SearchHit](items=items, next_cursor=cursor, total=total)

@@ -143,9 +143,9 @@ def plans_list(
     query = select(TestPlan).where(TestPlan.org_id == ctx.org.id, TestPlan.product_id == p.id)
     if not include_archived:
         query = query.where(TestPlan.status != "archived")
-    rows, cursor = paginate(db, query, TestPlan.id, params)
+    rows, cursor, total = paginate(db, query, TestPlan.id, params)
     index = ProductIndex.load(db, ctx.org.id, p.id)
-    return Page[PlanOut](items=[plan_out(db, t, mode, index) for t in rows], next_cursor=cursor)
+    return Page[PlanOut](items=[plan_out(db, t, mode, index) for t in rows], next_cursor=cursor, total=total)
 
 
 @router.post(PLANS, status_code=201, response_model=PlanOut, **op("plans_create", WRITE_PLANNING, "planning"))

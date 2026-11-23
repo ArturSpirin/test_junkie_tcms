@@ -8,6 +8,7 @@ built in the app's lifespan, after plugins have added their routers.
 
 import contextlib
 import json
+import time
 from dataclasses import dataclass, replace
 from urllib.parse import parse_qs
 
@@ -55,15 +56,26 @@ def parse_toolsets(value: str) -> frozenset[str]:
     return frozenset(names | {ALWAYS_ON})
 
 
-def visible(tool: ToolSpec, caller: Caller) -> bool:
+def refusal(tool: ToolSpec, caller: Caller) -> tuple[int, str] | None:
+    """Why the caller can't use the tool, as (status, detail), or None when it can.
+
+    Scope comes first: reconnecting with another toolset can't add a scope the caller lacks."""
+    # The tools marked audit:read take admin too (require_any_scope), so admin passes them.
+    if tool.scope == AUDIT_READ:
+        if not {AUDIT_READ, ADMIN} & caller.scopes:
+            return 403, f"Needs scope {ADMIN} or {AUDIT_READ}"
+    elif tool.scope is not None and tool.scope not in caller.scopes:
+        return 403, f"Needs scope {tool.scope}"
     if tool.toolset not in caller.toolsets:
-        return False
-    # The MCP stats tools are marked audit:read and take admin too (require_any_scope), so admin sees them.
-    return (
-        tool.scope is None
-        or tool.scope in caller.scopes
-        or (tool.scope == AUDIT_READ and ADMIN in caller.scopes)
-    )
+        return 403, (
+            f"{tool.name} is in toolset {tool.toolset}: "
+            f"connect with ?toolsets={tool.toolset} or ?toolsets=all"
+        )
+    return None
+
+
+def visible(tool: ToolSpec, caller: Caller) -> bool:
+    return refusal(tool, caller) is None
 
 
 def _problem(status: int, title: str, detail: str, headers: dict | None = None) -> JSONResponse:
@@ -136,6 +148,13 @@ class McpEndpoint:
         return None
 
 
+def _error(status: int, title: str, detail: str) -> dict:
+    return {
+        "status": status,
+        "error": {"type": "about:blank", "title": title, "status": status, "detail": detail},
+    }
+
+
 def _result(envelope: dict) -> types.CallToolResult:
     return types.CallToolResult(
         content=[types.TextContent(text=json.dumps(envelope, default=str))],
@@ -154,19 +173,16 @@ def make_server(app: FastAPI, tools: list[ToolSpec]) -> Server:
     async def call_tool(ctx, params) -> types.CallToolResult:
         caller: Caller = ctx.request.scope[CALLER_KEY]
         tool = by_name.get(params.name)
-        if tool is None or not visible(tool, caller):
-            return _result(
-                {
-                    "status": 404,
-                    "error": {
-                        "type": "about:blank",
-                        "title": "Not Found",
-                        "status": 404,
-                        "detail": f"Unknown tool {params.name}",
-                    },
-                }
-            )
-        result = _result(await dispatch(app, tool, params.arguments or {}, caller.token))
+        if tool is None:
+            return _result(_error(404, "Not Found", f"Unknown tool {params.name}"))
+        refused = refusal(tool, caller)
+        if refused is not None:  # it exists but this caller can't use it: say why, and don't record it
+            status, detail = refused
+            return _result(_error(status, "Forbidden", detail))
+        started = time.perf_counter()
+        envelope = await dispatch(app, tool, params.arguments or {}, caller.token)
+        ms = round((time.perf_counter() - started) * 1000)
+        result = _result(envelope)
         size = len(result.content[0].text.encode())
         await anyio.to_thread.run_sync(
             stats.safe_record,
@@ -174,8 +190,9 @@ def make_server(app: FastAPI, tools: list[ToolSpec]) -> Server:
             caller.org_id,
             caller.actor_id,
             tool.name,
-            result.is_error,
+            envelope["status"],
             size,
+            ms,
         )
         return result
 

@@ -13,7 +13,7 @@ app does not show them.
 | F3 | Case Description field, per-case Markdown, plan entry resolution counts |
 | F4 | Cycle and run extras: created/closed by, bulk naming, splits, retries, stop, step ignore, build under test |
 | F5 | Report periods, trend, org KPIs, product-wide and feature-history reports |
-| F6 | MCP tool descriptions and hints, recent calls, error-code breakdown |
+| F6 | MCP tool descriptions and hints, recent calls, error-code breakdown (done) |
 | F7 | Consumer jobs per machine, rejected reason, pause, deny pairing, pending-pairing preview, roster |
 | F8 | Name search (`q`) on lists, product owner, copy feature tree, ETA and manual case order on Start |
 
@@ -278,7 +278,7 @@ Action names are singular (`product.create`), not the mock's `products.create`.
 
 ### 15. MCP
 
-All five need the audit-read permission (admins).
+All six need the audit-read permission (admins).
 
 | Need | Operations | Status |
 |---|---|---|
@@ -288,7 +288,10 @@ All five need the audit-read permission (admins).
 | clients KPI (count and names) | `GET /mcp/clients` (`mcp_clients`) | added |
 | updates feed | `GET /mcp/updates` (`mcp_updates`) | added |
 | live usage | poll, see below | added |
-| tool description, hints, recent calls, error codes, "last call" in live mode | | not yet (F6) |
+| tool description, idempotent and destructive hints, errors by code | `McpToolOut.description`, `idempotent`, `destructive`, `errors_by_code` | added |
+| recent calls with status and latency, "last call" in live mode | `GET /mcp/calls` (`mcp_calls`) | added |
+| a call's target in its label (`cases_get PAY-101`, `search q=refund`) | | out of scope: arguments can carry case data, so they are not stored |
+| a failed call's error body or note | | out of scope: only the HTTP status is stored |
 | drift-guard CI results in the feed | | out of scope (v1, owner decision) |
 
 **Range.** `mcp_tools_list`, `mcp_usage` and `mcp_clients` take `since` and `until` (ISO 8601). `since` is
@@ -297,19 +300,24 @@ floored and `until` ceiled to the bucket. `since >= until`, or a span over 90 da
 `mcp_server_get`:
 
 ```json
-{"name": "...", "version": "...", "tool_count": 92, "tool_list_hash": "..."}
+{"name": "...", "version": "...", "tool_count": 93, "tool_list_hash": "..."}
 ```
 
 `mcp_tools_list?since&until` (default: the last 30 days):
 
 ```json
 {"since": "...", "until": "...", "total_def_tokens": 0,
- "items": [{"name": "...", "toolset": "...", "scope": "...", "read_only": true, "def_tokens": 0,
+ "items": [{"name": "...", "toolset": "...", "scope": "...", "description": "...",
+            "read_only": true, "idempotent": true, "destructive": false, "def_tokens": 0,
             "calls_7d": 0, "errors_7d": 0, "calls_30d": 0, "errors_30d": 0,
-            "calls": 0, "errors": 0, "p50_resp_tokens": 0, "p95_resp_tokens": 0}]}
+            "calls": 0, "errors": 0, "errors_by_code": {"404": 0, "422": 0},
+            "p50_resp_tokens": 0, "p95_resp_tokens": 0}]}
 ```
 
-`calls` and `errors` cover the chosen range; `calls_7d`/`calls_30d` are fixed windows.
+`calls` and `errors` cover the chosen range; `calls_7d`/`calls_30d` are fixed windows. `errors_by_code` splits
+`errors` by HTTP status (keys are strings, only codes that occurred); its values sum to `errors` for calls
+recorded since F6 (older hour rows have no codes). The mock's tool kind comes from `read_only`, `idempotent`
+and `destructive`.
 
 `mcp_usage?since&until&bucket=hour|day&tool&actor`:
 
@@ -336,7 +344,7 @@ as a read when it is a `GET`; a tool that is no longer in the running tool list 
 ```json
 {"items": [{"id": "...", "at": "...", "kind": "tools_changed", "version": "...", "tool_list_hash": "...",
             "added": ["..."], "removed": ["..."], "changed": ["..."]}],
- "next_cursor": null}
+ "next_cursor": null, "total": 0}
 ```
 
 `kind` is `server_started` or `tools_changed`. The feed is server-wide: every org sees the same rows, which
@@ -345,7 +353,20 @@ list hash differs from the newest row, else `server_started`. With several worke
 its own row, so one deploy can show several `server_started` rows; only the first worker after a change writes
 `tools_changed`.
 
-**Live.** The app polls `mcp_usage?bucket=hour` and `mcp_clients` every 15 seconds while live mode is on.
+`mcp_calls?since&until&tool&actor&cursor&limit` (paged, newest first; `limit` default 20, at most 100):
+
+```json
+{"items": [{"id": "...", "at": "...", "tool": "...", "actor_id": "...", "name": "...", "kind": "agent",
+            "status": 200, "ms": 0, "resp_tokens": 0}],
+ "next_cursor": null, "total": 0}
+```
+
+One row per call that reached a tool, kept 7 days. `status` is the HTTP status the tool got (an error when
+`>= 400`), `ms` the time spent in the tool, `resp_tokens` the response size in ≈ tokens (bytes ÷ 4). A tool's
+recent calls are `mcp_calls?tool=<name>`. The call's arguments and response body are not stored.
+
+**Live.** The app polls `mcp_usage?bucket=hour`, `mcp_clients` and `mcp_calls?limit=1` (the "last call") every
+15 seconds while live mode is on.
 There is no server push (no SSE, no `notifications/tools/list_changed`).
 
 ### 16. Consumers (machines)

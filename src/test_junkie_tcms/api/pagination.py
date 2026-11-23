@@ -22,10 +22,13 @@ def page_params(
     return PageParams(cursor=cursor, limit=limit)
 
 
-def paginate(db: Session, query: Select, id_column, params: PageParams) -> tuple[list[Any], str | None]:
+def paginate(
+    db: Session, query: Select, id_column, params: PageParams, newest_first: bool = False
+) -> tuple[list[Any], str | None]:
     if params.cursor:
-        query = query.where(id_column > params.cursor)
-    rows = list(db.scalars(query.order_by(id_column).limit(params.limit + 1)))
+        query = query.where(id_column < params.cursor if newest_first else id_column > params.cursor)
+    order = id_column.desc() if newest_first else id_column
+    rows = list(db.scalars(query.order_by(order).limit(params.limit + 1)))
     if len(rows) > params.limit:
         rows = rows[: params.limit]
         return rows, rows[-1].id

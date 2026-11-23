@@ -24,6 +24,54 @@ const depthOf = (list, id, d = 0) => {
 const count = (x) => (x.t === "c" ? 1 : (x.more || 0) + x.kids.reduce((a, k) => a + count(k), 0));
 const within = (a, b) => a.id === b.id || (a.kids || []).some((k) => within(k, b));
 const name = (x) => (x.t === "c" ? x.key : x.name);
+const isOpen = (x) => x.t === "f" && x.kids.length > 0 && !!x.open;
+
+/* ---------- keyboard (WAI-ARIA tree pattern): pure, so the tests run them under node on the real data ---------- */
+/* the rows on screen, in order */
+function visible(list, parent = null, out = []) {
+  for (const x of list) {
+    out.push({ id: x.id, t: x.t, parent, hasK: x.t === "f" && x.kids.length > 0, open: isOpen(x) });
+    if (isOpen(x)) visible(x.kids, x.id, out);
+  }
+  return out;
+}
+/* what a key on the focused row does: { focus: id }, { toggle: id }, { open: href } or null */
+function navKey(model, id, key) {
+  const v = visible(model), i = v.findIndex((r) => r.id === id), r = v[i];
+  if (!r) return v.length ? { focus: v[0].id } : null;
+  switch (key) {
+    case "ArrowDown": return { focus: v[Math.min(i + 1, v.length - 1)].id };
+    case "ArrowUp": return { focus: v[Math.max(i - 1, 0)].id };
+    case "Home": return { focus: v[0].id };
+    case "End": return { focus: v[v.length - 1].id };
+    case "ArrowRight": return r.hasK ? (r.open ? { focus: v[i + 1].id } : { toggle: id }) : null;
+    case "ArrowLeft": return r.open ? { toggle: id } : r.parent ? { focus: r.parent } : null;
+    case "Enter": return { open: r.t === "c" ? href("case", { id }) : href("tree", { feature: id }) };
+  }
+  return null;
+}
+/* every place a keyboard move can drop src, in screen order, one per gap between rows: the places drag reaches.
+   "after" an open feature stays only when it is last in its list (no "before" below it covers that gap).
+   start is the index of the first place below src. Places check() refuses stay in, so the bar says why. */
+function slots(model, src) {
+  const list = [];
+  let start = 0;
+  const walk = (xs) => xs.forEach((x, i) => {
+    const me = x.id === src;
+    if (!me && (i === 0 || isOpen(xs[i - 1]))) list.push({ id: x.id, z: "before" });
+    if (!me && x.t === "f") list.push({ id: x.id, z: "in" });
+    if (me) start = list.length;
+    if (isOpen(x)) walk(x.kids);
+    if (!me && (!isOpen(x) || i === xs.length - 1)) list.push({ id: x.id, z: "after" });
+  });
+  walk(model);
+  return { list, start };
+}
+/* the place one step down (dir 1) or up (dir -1) from place cur, or from src when cur is null; null when there is none */
+function stepSlot(sl, cur, dir) {
+  const i = cur == null ? (dir > 0 ? sl.start : sl.start - 1) : cur + dir;
+  return i >= 0 && i < sl.list.length ? i : cur;
+}
 
 /* ---------- option sets (fixed choices; the product, tag and destination lists come from data) ---------- */
 const PRI_COL = { critical: "var(--fail)", high: "var(--blocked)", medium: "var(--retest)", low: "var(--faint)" };
@@ -81,7 +129,7 @@ function rows(list, d, o) {
       : `${I.folder}<span class="ell">${hl(esc(x.name), o.q)}</span><span class="c">${count(x)}</span>`;
     const more = open && x.more && x.kids.some((k) => k.t === "c") ? `<li class="more" style="--d:${d + 1}">+${x.more} more cases · <a href="${href("cases", { feature: x.id })}">show all</a></li>` : "";
     const add = o.newUnder === x.id ? newRow(o, d + 1) : "";
-    return `<li><div class="${cls}" style="--d:${d}" data-id="${esc(x.id)}" data-t="${x.t}"${o.ro ? "" : ' draggable="true"'} tabindex="0" role="treeitem"${hasK ? ` aria-expanded="${open}"` : ""}>` +
+    return `<li><div class="${cls}" style="--d:${d}" data-id="${esc(x.id)}" data-t="${x.t}"${o.ro ? "" : ' draggable="true"'} tabindex="${o.focus === x.id ? 0 : -1}" role="treeitem"${hasK ? ` aria-expanded="${open}"` : ""}>` +
       `${o.ro ? "" : `<span class="gh" title="Drag to move">${I.drag}</span>`}<span class="tw${hasK && !open ? " closed" : ""}"${hasK ? " data-tw" : ""}>${hasK ? I.chevd : ""}</span>${body}<span class="nd" title="Not allowed here">${I.ban}</span></div>` +
       `${o.ext[x.id] || ""}${open || add ? `<ul role="group">${open ? rows(x.kids, d + 1, o) : ""}${more}${add}</ul>` : ""}</li>`;
   }).join("");
@@ -101,7 +149,7 @@ function treeCard(o) {
   return `<div class="card tcard"><div class="hd"><div class="tch"><span class="eyebrow">Product</span>${dd({ value: d.picked, options: prodOpts(d), cls: "sm block", search: "Find a product", label: "Product", name: "product" })}</div>${o.ro ? "" : `<button class="icon-btn" data-hash="new-feature" title="New feature" aria-label="New feature">${I.plus}</button>`}</div>
   <div class="dnd-slot">${o.emptyProduct ? "" : psearch({ q: o.q, ph: "Search features and cases", cnt, clear: cleared() })}<div class="dnd-bar${o.barBad ? " bad" : ""}" id="dndbar" role="status"${o.bar ? "" : " hidden"}>${o.bar || ""}</div></div>
   <ul class="tree" id="tree" role="tree" aria-label="Features and cases">${body}</ul>
-  ${o.ro || o.emptyProduct ? "" : `<div class="tfoot">${I.drag}<span>Drag any feature or case. Drop on a feature to put it inside; drop between rows to reorder.</span></div>`}</div>`;
+  ${o.ro || o.emptyProduct ? "" : `<div class="tfoot">${I.drag}<span>Drag any feature or case. Drop on a feature to put it inside; drop between rows to reorder. Or Space to pick up, arrows, Enter.</span></div>`}</div>`;
 }
 
 /* ---------- case list ---------- */
@@ -210,7 +258,13 @@ function opts(d, ui = {}) {
   if (d.move) { o.cls[d.move.src] = "ghost"; o.cls[d.move.dest] = "drop"; }
   if (d.moved) o.cls[d.moved] = "just";
   if (d.drag) dragPreview(o, d.drag);
+  o.focus = rover(o.model, d.moved || o.sel);
   return o;
+}
+/* the tree's one tab stop (roving tabindex): the row asked for if it is on screen, else the first row */
+function rover(model, id) {
+  const v = visible(model);
+  return v.some((r) => r.id === id) ? id : v.length ? v[0].id : null;
 }
 const right = (o) => {
   if (!o.emptyProduct) return featureCard(o) + casesCard(o);
@@ -241,17 +295,20 @@ function movedMsg(s, same, dest, z, t, product) {
 }
 function droppedToast(d) {
   const m = find(d.tree, d.moved);
-  return `<div class="toast" role="status">${movedMsg(m.node, false, m.parent, "in", null, d.product.name)}<button class="btn sm" data-act="undo">Undo</button></div>`;
+  return `<div class="toast" role="status">${movedMsg(m.node, false, m.parent, "in", null, d.product.name)}<button class="btn sm" data-act="undo" aria-keyshortcuts="Control+Z" title="Undo (Ctrl+Z)">Undo</button></div>`;
 }
 const loading = (d) => head(d) + `<div class="split"><div class="card"><div class="bd stack">${"<span class='skel'></span>".repeat(8)}</div></div><div class="card"><div class="bd stack">${"<span class='skel' style='height:18px'></span>".repeat(6)}</div></div></div>`;
 const error = (d) => head(d) + `<div class="banner err">${I.warn}<div style="min-width:0;flex:1"><b>Couldn't load the tree.</b> The server said:
 <pre class="raw">${esc(d.error)}</pre></div><div class="r"><button class="btn sm" data-act="retry">Retry</button></div></div>`;
 
-/* ---------- live HTML5 drag and drop and twisties (browser only, wired once from after) ---------- */
-/* CUR: the render options of the state on the page; D: its data; MODEL: the tree as drawn (twisties change it) */
-let CUR = null, D = null, MODEL = null, SRC = null, wired = false;
+/* ---------- live HTML5 drag and drop, keyboard and twisties (browser only, wired once from after) ---------- */
+/* CUR: the render options of the state on the page; D: its data; MODEL: the tree as drawn (twisties change it);
+   KEY: a keyboard move under way, { src, sl: slots(), i: the place index or null } */
+let CUR = null, D = null, MODEL = null, SRC = null, KEY = null, wired = false;
+const NAV_KEYS = ["ArrowDown", "ArrowUp", "ArrowRight", "ArrowLeft", "Home", "End", "Enter"];
 function paint() {
   const t = document.getElementById("tcol"), c = document.getElementById("ccol");
+  CUR.focus = rover(CUR.model, CUR.focus);
   if (t) t.innerHTML = treeCard(CUR);
   if (c && !CUR.emptyProduct) c.innerHTML = featureCard(CUR) + casesCard(CUR);
 }
@@ -267,10 +324,37 @@ function zone(n, e) {
   return y < 0.5 ? "before" : "after";
 }
 function clearMarks() { document.querySelectorAll("#tree .n.drop, #tree .n.ins-b, #tree .n.ins-a, #tree .n.nodrop").forEach((x) => x.classList.remove("drop", "ins-b", "ins-a", "nodrop")); }
+/* the row mark and bar text for src over row n at zone z, shared by drag and the keyboard move; false when not allowed */
+function markDrop(n, src, z) {
+  const why = check(MODEL, src, n.dataset.id, z);
+  if (why) { n.classList.add("nodrop"); setBar(why, true); return false; }
+  n.classList.add(z === "in" ? "drop" : z === "before" ? "ins-b" : "ins-a");
+  const t = find(MODEL, n.dataset.id);
+  setBar(z === "in" ? `Drop into <b>${esc(t.node.name)}</b>${find(MODEL, src).node.t === "f" ? ": becomes a sub-feature" : ""}` : `Drop ${z} <b>${esc(name(t.node))}</b> in ${esc(t.parent ? t.parent.name : CUR.d.product.name)}`);
+  return true;
+}
+const rowEl = (id) => document.querySelector(`#tree .n[data-id="${CSS.escape(id)}"]`);
+/* make row n the tree's one tab stop */
+function rove(n) {
+  document.querySelectorAll('#tree .n[tabindex="0"]').forEach((x) => x !== n && x.setAttribute("tabindex", "-1"));
+  n.setAttribute("tabindex", "0"); CUR.focus = n.dataset.id;
+}
+function focusRow(id) {
+  const n = rowEl(id) || document.querySelector('#tree .n[tabindex="0"]');
+  if (n) { rove(n); n.focus(); }
+}
+/* ends a keyboard move: marks, dim and bar cleared; returns its src */
+function endKeyMove() {
+  const s = KEY.src;
+  KEY = null; clearMarks(); setBar(null);
+  document.querySelectorAll("#tree .n.dragging").forEach((x) => x.classList.remove("dragging"));
+  return s;
+}
 /* Where dropping src on tgt (zone z) puts it: the new parent (a feature id, or null for the top level) and its
-   index among the siblings of its kind (null appends a case), and where it was (from: "" for the top level). */
-function place(src, tgt, z) {
-  const m = JSON.parse(JSON.stringify(MODEL));
+   index among the siblings of its kind (null appends a case), and where it was (from: "" for the top level).
+   Shared by drag and the keyboard move; model defaults to the tree on the page. */
+function place(src, tgt, z, model = MODEL) {
+  const m = JSON.parse(JSON.stringify(model));
   const a = find(m, src); a.list.splice(a.i, 1);
   const s = a.node, t = find(m, tgt);
   const from = s.t === "c" ? s.fid : (a.parent ? a.parent.id : "");
@@ -372,6 +456,7 @@ function wire() {
     if (!CUR || !CUR.live) return;
     const n = e.target.closest && e.target.closest('[data-id][draggable="true"]');
     if (!n) return;
+    if (KEY) endKeyMove();
     SRC = n.dataset.id;
     e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", SRC);
     requestAnimationFrame(() => n.classList.add("dragging"));
@@ -382,12 +467,8 @@ function wire() {
     const n = e.target.closest && e.target.closest("#tree .n[data-id]");
     clearMarks();
     if (!n || n.dataset.id === SRC) return;
-    const z = zone(n, e), why = check(MODEL, SRC, n.dataset.id, z);
-    if (why) { n.classList.add("nodrop"); setBar(why, true); e.dataTransfer.dropEffect = "none"; return; }
+    if (!markDrop(n, SRC, zone(n, e))) { e.dataTransfer.dropEffect = "none"; return; }
     e.preventDefault(); e.dataTransfer.dropEffect = "move";
-    n.classList.add(z === "in" ? "drop" : z === "before" ? "ins-b" : "ins-a");
-    const t = find(MODEL, n.dataset.id);
-    setBar(z === "in" ? `Drop into <b>${esc(t.node.name)}</b>${find(MODEL, SRC).node.t === "f" ? ": becomes a sub-feature" : ""}` : `Drop ${z} <b>${esc(name(t.node))}</b> in ${esc(t.parent ? t.parent.name : CUR.d.product.name)}`);
   });
   document.addEventListener("drop", (e) => {
     if (!SRC) return;
@@ -402,7 +483,64 @@ function wire() {
   document.addEventListener("dragend", () => { clearMarks(); document.querySelectorAll(".dragging").forEach((x) => x.classList.remove("dragging")); if (SRC) setBar(null); SRC = null; });
   document.addEventListener("click", onClick);
   document.addEventListener("keydown", onKey);
+  document.addEventListener("keydown", onTreeKey);
   document.addEventListener("dd:change", onPick);
+  /* a row focused by pointer becomes the tab stop; focus leaving the tree cancels a keyboard move */
+  document.addEventListener("focusin", (e) => { const n = CUR && !KEY && e.target.closest && e.target.closest("#tree .n[data-id]"); if (n) rove(n); });
+  document.addEventListener("focusout", (e) => {
+    if (!KEY || !(e.target.closest && e.target.closest("#tree"))) return;
+    const to = e.relatedTarget;
+    if (!(to && to.closest && to.closest("#tree"))) endKeyMove();
+  });
+}
+/* the row a keyboard move or its undo lands on: kept across the reload the server write ends with */
+const FOCUS_KEY = "tcms.tree.focus";
+function keepFocus(id) { try { sessionStorage.setItem(FOCUS_KEY, id); } catch { /* no storage: focus starts at the tab stop */ } }
+function keptFocus() {
+  try { const id = sessionStorage.getItem(FOCUS_KEY); sessionStorage.removeItem(FOCUS_KEY); return id; } catch { return null; }
+}
+/* the tree's keys (WAI-ARIA tree pattern), the keyboard move, and Ctrl+Z for the move toast's Undo */
+function onTreeKey(e) {
+  if (!CUR) return;
+  /* Ctrl+Z undoes a move while its toast is up, except where the field has its own undo */
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "z") {
+    const a = document.activeElement, b = document.querySelector('[data-view="tree"] .toast [data-act="undo"]');
+    if (b && !b.disabled && D && D.undo && !(a && (a.isContentEditable || a.matches("input, textarea, select")))) {
+      e.preventDefault();
+      keepFocus(D.moved);
+      b.click();
+    }
+    return;
+  }
+    const n = e.target.closest && e.target.closest("#tree .n[data-id]");
+    if (!n || e.altKey || e.ctrlKey || e.metaKey) return;
+    if (KEY) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        const i = stepSlot(KEY.sl, KEY.i, e.key === "ArrowDown" ? 1 : -1);
+        if (i != null) { KEY.i = i; const s = KEY.sl.list[i], t = rowEl(s.id); clearMarks(); markDrop(t, KEY.src, s.z); focusRow(s.id); }
+      } else if (e.key === "Enter") {
+        const s = KEY.i == null ? null : KEY.sl.list[KEY.i];
+        if (s && !check(MODEL, KEY.src, s.id, s.z)) { const src = endKeyMove(); keepFocus(src); focusRow(src); move(src, s.id, s.z); }
+      } else if (e.key === "Escape") focusRow(endKeyMove());
+      else if (!["ArrowLeft", "ArrowRight", "Home", "End", " "].includes(e.key)) return;
+      e.preventDefault();
+      return;
+    }
+    if (e.key === " ") {
+      if (!CUR.live || CUR.ro) return;
+      e.preventDefault();
+      KEY = { src: n.dataset.id, sl: slots(MODEL, n.dataset.id), i: null };
+      n.classList.add("dragging");
+      setBar(`Moving <b>${esc(name(find(MODEL, KEY.src).node))}</b> · ↑↓ choose where, Enter drops, Esc cancels`);
+      return;
+    }
+    if (!NAV_KEYS.includes(e.key)) return;
+    e.preventDefault();
+    const r = navKey(CUR.model, n.dataset.id, e.key);
+    if (!r) return;
+    if (r.open) location.assign(r.open);
+    else if (r.toggle) { const x = find(MODEL, r.toggle).node; x.open = !x.open; CUR.model = MODEL; paint(); focusRow(r.toggle); }
+    else focusRow(r.focus);
 }
 
 /* ---------- states: ui holds the state's UI options (live drag and drop, open filter, description mode) ---------- */
@@ -437,7 +575,10 @@ export default { nav: "features", default: "default", states,
     D = d;
     CUR = s.ui ? opts(d, s.ui) : null;
     MODEL = CUR && CUR.model;
-    SRC = null;
+    SRC = null; KEY = null;
     wire();
+    const f = CUR && keptFocus();
+    if (f) focusRow(f);
   }
 };
+export const keyboard = { visible, navKey, slots, stepSlot, place, check };

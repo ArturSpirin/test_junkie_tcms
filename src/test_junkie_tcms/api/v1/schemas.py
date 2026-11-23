@@ -1,12 +1,23 @@
 from datetime import date, datetime
 from typing import Annotated, Any, Generic, Literal, TypeVar
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 from test_junkie_tcms.db.base import aware
 
-# A stored time read back from SQLite is naive; mark it UTC so the API always says so.
+# The type of every API time, in and out: a caller's offset or a naive time read back from SQLite becomes UTC.
+# Every datetime query param and body field uses it (or ZonedUtcDateTime); tests/test_utc_inputs.py checks.
 UtcDateTime = Annotated[datetime, AfterValidator(aware)]
+# An input time that must carry a zone (a naive one is a 422), then made UTC.
+ZonedUtcDateTime = Annotated[AwareDatetime, AfterValidator(aware)]
 
 Role = Literal["viewer", "tester", "editor", "admin", "owner"]
 # The one name check for every write (org, member, agent, token, invite, product, feature, release, plan,
@@ -53,7 +64,7 @@ class OrgOut(Out):
     id: str
     slug: str
     name: str
-    created_at: datetime
+    created_at: UtcDateTime
 
 
 class OrgUpdate(BaseModel):
@@ -66,7 +77,7 @@ class MemberOut(BaseModel):
     email: str
     name: str
     role: str
-    removed_at: datetime | None = None
+    removed_at: UtcDateTime | None = None
 
 
 class MemberAdd(BaseModel):
@@ -86,8 +97,8 @@ class AgentOut(Out):
     name: str
     role: str
     owner_user_id: str
-    disabled_at: datetime | None = None
-    created_at: datetime
+    disabled_at: UtcDateTime | None = None
+    created_at: UtcDateTime
 
 
 class AgentCreate(BaseModel):
@@ -109,10 +120,10 @@ class TokenOut(Out):
     actor_id: str
     scopes: list[str]
     product_ids: list[str] | None = None
-    expires_at: datetime | None = None
-    revoked_at: datetime | None = None
-    last_used_at: datetime | None = None
-    created_at: datetime
+    expires_at: UtcDateTime | None = None
+    revoked_at: UtcDateTime | None = None
+    last_used_at: UtcDateTime | None = None
+    created_at: UtcDateTime
 
 
 class TokenCreate(BaseModel):
@@ -120,7 +131,7 @@ class TokenCreate(BaseModel):
     scopes: list[str] = Field(min_length=1)
     # Defaults to the caller's own actor.
     actor_id: str | None = None
-    expires_at: datetime | None = None
+    expires_at: ZonedUtcDateTime | None = None
     # Limit the token to these products; None means every product (or the caller's own limit).
     product_ids: list[str] | None = None
 
@@ -290,7 +301,7 @@ class ReleaseCreate(BaseModel):
     name: Name
     status: ReleaseStatus = "planned"
     target_date: date | None = None
-    released_at: datetime | None = None
+    released_at: UtcDateTime | None = None
     notes: RichIn | None = None
 
 
@@ -299,7 +310,7 @@ class ReleaseUpdate(Patch):
     name: Name | None = None
     status: ReleaseStatus | None = None
     target_date: date | None = None
-    released_at: datetime | None = None
+    released_at: UtcDateTime | None = None
     notes: RichIn | None = None
 
 
@@ -551,7 +562,7 @@ class TagOut(BaseModel):
 
 class AuditOut(Out):
     id: str
-    created_at: datetime
+    created_at: UtcDateTime
     actor_id: str
     token_id: str | None
     on_behalf_of_user_id: str | None

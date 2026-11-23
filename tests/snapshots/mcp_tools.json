@@ -7629,7 +7629,7 @@
     "wire": "release_id"
    }
   },
-  "description": "Reports Release. Release readiness: the counts, `ready`, and the counts per feature (by the case's current feature).",
+  "description": "Reports Release. Release readiness: the counts, `ready`, one row per release feature (`in_release: true`, even with\nno cases), then rows for cases of features outside the release (`in_release: false`). Not ready while\na release feature has no case.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
@@ -7711,8 +7711,10 @@
       "comment": {
        "anyOf": [
         {
-         "maxLength": 20000,
-         "type": "string"
+         "$ref": "#/$defs/MarkdownIn"
+        },
+        {
+         "$ref": "#/$defs/DocIn"
         },
         {
          "type": "null"
@@ -7759,6 +7761,22 @@
      "title": "BulkResultItem",
      "type": "object"
     },
+    "DocIn": {
+     "additionalProperties": false,
+     "properties": {
+      "doc": {
+       "additionalProperties": true,
+       "description": "A rich text doc (TipTap StarterKit node names)",
+       "title": "Doc",
+       "type": "object"
+      }
+     },
+     "required": [
+      "doc"
+     ],
+     "title": "DocIn",
+     "type": "object"
+    },
     "Link": {
      "additionalProperties": false,
      "properties": {
@@ -7785,6 +7803,21 @@
       "url"
      ],
      "title": "Link",
+     "type": "object"
+    },
+    "MarkdownIn": {
+     "additionalProperties": false,
+     "properties": {
+      "markdown": {
+       "maxLength": 200000,
+       "title": "Markdown",
+       "type": "string"
+      }
+     },
+     "required": [
+      "markdown"
+     ],
+     "title": "MarkdownIn",
      "type": "object"
     }
    },

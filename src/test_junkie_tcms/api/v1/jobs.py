@@ -188,8 +188,8 @@ def jobs_list(
     cycle = get_cycle(db, ctx, id)
     if stall_check(db, ctx.org.id, utcnow()):
         db.commit()
-    rows, cursor = paginate(db, select(Job).where(Job.cycle_id == cycle.id), Job.id, params)
-    return Page[JobOut](items=[job_out(j) for j in rows], next_cursor=cursor)
+    rows, cursor, total = paginate(db, select(Job).where(Job.cycle_id == cycle.id), Job.id, params)
+    return Page[JobOut](items=[job_out(j) for j in rows], next_cursor=cursor, total=total)
 
 
 @router.post(JOB + "/cancel", response_model=JobOut, **op("jobs_cancel", WRITE_EXECUTION, "execution"))

@@ -390,4 +390,33 @@ html.dark :where([data-view="mcp"]) .drw { background: linear-gradient(180deg, r
 :where([data-view="consumers"]) .t td code { font: 500 12px var(--mono); display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 520px; }
 @media (max-width: 1180px) { :where([data-view="consumers"]) .g3.ms { grid-template-columns: repeat(2, minmax(0,1fr)); } }
 @media (max-width: 760px) { :where([data-view="consumers"]) .g3.ms { grid-template-columns: minmax(0,1fr); } :where([data-view="consumers"]) .kv { grid-template-columns: 1fr; gap: 2px 0; } :where([data-view="consumers"]) .kv dd { margin-bottom: 8px; } }
+
+/* sign-in and invite accept: no shell, one card under the brand; every control is an app.css class */
+:where([data-view="signin"], [data-view="accept"]).auth { min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 72px var(--s5) var(--s6); }
+:where([data-view="signin"], [data-view="accept"]).auth > .brand { margin-bottom: var(--s6); }
+:where([data-view="signin"], [data-view="accept"]).auth .card { width: 100%; max-width: 400px; }
+:where([data-view="signin"], [data-view="accept"]).auth .card.wide { max-width: 480px; }
+:where([data-view="signin"], [data-view="accept"]).auth .card > .bd { padding: var(--s6) var(--s6) var(--s5); }
+:where([data-view="signin"], [data-view="accept"]).auth h1 { margin: 0 0 6px; font-size: 20px; font-weight: 600; line-height: 1.3; letter-spacing: -.01em; }
+:where([data-view="signin"], [data-view="accept"]).auth .lede { margin: 0 0 var(--s5); color: var(--muted); }
+:where([data-view="signin"], [data-view="accept"]).auth .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0 var(--s4); align-items: start; }
+:where([data-view="signin"], [data-view="accept"]).auth .actions { display: flex; flex-direction: column; gap: var(--s3); margin-top: var(--s2); }
+:where([data-view="signin"], [data-view="accept"]).auth .actions .btn { width: 100%; }
+:where([data-view="signin"], [data-view="accept"]).auth .foot { margin-top: var(--s5); font-size: 13px; color: var(--muted); text-align: center; }
+:where([data-view="signin"], [data-view="accept"]).auth .banner { margin-bottom: var(--s5); }
+:where([data-view="signin"], [data-view="accept"]).auth .banner pre.raw { white-space: pre-wrap; word-break: break-word; }
+:where([data-view="signin"], [data-view="accept"]).auth .dead-ic { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--fail-soft); color: var(--fail); margin-bottom: var(--s4); }
+:where([data-view="signin"], [data-view="accept"]).auth .who { display: flex; align-items: center; gap: var(--s3); padding: var(--s3) var(--s4); border-radius: var(--r-sm); background: var(--raise); border: 1px solid var(--edge); margin-bottom: var(--s5); }
+:where([data-view="signin"], [data-view="accept"]).auth .who > svg { color: var(--muted); flex: none; }
+:where([data-view="signin"], [data-view="accept"]).auth .who b { display: block; font-weight: 600; }
+:where([data-view="signin"], [data-view="accept"]).auth .who span { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+:where([data-view="signin"], [data-view="accept"]) .spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { :where([data-view="signin"], [data-view="accept"]) .spin { animation: none; } }
+@media (max-width: 560px) {
+  :where([data-view="signin"], [data-view="accept"]).auth { padding: var(--s6) var(--s4); }
+  :where([data-view="signin"], [data-view="accept"]).auth > .brand { margin-bottom: var(--s5); }
+  :where([data-view="signin"], [data-view="accept"]).auth .card > .bd { padding: var(--s5) var(--s4) var(--s4); }
+  :where([data-view="signin"], [data-view="accept"]).auth .pair { grid-template-columns: 1fr; }
+}
 }

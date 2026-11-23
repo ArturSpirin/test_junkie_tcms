@@ -11,6 +11,7 @@ from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, tes
 from tests import support
 from tests.catalog_seed import make_product, ok, url
 from tests.execution_seed import make_case
+from tests.test_cases import drop_section
 from tests.test_csv_io import cases_count, comparable, export, rows, source
 
 
@@ -109,6 +110,27 @@ class MdBundle:
         got = rows(export(owner, p))
         assert (got[0]["title"], got[0]["version"]) == ("Pay by saved card", "2")
         assert [s["action"] for s in json.loads(got[1]["steps"])] == ["Tap pay"]
+
+    @test()
+    def test_file_without_a_description_section_keeps_the_description(self, suite_parameter):
+        owner = self.env.owner
+        s = source(owner)
+        p = s["product"]["id"]
+        ok(
+            owner.patch(
+                url("/cases/PAY-1"),
+                json={"description": {"markdown": "Card payments"}},
+                headers={"If-Match": '"1"'},
+            )
+        )
+        files = bundle(owner, p)
+        assert " description -->\nCard payments" in files["PAY-1.md"]
+        files["PAY-1.md"] = drop_section(files["PAY-1.md"], "description")
+        assert "Card payments" not in files["PAY-1.md"]
+        out = ok(do_import(owner, p, to_zip(files)))
+        assert (out["created"], out["updated"], out["unchanged"]) == (0, 0, 2)
+        case = ok(owner.get(url("/cases/PAY-1")))
+        assert (case["current_version"], case["description"].strip()) == (2, "Card payments")
 
     @test()
     def test_stale_version_writes_nothing(self, suite_parameter):

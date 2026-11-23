@@ -53,10 +53,11 @@ class TreeKeyboard:
         assert [s["result"] for s in steps] == [{"focus": "f-card"}, {"toggle": "f-card"}]
 
     @test()
-    def test_enter_opens_the_focused_case(self):
+    def test_enter_opens_the_focused_row_like_a_click(self):
         steps = keys()["nav"]["enterCase"]
-        assert steps[0]["result"] == {"open": "?view=case"}
+        assert steps[0]["result"] == {"open": "?view=case&id=c-PAY-101"}
         assert steps[1]["result"] is None
+        assert keys()["nav"]["enterFeature"][0]["result"] == {"open": "?view=tree&feature=f-wallet"}
 
     @test()
     def test_a_lost_focus_comes_back_to_the_first_row(self):
@@ -94,18 +95,16 @@ class TreeKeyboard:
 
     @test()
     def test_a_keyboard_move_puts_the_case_in_the_feature(self):
-        assert keys()["moveIn"] == {
-            "parent": "f-wallet",
-            "wallet": ["c-PAY-140"],
-            "card": ["c-PAY-101", "c-PAY-102", "c-PAY-118", "c-PAY-131"],
-        }
+        # a case appends (position None) in its new feature
+        assert keys()["moveIn"] == {"from": "f-card", "parent": "f-wallet", "position": None}
 
     @test()
     def test_after_an_open_feature_that_is_last_in_its_list_is_a_place(self):
         last = keys()["lastOpen"]
         assert last["after"] >= 0, "after f-subs (open, last at the top) is missing"
         assert last["after"] > last["prorate"], "after f-subs must come below its kid f-prorate"
-        assert last["placed"] == {"parent": None, "top": ["f-checkout", "f-refunds", "f-subs", "f-partial"]}
+        # last at the top level: after f-checkout, f-refunds and f-subs
+        assert last["placed"] == {"from": "f-refunds", "parent": None, "position": 3}
 
     @test()
     def test_the_tree_listens_for_keys_and_shares_the_drop_marks_with_drag(self):

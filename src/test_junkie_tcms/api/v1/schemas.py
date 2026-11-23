@@ -1,18 +1,32 @@
 from datetime import date, datetime
 from typing import Annotated, Any, Generic, Literal, TypeVar
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 from test_junkie_tcms.db.base import aware
 
-# A stored time read back from SQLite is naive; mark it UTC so the API always says so.
+# The type of every API time, in and out: a caller's offset or a naive time read back from SQLite becomes UTC.
+# Every datetime query param and body field uses it (or ZonedUtcDateTime); tests/test_utc_inputs.py checks.
 UtcDateTime = Annotated[datetime, AfterValidator(aware)]
+# An input time that must carry a zone (a naive one is a 422), then made UTC.
+ZonedUtcDateTime = Annotated[AwareDatetime, AfterValidator(aware)]
 
 Role = Literal["viewer", "tester", "editor", "admin", "owner"]
 # The one name check for every write (org, member, agent, token, invite, product, feature, release, plan,
 # cycle, consumer; API, bulk, CSV and Markdown import, MCP): stripped first, so a name of only spaces is
 # refused like an empty one.
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
+# An agent's name is a Name, and also lowercase letters and digits with single dashes between them, as the
+# audit log shows it. Unique among the org's agents: orgs.check_agent_name_free.
+AgentName = Annotated[Name, StringConstraints(pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$")]
 
 
 class Out(BaseModel):
@@ -53,7 +67,7 @@ class OrgOut(Out):
     id: str
     slug: str
     name: str
-    created_at: datetime
+    created_at: UtcDateTime
 
 
 class OrgUpdate(BaseModel):
@@ -66,7 +80,8 @@ class MemberOut(BaseModel):
     email: str
     name: str
     role: str
-    removed_at: datetime | None = None
+    removed_at: UtcDateTime | None = None
+    last_active_at: UtcDateTime | None = None
 
 
 class MemberAdd(BaseModel):
@@ -86,20 +101,45 @@ class AgentOut(Out):
     name: str
     role: str
     owner_user_id: str
-    disabled_at: datetime | None = None
-    created_at: datetime
+    description: str | None = None
+    disabled_at: UtcDateTime | None = None
+    last_active_at: UtcDateTime | None = None
+    created_at: UtcDateTime
 
 
 class AgentCreate(BaseModel):
-    name: Name
+    name: AgentName
     role: Role
+    description: str | None = Field(None, max_length=500)
     # Defaults to the calling user.
     owner_user_id: str | None = None
 
 
 class AgentUpdate(BaseModel):
-    name: Name | None = None
+    name: AgentName | None = None
     role: Role | None = None
+    # An empty string clears it.
+    description: str | None = Field(None, max_length=500)
+
+
+class DirectoryActor(BaseModel):
+    id: str
+    kind: Literal["user", "agent", "consumer"]
+    name: str
+    disabled: bool = Field(description="A removed member, a disabled agent or a revoked consumer")
+
+
+class DirectoryToken(BaseModel):
+    id: str
+    name: str
+    actor_id: str
+
+
+class ActorDirectory(BaseModel):
+    """Names for every actor and token that can appear on a row, past ones included; no emails or roles."""
+
+    actors: list[DirectoryActor]
+    tokens: list[DirectoryToken]
 
 
 class TokenOut(Out):
@@ -109,10 +149,10 @@ class TokenOut(Out):
     actor_id: str
     scopes: list[str]
     product_ids: list[str] | None = None
-    expires_at: datetime | None = None
-    revoked_at: datetime | None = None
-    last_used_at: datetime | None = None
-    created_at: datetime
+    expires_at: UtcDateTime | None = None
+    revoked_at: UtcDateTime | None = None
+    last_used_at: UtcDateTime | None = None
+    created_at: UtcDateTime
 
 
 class TokenCreate(BaseModel):
@@ -120,7 +160,7 @@ class TokenCreate(BaseModel):
     scopes: list[str] = Field(min_length=1)
     # Defaults to the caller's own actor.
     actor_id: str | None = None
-    expires_at: datetime | None = None
+    expires_at: ZonedUtcDateTime | None = None
     # Limit the token to these products; None means every product (or the caller's own limit).
     product_ids: list[str] | None = None
 
@@ -201,6 +241,7 @@ class ProductOut(BaseModel):
     key: str
     name: str
     description: RichOut
+    owner_actor_id: str | None = Field(None, description="The product's owner: an active member's actor")
     archived_at: UtcDateTime | None = None
     created_at: UtcDateTime
     updated_at: UtcDateTime
@@ -212,11 +253,16 @@ class ProductCreate(BaseModel):
     key: str = Field(pattern=r"^[A-Z][A-Z0-9]{1,9}$", description="Short key, e.g. PAY; can't change later")
     name: Name
     description: RichIn | None = None
+    owner_actor_id: str | None = Field(None, description="An active member's actor id; else 422")
+    copy_features_from: str | None = Field(
+        None, description="A product (id or key) in this org whose live feature tree the new product copies"
+    )
 
 
 class ProductUpdate(Patch):
     name: Name | None = None
     description: RichIn | None = None
+    owner_actor_id: str | None = Field(None, description="An active member's actor id; null clears it")
 
 
 class FeatureOut(BaseModel):
@@ -290,7 +336,7 @@ class ReleaseCreate(BaseModel):
     name: Name
     status: ReleaseStatus = "planned"
     target_date: date | None = None
-    released_at: datetime | None = None
+    released_at: UtcDateTime | None = None
     notes: RichIn | None = None
 
 
@@ -299,7 +345,7 @@ class ReleaseUpdate(Patch):
     name: Name | None = None
     status: ReleaseStatus | None = None
     target_date: date | None = None
-    released_at: datetime | None = None
+    released_at: UtcDateTime | None = None
     notes: RichIn | None = None
 
 
@@ -345,6 +391,10 @@ class PlanEntryOut(Out):
     feature_id: str | None = None
     query: dict[str, Any] | None = None
     position: int
+    cases: int = Field(0, description="How many live cases the entry selects now")
+    new_cases: int = Field(
+        0, description="How many of those no earlier entry selects; they sum to the plans_resolve total"
+    )
 
 
 PlanStatus = Literal["draft", "active", "archived"]
@@ -425,6 +475,7 @@ class CaseFields(BaseModel):
     """The versioned content; on an update, a field left out keeps its current value."""
 
     model_config = ConfigDict(extra="forbid")
+    description: RichIn | None = None
     preconditions: RichIn | None = None
     steps: list[StepIn] | None = Field(None, max_length=200)
     priority: Priority | None = None
@@ -458,6 +509,7 @@ class CaseOut(BaseModel):
     current_version: int
     position: int = Field(description="Index among the cases of its feature, for manual order")
     title: str
+    description: RichOut
     preconditions: RichOut
     steps: list[StepOut]
     priority: str
@@ -483,6 +535,7 @@ class CaseVersionOut(BaseModel):
     key: str
     version: int
     title: str
+    description: RichOut
     preconditions: RichOut
     steps: list[StepOut]
     priority: str
@@ -495,6 +548,9 @@ class CaseVersionOut(BaseModel):
     tags: list[str]
     change_note: str | None = None
     created_by_actor_id: str
+    via: str | None = Field(None, description="ui, api or mcp; null on versions saved before provenance")
+    token_id: str | None = None
+    on_behalf_of_user_id: str | None = Field(None, description="The owner of the agent that saved it")
     created_at: UtcDateTime
 
 
@@ -503,7 +559,25 @@ class CaseVersionSummary(BaseModel):
     title: str
     change_note: str | None = None
     created_by_actor_id: str
+    via: str | None = Field(None, description="ui, api or mcp; null on versions saved before provenance")
+    token_id: str | None = None
+    on_behalf_of_user_id: str | None = Field(None, description="The owner of the agent that saved it")
     created_at: UtcDateTime
+
+
+class CaseMarkdownOut(BaseModel):
+    case_id: str
+    key: str
+    version: int
+    markdown: str = Field(description="The case as one md-bundle file: JSON front matter, title, sections")
+
+
+class CaseMarkdownIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    markdown: str = Field(
+        max_length=1024 * 1024, description="One md-bundle file, as cases_markdown_get gives"
+    )
+    change_note: str | None = ChangeNote
 
 
 class CaseRestore(BaseModel):
@@ -551,7 +625,7 @@ class TagOut(BaseModel):
 
 class AuditOut(Out):
     id: str
-    created_at: datetime
+    created_at: UtcDateTime
     actor_id: str
     token_id: str | None
     on_behalf_of_user_id: str | None
@@ -560,6 +634,15 @@ class AuditOut(Out):
     entity_type: str
     entity_id: str
     changes: dict[str, Any] | None
+    request_id: str | None = Field(description="The request that wrote it (X-Request-ID); null on older rows")
+    tool: str | None = Field(description="The MCP tool that made the change, when via is mcp")
+
+
+class AuditRetentionOut(BaseModel):
+    days: int = Field(description="The retention policy; not enforced yet, so no row is deleted")
+    oldest_kept: UtcDateTime | None = Field(
+        description="The oldest stored audit row; null when there is none"
+    )
 
 
 ConsumerStatus = Literal["online", "offline", "busy", "revoked"]

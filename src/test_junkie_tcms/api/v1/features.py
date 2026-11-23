@@ -14,6 +14,8 @@ from test_junkie_tcms.api.v1.catalog import (
     case_counts,
     get_feature,
     get_product,
+    name_filter,
+    name_q,
     require_active_product,
     rich_mode,
     rich_out,
@@ -98,6 +100,7 @@ def _check_owner(db: Session, ctx: OrgContext, actor_id: str | None) -> None:
 def features_list(
     product: str,
     include_archived: bool = Query(False),
+    q: str | None = name_q("the name; the tree keeps each match's parents, so it still nests"),
     mode: RichMode = Depends(rich_mode),
     ctx: OrgContext = Depends(require_scope(READ)),
     db: Session = Depends(get_db),
@@ -109,6 +112,9 @@ def features_list(
     rows = list(db.scalars(query.limit(MAX_TREE + 1)))
     if len(rows) > MAX_TREE:
         raise HTTPException(422, f"The feature tree has more than {MAX_TREE} nodes")
+    if q and q.strip():
+        matched = db.scalars(name_filter(query.with_only_columns(Feature.id), q, Feature.name))
+        rows = _with_parents(rows, set(matched))
     children: dict[str | None, list[Feature]] = defaultdict(list)
     ids = {f.id for f in rows}
     for f in rows:
@@ -130,6 +136,53 @@ def features_list(
         return [node(f) for f in sorted(children[parent_id], key=_order)]
 
     return FeatureTree(items=build(None))
+
+
+def _with_parents(rows: list[Feature], matched: set[str]) -> list[Feature]:
+    """The matched rows and every row above one, so a filtered tree still nests."""
+    by_id = {f.id: f for f in rows}
+    keep: set[str] = set()
+    for id_ in matched & by_id.keys():
+        while id_ in by_id and id_ not in keep:
+            keep.add(id_)
+            id_ = by_id[id_].parent_id
+    return [f for f in rows if f.id in keep]
+
+
+def copy_tree(db: Session, org_id: str, source_id: str, target_id: str) -> int:
+    """Copy a product's live feature tree under another product of the same org, parents first; returns
+    how many features it made. Archiving cascades to the subtree, so every live feature's parent is live."""
+    query = select(Feature).where(
+        Feature.org_id == org_id, Feature.product_id == source_id, Feature.archived_at.is_(None)
+    )
+    rows = list(db.scalars(query.order_by(Feature.position, Feature.id).limit(MAX_TREE + 1)))
+    if len(rows) > MAX_TREE:
+        raise HTTPException(422, f"The feature tree has more than {MAX_TREE} nodes")
+    children: dict[str | None, list[Feature]] = defaultdict(list)
+    for f in rows:
+        children[f.parent_id].append(f)
+    new_ids: dict[str | None, str | None] = {None: None}
+    level: list[str | None] = [None]
+    while level:
+        made: list[tuple[str, Feature]] = []
+        for parent_id in level:
+            for f in children[parent_id]:
+                copy = Feature(
+                    org_id=org_id,
+                    product_id=target_id,
+                    parent_id=new_ids[parent_id],
+                    name=f.name,
+                    description=f.description,
+                    description_text=f.description_text,
+                    owner_actor_id=f.owner_actor_id,
+                    position=f.position,
+                )
+                db.add(copy)
+                made.append((f.id, copy))
+        db.flush()
+        new_ids.update((old, copy.id) for old, copy in made)
+        level = [old for old, _ in made]
+    return len(new_ids) - 1
 
 
 def _last_edits(db: Session, org_id: str, product_id: str) -> dict[str, tuple[datetime, ActorRef]]:

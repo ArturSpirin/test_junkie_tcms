@@ -3,9 +3,45 @@
   "annotations": {
    "destructive_hint": false,
    "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Actors List. Every actor and token name in the org, past ones too, so old rows still show a name.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "actors_list",
+  "path": "/api/v1/orgs/{org}/actors",
+  "scope": "read",
+  "toolset": "core"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
    "read_only_hint": false
   },
   "args": {
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
    "idempotency_key": {
     "location": "header",
     "wire": "Idempotency-Key"
@@ -31,6 +67,17 @@
   "input_schema": {
    "additionalProperties": false,
    "properties": {
+    "description": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
     "idempotency_key": {
      "anyOf": [
       {
@@ -46,6 +93,7 @@
     "name": {
      "maxLength": 200,
      "minLength": 1,
+     "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
      "type": "string"
     },
     "org": {
@@ -146,6 +194,62 @@
   "annotations": {
    "destructive_hint": false,
    "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "agent_id": {
+    "location": "path",
+    "wire": "agent_id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Agents Enable. 422 when the owner has left or the agent's role is now above the owner's, as on create.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "agent_id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "agent_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "agents_enable",
+  "path": "/api/v1/orgs/{org}/agents/{agent_id}/enable",
+  "scope": "admin",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
    "read_only_hint": true
   },
   "args": {
@@ -210,6 +314,10 @@
     "location": "path",
     "wire": "agent_id"
    },
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
    "name": {
     "location": "body",
     "wire": "name"
@@ -230,11 +338,23 @@
     "agent_id": {
      "type": "string"
     },
+    "description": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
     "name": {
      "anyOf": [
       {
        "maxLength": 200,
        "minLength": 1,
+       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$",
        "type": "string"
       },
       {
@@ -359,6 +479,10 @@
     "location": "query",
     "wire": "actor_id"
    },
+   "actor_kind": {
+    "location": "query",
+    "wire": "actor_kind"
+   },
    "cursor": {
     "location": "query",
     "wire": "cursor"
@@ -378,6 +502,10 @@
    "org": {
     "location": "path",
     "wire": "org"
+   },
+   "q": {
+    "location": "query",
+    "wire": "q"
    },
    "since": {
     "location": "query",
@@ -416,6 +544,23 @@
        "type": "null"
       }
      ]
+    },
+    "actor_kind": {
+     "anyOf": [
+      {
+       "enum": [
+        "user",
+        "agent",
+        "token",
+        "consumer"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "user: a member in the app; token: a member through a token; agent; consumer"
     },
     "cursor": {
      "anyOf": [
@@ -457,6 +602,18 @@
     "org": {
      "description": "Org slug",
      "type": "string"
+    },
+    "q": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Text in the action, entity, actor name, request id or tool"
     },
     "since": {
      "anyOf": [
@@ -506,6 +663,38 @@
   "method": "GET",
   "name": "audit_list",
   "path": "/api/v1/orgs/{org}/audit",
+  "scope": "audit:read",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Audit Retention. The stated retention policy, and the oldest row actually kept: nothing purges audit_event yet.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "audit_retention",
+  "path": "/api/v1/orgs/{org}/audit/retention",
   "scope": "audit:read",
   "toolset": "admin"
  },
@@ -662,6 +851,20 @@
        ],
        "description": "Free-form, for plugins; at most 16 KB as JSON",
        "title": "Custom"
+      },
+      "description": {
+       "anyOf": [
+        {
+         "$ref": "#/$defs/MarkdownIn"
+        },
+        {
+         "$ref": "#/$defs/DocIn"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Description"
       },
       "expected_version": {
        "anyOf": [
@@ -1000,6 +1203,10 @@
     "location": "body",
     "wire": "custom"
    },
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
    "feature_id": {
     "location": "body",
     "wire": "feature_id"
@@ -1214,6 +1421,19 @@
      ],
      "description": "Free-form, for plugins; at most 16 KB as JSON"
     },
+    "description": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MarkdownIn"
+      },
+      {
+       "$ref": "#/$defs/DocIn"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
     "feature_id": {
      "type": "string"
     },
@@ -1370,6 +1590,46 @@
   "name": "cases_create",
   "path": "/api/v1/orgs/{org}/products/{product}/cases",
   "scope": "write:cases",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "case": {
+    "location": "path",
+    "wire": "case"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Cases Cycles. The cycles the case is in, newest first, with the version each pinned.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "case",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "cases_cycles",
+  "path": "/api/v1/orgs/{org}/cases/{case}/cycles",
+  "scope": "read",
   "toolset": "cases"
  },
  {
@@ -1691,6 +1951,135 @@
   "annotations": {
    "destructive_hint": false,
    "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "case": {
+    "location": "path",
+    "wire": "case"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Cases Markdown Get. The case's current version as one md-bundle file, the same file an `md-bundle` export holds for\nit. The ETag is the version, for `cases_markdown_put`'s `If-Match`.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "case",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "cases_markdown_get",
+  "path": "/api/v1/orgs/{org}/cases/{case}/markdown",
+  "scope": "read",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "case": {
+    "location": "path",
+    "wire": "case"
+   },
+   "change_note": {
+    "location": "body",
+    "wire": "change_note"
+   },
+   "expected_version": {
+    "location": "header",
+    "wire": "If-Match"
+   },
+   "markdown": {
+    "location": "body",
+    "wire": "markdown"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Cases Markdown Put. Save an edited `cases_markdown_get` file as the case's next version, through the same parser and\nwrite path as an `md-bundle` import. The file's `key` must be this case and its `version` the\n`If-Match` one; a file with no description section keeps the stored description; a changed `feature`\nis 422 (use `cases_move`). An unchanged file writes no version.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case": {
+     "type": "string"
+    },
+    "change_note": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "expected_version": {
+     "description": "The version you last read; a stale one fails with 409 and current_version",
+     "minimum": 0,
+     "type": "integer"
+    },
+    "markdown": {
+     "description": "One md-bundle file, as cases_markdown_get gives",
+     "maxLength": 1048576,
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "case",
+    "expected_version",
+    "markdown",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "PUT",
+  "name": "cases_markdown_put",
+  "path": "/api/v1/orgs/{org}/cases/{case}/markdown",
+  "scope": "write:cases",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
    "read_only_hint": false
   },
   "args": {
@@ -1912,6 +2301,10 @@
     "location": "body",
     "wire": "custom"
    },
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
    "expected_version": {
     "location": "header",
     "wire": "If-Match"
@@ -2120,6 +2513,19 @@
       }
      ],
      "description": "Free-form, for plugins; at most 16 KB as JSON"
+    },
+    "description": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MarkdownIn"
+      },
+      {
+       "$ref": "#/$defs/DocIn"
+      },
+      {
+       "type": "null"
+      }
+     ]
     },
     "expected_version": {
      "description": "The version you last read; a stale one fails with 409 and current_version",
@@ -2550,6 +2956,10 @@
     "location": "query",
     "wire": "product"
    },
+   "q": {
+    "location": "query",
+    "wire": "q"
+   },
    "status": {
     "location": "query",
     "wire": "status"
@@ -2590,6 +3000,18 @@
       }
      ],
      "description": "Only consumers that serve this product id"
+    },
+    "q": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A case-insensitive part of the name"
     },
     "status": {
      "anyOf": [
@@ -3151,6 +3573,10 @@
     "location": "query",
     "wire": "rich"
    },
+   "sort": {
+    "location": "query",
+    "wire": "sort"
+   },
    "status": {
     "location": "query",
     "wire": "status"
@@ -3202,6 +3628,15 @@
       "markdown",
       "doc",
       "both"
+     ],
+     "type": "string"
+    },
+    "sort": {
+     "default": "id",
+     "description": "position: the cycle's run order",
+     "enum": [
+      "id",
+      "position"
      ],
      "type": "string"
     },
@@ -3491,6 +3926,10 @@
     "location": "body",
     "wire": "case_ids"
    },
+   "case_order": {
+    "location": "body",
+    "wire": "case_order"
+   },
    "consumer_ids": {
     "location": "body",
     "wire": "consumer_ids"
@@ -3502,6 +3941,10 @@
    "environment": {
     "location": "body",
     "wire": "environment"
+   },
+   "eta": {
+    "location": "body",
+    "wire": "eta"
    },
    "feature_ids": {
     "location": "body",
@@ -3518,6 +3961,10 @@
    "name": {
     "location": "body",
     "wire": "name"
+   },
+   "order": {
+    "location": "body",
+    "wire": "order"
    },
    "org": {
     "location": "path",
@@ -3545,6 +3992,20 @@
    "additionalProperties": false,
    "properties": {
     "case_ids": {
+     "anyOf": [
+      {
+       "items": {
+        "type": "string"
+       },
+       "maxItems": 1000,
+       "type": "array"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "case_order": {
      "anyOf": [
       {
        "items": {
@@ -3593,6 +4054,17 @@
       }
      ]
     },
+    "eta": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
     "feature_ids": {
      "anyOf": [
       {
@@ -3631,6 +4103,15 @@
     "name": {
      "maxLength": 200,
      "minLength": 1,
+     "type": "string"
+    },
+    "order": {
+     "default": "source",
+     "enum": [
+      "source",
+      "feature",
+      "priority"
+     ],
      "type": "string"
     },
     "org": {
@@ -4010,6 +4491,10 @@
     "location": "body",
     "wire": "environment"
    },
+   "eta": {
+    "location": "body",
+    "wire": "eta"
+   },
    "id": {
     "location": "path",
     "wire": "id"
@@ -4041,6 +4526,17 @@
      "anyOf": [
       {
        "maxLength": 64,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "eta": {
+     "anyOf": [
+      {
+       "format": "date-time",
        "type": "string"
       },
       {
@@ -4456,6 +4952,10 @@
     "location": "path",
     "wire": "product"
    },
+   "q": {
+    "location": "query",
+    "wire": "q"
+   },
    "rich": {
     "location": "query",
     "wire": "rich"
@@ -4475,6 +4975,18 @@
     },
     "product": {
      "type": "string"
+    },
+    "q": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A case-insensitive part of the name; the tree keeps each match's parents, so it still nests"
     },
     "rich": {
      "default": "markdown",
@@ -5806,6 +6318,10 @@
    "org": {
     "location": "path",
     "wire": "org"
+   },
+   "q": {
+    "location": "query",
+    "wire": "q"
    }
   },
   "description": "Members List",
@@ -5832,6 +6348,18 @@
     "org": {
      "description": "Org slug",
      "type": "string"
+    },
+    "q": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A case-insensitive part of the name or email"
     }
    },
    "required": [
@@ -6626,6 +7154,10 @@
     "location": "path",
     "wire": "product"
    },
+   "q": {
+    "location": "query",
+    "wire": "q"
+   },
    "rich": {
     "location": "query",
     "wire": "rich"
@@ -6662,6 +7194,18 @@
     },
     "product": {
      "type": "string"
+    },
+    "q": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A case-insensitive part of the name"
     },
     "rich": {
      "default": "markdown",
@@ -7084,6 +7628,10 @@
    "read_only_hint": false
   },
   "args": {
+   "copy_features_from": {
+    "location": "body",
+    "wire": "copy_features_from"
+   },
    "description": {
     "location": "body",
     "wire": "description"
@@ -7103,6 +7651,10 @@
    "org": {
     "location": "path",
     "wire": "org"
+   },
+   "owner_actor_id": {
+    "location": "body",
+    "wire": "owner_actor_id"
    },
    "rich": {
     "location": "query",
@@ -7146,6 +7698,17 @@
    },
    "additionalProperties": false,
    "properties": {
+    "copy_features_from": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A product (id or key) in this org whose live feature tree the new product copies"
+    },
     "description": {
      "anyOf": [
       {
@@ -7184,6 +7747,17 @@
     "org": {
      "description": "Org slug",
      "type": "string"
+    },
+    "owner_actor_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "An active member's actor id; else 422"
     },
     "rich": {
      "default": "markdown",
@@ -7286,6 +7860,10 @@
     "location": "path",
     "wire": "org"
    },
+   "q": {
+    "location": "query",
+    "wire": "q"
+   },
    "rich": {
     "location": "query",
     "wire": "rich"
@@ -7319,6 +7897,18 @@
     "org": {
      "description": "Org slug",
      "type": "string"
+    },
+    "q": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A case-insensitive part of the name"
     },
     "rich": {
      "default": "markdown",
@@ -7360,6 +7950,10 @@
    "org": {
     "location": "path",
     "wire": "org"
+   },
+   "owner_actor_id": {
+    "location": "body",
+    "wire": "owner_actor_id"
    },
    "product": {
     "location": "path",
@@ -7435,6 +8029,17 @@
     "org": {
      "description": "Org slug",
      "type": "string"
+    },
+    "owner_actor_id": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "An active member's actor id; null clears it"
     },
     "product": {
      "type": "string"
@@ -8086,6 +8691,10 @@
     "location": "path",
     "wire": "feature_id"
    },
+   "from": {
+    "location": "query",
+    "wire": "from"
+   },
    "limit": {
     "location": "query",
     "wire": "limit"
@@ -8097,9 +8706,17 @@
    "release": {
     "location": "query",
     "wire": "release"
+   },
+   "to": {
+    "location": "query",
+    "wire": "to"
+   },
+   "tz": {
+    "location": "query",
+    "wire": "tz"
    }
   },
-  "description": "Reports Feature. The feature subtree's cases in the release: totals, and one page of cases by case number.",
+  "description": "Reports Feature. The feature subtree's cases in the release (or, with no release, in the period): totals, one page of\ncases by case number, and the subtree's last 5 runs.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
@@ -8117,6 +8734,18 @@
     "feature_id": {
      "type": "string"
     },
+    "from": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "First day, in `tz`; default 29 days before `to`"
+    },
     "limit": {
      "default": 50,
      "maximum": 200,
@@ -8128,14 +8757,37 @@
      "type": "string"
     },
     "release": {
-     "description": "A release id of the feature's product",
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A release id of the feature's product; default the whole product"
+    },
+    "to": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Last day, in `tz`, included; default today"
+    },
+    "tz": {
+     "default": "UTC",
+     "description": "An IANA time zone, e.g. America/Los_Angeles",
      "type": "string"
     }
    },
    "required": [
     "feature_id",
-    "org",
-    "release"
+    "org"
    ],
    "type": "object"
   },
@@ -8152,6 +8804,10 @@
    "read_only_hint": true
   },
   "args": {
+   "from": {
+    "location": "query",
+    "wire": "from"
+   },
    "org": {
     "location": "path",
     "wire": "org"
@@ -8159,12 +8815,32 @@
    "release_status": {
     "location": "query",
     "wire": "release_status"
+   },
+   "to": {
+    "location": "query",
+    "wire": "to"
+   },
+   "tz": {
+    "location": "query",
+    "wire": "tz"
    }
   },
-  "description": "Reports Org. Every product the caller can see (not archived), with its releases in the given statuses.",
+  "description": "Reports Org. Every product the caller can see (not archived), with its releases in the given statuses, its live\ncases, open cycles and the period's results; the org's KPIs and trend over those products.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
+    "from": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "First day, in `tz`; default 29 days before `to`"
+    },
     "org": {
      "description": "Org slug",
      "type": "string"
@@ -8176,6 +8852,23 @@
       "type": "string"
      },
      "type": "array"
+    },
+    "to": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Last day, in `tz`, included; default today"
+    },
+    "tz": {
+     "default": "UTC",
+     "description": "An IANA time zone, e.g. America/Los_Angeles",
+     "type": "string"
     }
    },
    "required": [
@@ -8196,6 +8889,10 @@
    "read_only_hint": true
   },
   "args": {
+   "from": {
+    "location": "query",
+    "wire": "from"
+   },
    "org": {
     "location": "path",
     "wire": "org"
@@ -8207,12 +8904,32 @@
    "release": {
     "location": "query",
     "wire": "release"
+   },
+   "to": {
+    "location": "query",
+    "wire": "to"
+   },
+   "tz": {
+    "location": "query",
+    "wire": "tz"
    }
   },
-  "description": "Reports Product",
+  "description": "Reports Product. With `release`: that release's totals and its trend. Without: every listed release's totals, the\nproduct's trend, and `whole`, the product as it stands in the period with one row per feature.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
+    "from": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "First day, in `tz`; default 29 days before `to`"
+    },
     "org": {
      "description": "Org slug",
      "type": "string"
@@ -8230,6 +8947,23 @@
       }
      ],
      "description": "A release id; default every release that isn't cancelled"
+    },
+    "to": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Last day, in `tz`, included; default today"
+    },
+    "tz": {
+     "default": "UTC",
+     "description": "An IANA time zone, e.g. America/Los_Angeles",
+     "type": "string"
     }
    },
    "required": [
@@ -8251,6 +8985,10 @@
    "read_only_hint": true
   },
   "args": {
+   "from": {
+    "location": "query",
+    "wire": "from"
+   },
    "org": {
     "location": "path",
     "wire": "org"
@@ -8258,17 +8996,54 @@
    "release_id": {
     "location": "path",
     "wire": "release_id"
+   },
+   "to": {
+    "location": "query",
+    "wire": "to"
+   },
+   "tz": {
+    "location": "query",
+    "wire": "tz"
    }
   },
-  "description": "Reports Release. Release readiness: the counts, `ready`, one row per release feature (`in_release: true`, even with\nno cases), then rows for cases of features outside the release (`in_release: false`). Not ready while\na release feature has no case.",
+  "description": "Reports Release. Release readiness: the counts, `ready`, one row per release feature (`in_release: true`, even with\nno cases), then rows for cases of features outside the release (`in_release: false`). Not ready while\na release feature has no case. `trend` is the release's results in the period.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
+    "from": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "First day, in `tz`; default 29 days before `to`"
+    },
     "org": {
      "description": "Org slug",
      "type": "string"
     },
     "release_id": {
+     "type": "string"
+    },
+    "to": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Last day, in `tz`, included; default today"
+    },
+    "tz": {
+     "default": "UTC",
+     "description": "An IANA time zone, e.g. America/Los_Angeles",
      "type": "string"
     }
    },
@@ -8935,7 +9710,7 @@
        "type": "null"
       }
      ],
-     "description": "Case-insensitive text in the title, preconditions or steps"
+     "description": "Case-insensitive text in the title, description, preconditions or steps"
     },
     "tag": {
      "default": [],

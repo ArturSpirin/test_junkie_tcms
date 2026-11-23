@@ -111,6 +111,19 @@ class Cycles:
         assert draft.status_code == 409 and draft.json()["code"] == "plan_not_active"
 
     @test()
+    def test_plan_preview_counts_the_archived_and_deprecated_cases_it_skips(self, suite_parameter):
+        owner = self.env.owner
+        s = seed(owner)
+        p = s["product"]["id"]
+        for title in ("Card", "Archived", "Deprecated"):
+            make_case(owner, p, s["child"]["id"], title)
+        ok(owner.post(url("/cases/PAY-2/archive")))
+        ok(owner.patch(url("/cases/PAY-3"), json={"status": "deprecated"}, headers={"If-Match": '"1"'}))
+        activate(owner, s["plan"]["id"])
+        preview = ok(owner.post(url(f"/products/{p}/cycles/preview"), json={"plan_id": s["plan"]["id"]}))
+        assert (preview["total"], preview["skipped"]) == (1, {"archived": 1, "deprecated": 1})
+
+    @test()
     def test_cases_from_another_product_are_refused(self, suite_parameter):
         owner = self.env.owner
         s = seed(owner)

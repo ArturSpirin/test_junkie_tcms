@@ -2,7 +2,7 @@
 // Run by tests/web/test_tree_keys.py; needs only node, no packages.
 const JS = new URL("../../src/test_junkie_tcms/web/js/", import.meta.url);
 const ui = await import(new URL("ui.js", JS).href);
-const data = await import(new URL("data.js", JS).href);
+const data = await import(new URL("./fixtures/data.js", import.meta.url).href);
 const { default: view, keyboard: kb } = await import(new URL("views/tree.js", JS).href);
 
 const ctx = await data.context();
@@ -49,6 +49,7 @@ out.nav = {
   collapse: await press("f-card", ["ArrowLeft", "ArrowDown", "ArrowRight", "ArrowRight"]),
   leftFromCase: await press("c-PAY-118", ["ArrowLeft", "ArrowLeft"]),
   enterCase: await press("c-PAY-101", ["Enter", "ArrowRight", " "]),
+  enterFeature: await press("f-wallet", ["Enter"]),
   missing: await press("nope", ["ArrowDown"]),
 };
 
@@ -63,19 +64,18 @@ out.refusals = {
   caseInWallet: kb.check(model, "c-PAY-140", "f-wallet", "in"),
 };
 
-/* a keyboard move: PAY-140 into f-wallet */
-const m1 = await tree();
-const parent = kb.place(m1, "c-PAY-140", "f-wallet", "in");
-const kids = (list, id) => { for (const x of list) { if (x.id === id) return x.kids.map((k) => k.id); const r = x.kids ? kids(x.kids, id) : null; if (r) return r; } return null; };
-out.moveIn = { parent: parent?.id, wallet: kids(m1, "f-wallet"), card: kids(m1, "f-card") };
+/* where a keyboard move sends its write: the same place() drag uses, without the node it moves */
+const where = ({ from, parent, position }) => ({ from, parent, position });
 
-/* "after F" when open F is last in its list (the last-open-feature case): with f-payouts gone, f-subs is open and last at the top */
+/* PAY-140 into f-wallet */
+out.moveIn = where(kb.place("c-PAY-140", "f-wallet", "in", await tree()));
+
+/* "after F" when open F is last in its list: with f-payouts gone, f-subs is open and last at the top */
 const m2 = await tree();
 m2.splice(m2.findIndex((x) => x.id === "f-payouts"), 1);
 const sl2 = kb.slots(m2, "f-partial");
-out.lastOpen = { slots: sl2.list, after: sl2.list.findIndex((s) => s.id === "f-subs" && s.z === "after"), prorate: sl2.list.findIndex((s) => s.id === "f-prorate" && s.z === "after") };
-const p2 = kb.place(m2, "f-partial", "f-subs", "after");
-out.lastOpen.placed = { parent: p2, top: m2.map((x) => x.id) };
+out.lastOpen = { after: sl2.list.findIndex((s) => s.id === "f-subs" && s.z === "after"), prorate: sl2.list.findIndex((s) => s.id === "f-prorate" && s.z === "after") };
+out.lastOpen.placed = where(kb.place("f-partial", "f-subs", "after", m2));
 
 /* one tab stop per tree state */
 out.tabstops = {};

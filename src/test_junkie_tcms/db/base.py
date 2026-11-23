@@ -18,7 +18,9 @@ GLOBAL_TABLES = {
     "user": "a person's account spans orgs; per-org rights live in membership",
     "session": "a login spans orgs; it holds no org data",
     "alembic_version": "migration bookkeeping",
-    "mcp_server_event": "server-wide MCP start and tool-list history; holds only tool names, hashes and versions",
+    "mcp_server_event": (
+        "server-wide MCP start and tool-list history; holds only tool names, hashes and versions"
+    ),
 }
 
 # Tenant tables whose rows start with no org: org_id may be NULL until the row is bound to one.
@@ -36,10 +38,13 @@ def utcnow() -> datetime:
 
 
 def aware(value: datetime | None) -> datetime | None:
-    """SQLite returns naive datetimes; every stored time is UTC."""
-    if value is not None and value.tzinfo is None:
+    """The one UTC rule: every time in or out of the API and DB is UTC. A naive value (SQLite returns them) is
+    tagged UTC; an aware one is converted to UTC, the same instant with offset 0."""
+    if value is None:
+        return None
+    if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
-    return value
+    return value.astimezone(UTC)
 
 
 class Base(DeclarativeBase):

@@ -2,7 +2,7 @@
 // and prints the results as JSON for tests/web/test_search_box.py. Needs only node, no packages.
 const JS = new URL("../../src/test_junkie_tcms/web/js/", import.meta.url);
 const ui = await import(new URL("ui.js", JS).href);
-const data = await import(new URL("data.js", JS).href);
+const data = await import(new URL("./fixtures/data.js", import.meta.url).href);
 const shell = await import(new URL("shell.js", JS).href);
 
 // A fake element: editable says whether closest() finds an editable ancestor.

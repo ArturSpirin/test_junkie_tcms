@@ -3,13 +3,14 @@ a job whose consumer stopped beating. Cycles, jobs and consumers all use it, so 
 
 from dataclasses import dataclass, field
 from datetime import timedelta
-from types import SimpleNamespace
 
 from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms import audit
+from test_junkie_tcms.auth.deps import OrgContext, Principal
+from test_junkie_tcms.auth.scopes import CONSUMER
 from test_junkie_tcms.db.base import aware
 from test_junkie_tcms.db.models import (
     Actor,
@@ -20,6 +21,7 @@ from test_junkie_tcms.db.models import (
     Cycle,
     CycleCase,
     Job,
+    Org,
 )
 from test_junkie_tcms.errors import ProblemError
 
@@ -148,12 +150,16 @@ def make_jobs(db: Session, cycle: Cycle, plan: Split) -> list[Job]:
     return jobs
 
 
-def system_ctx(db: Session, org_id: str, consumer: Consumer):
-    """Acts as the consumer for what the server does on its behalf: requeue, fail, cancel results."""
-    return SimpleNamespace(
-        org=SimpleNamespace(id=org_id),
-        actor=db.get(Actor, consumer.actor_id),
-        principal=SimpleNamespace(token=None, via="api"),
+def system_ctx(db: Session, org_id: str, consumer: Consumer) -> OrgContext:
+    """Acts as the consumer for what the server does on its behalf: requeue, fail, cancel results.
+    A real `OrgContext`, so audit and provenance read it like any request's."""
+    actor = db.get(Actor, consumer.actor_id)
+    return OrgContext(
+        org=db.get(Org, org_id),
+        actor=actor,
+        role=actor.role,
+        scopes=frozenset({CONSUMER}),
+        principal=Principal(via="api", actor=actor),
     )
 
 

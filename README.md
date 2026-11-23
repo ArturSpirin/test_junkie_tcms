@@ -109,9 +109,12 @@ TJ_TCMS_TOKEN=tjt_... test-junkie-tcms mcp --url https://tcms.example.com --tool
 
 ```sh
 pip install -r requirements.lock && pip install --no-deps -e .
-ruff check . && ruff format --check .
-PYTHONPATH=. python -m test_junkie run -s tests
+python scripts/check.py          # the CI gate: ruff check, ruff format --check, then every suite
+python scripts/check.py --lint   # only the two ruff steps
 ```
+
+`scripts/check.py` is what CI's test job runs; run it before review. Locally the suites use SQLite only, unless
+`TJ_TCMS_TEST_POSTGRES_URL` is set (CI sets it), so a local pass doesn't cover Postgres.
 
 `requirements.lock` is made by `python scripts/lock.py` (uv, one lock for every platform, with markers). Never edit
 it by hand: after changing a pin in `pyproject.toml`, run the script and commit both. CI runs

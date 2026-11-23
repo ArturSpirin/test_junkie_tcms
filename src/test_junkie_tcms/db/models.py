@@ -91,6 +91,9 @@ class Actor(TenantMixin, Base):
     owner_user_id: Mapped[str | None] = mapped_column(String(26))
     role: Mapped[str | None] = mapped_column(String(16))
     disabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    description: Mapped[str | None] = mapped_column(String(500))
+    # Touched in get_org_context, at most once per tokens.LAST_USED_EVERY.
+    last_active_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class ApiToken(TenantMixin, Base):
@@ -155,6 +158,9 @@ class AuditEvent(TenantMixin, Base):
     entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
     entity_id: Mapped[str] = mapped_column(String(26), nullable=False)
     changes: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    # From the request being served (api/request_context.py); null for a row written outside a request.
+    request_id: Mapped[str | None] = mapped_column(String(30))
+    tool: Mapped[str | None] = mapped_column(String(100))  # the MCP tool, when via is 'mcp'
 
 
 class Outbox(TenantMixin, Base):
@@ -189,12 +195,17 @@ ONE_TARGET = (
 
 class Product(TenantMixin, UpdatedMixin, Base):
     __tablename__ = "product"
-    __table_args__ = tenant_args(UniqueConstraint("org_id", "key"))
+    __table_args__ = tenant_args(
+        UniqueConstraint("org_id", "key"),
+        ForeignKeyConstraint(["org_id", "owner_actor_id"], ["actor.org_id", "actor.id"]),
+    )
 
     key: Mapped[str] = mapped_column(String(10), nullable=False)
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     description_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    # An active user member's actor (F8); products_create/update check it.
+    owner_actor_id: Mapped[str | None] = mapped_column(String(26))
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # The last case number given out; cases_create bumps it with UPDATE ... RETURNING (T3).
     case_seq: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
@@ -319,16 +330,21 @@ class CaseVersion(TenantMixin, Base):
         UniqueConstraint("org_id", "case_id", "version"),
         ForeignKeyConstraint(["org_id", "case_id"], ["test_case.org_id", "test_case.id"]),
         ForeignKeyConstraint(["org_id", "created_by_actor_id"], ["actor.org_id", "actor.id"]),
+        ForeignKeyConstraint(["org_id", "token_id"], ["api_token.org_id", "api_token.id"]),
+        ForeignKeyConstraint(["org_id", "on_behalf_of_user_id"], ["membership.org_id", "membership.user_id"]),
         CheckConstraint(f"priority IN {PRIORITIES}", name="priority"),
         CheckConstraint(f"type IN {CASE_TYPES}", name="type"),
         CheckConstraint(f"status IN {CASE_STATUSES}", name="status"),
         CheckConstraint(f"automation IN {AUTOMATIONS}", name="automation"),
+        CheckConstraint("via IS NULL OR via IN ('ui', 'api', 'mcp')", name="via"),
     )
 
     case_id: Mapped[str] = mapped_column(String(26), nullable=False, index=True)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     title: Mapped[str] = mapped_column(String(500), nullable=False)
     title_text: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    description_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     preconditions: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     preconditions_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     # [{"id", "action": doc, "expected": doc}], in order.
@@ -343,6 +359,10 @@ class CaseVersion(TenantMixin, Base):
     custom: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     change_note: Mapped[str | None] = mapped_column(String(500))
     created_by_actor_id: Mapped[str] = mapped_column(String(26), nullable=False)
+    # Provenance, set as audit.record sets it; null on versions written before 0012.
+    via: Mapped[str | None] = mapped_column(String(8))
+    token_id: Mapped[str | None] = mapped_column(String(26))
+    on_behalf_of_user_id: Mapped[str | None] = mapped_column(String(26))
 
 
 class Tag(TenantMixin, Base):
@@ -494,6 +514,8 @@ CYCLE_STATUSES = ("open", "closed")
 BATCH_MODES = ("features", "plans")
 RESULT_VIAS = ("ui", "api", "mcp", "consumer")
 CYCLE_MODES = ("manual", "automated", "both")
+# How a cycle's cases were ordered at Start; manual is set by a given case_order, never asked for.
+CYCLE_ORDERS = ("source", "feature", "priority", "manual")
 RUNNERS = ("person", "consumer")
 JOB_STATUSES = ("queued", "claimed", "running", "done", "failed", "cancelled", "rejected")
 
@@ -527,6 +549,7 @@ class Cycle(TenantMixin, UpdatedMixin, Base):
         ForeignKeyConstraint(["org_id", "created_by_actor_id"], ["actor.org_id", "actor.id"]),
         CheckConstraint(f"status IN {CYCLE_STATUSES}", name="status"),
         CheckConstraint(f"mode IN {CYCLE_MODES}", name="mode"),
+        CheckConstraint(f'"order" IN {CYCLE_ORDERS}', name="order"),
         Index("ix_cycle_org_id_batch_id", "org_id", "batch_id"),
     )
 
@@ -541,6 +564,9 @@ class Cycle(TenantMixin, UpdatedMixin, Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="open")
     # automated and both send cases with a known automation_ref to consumers as jobs (T8).
     mode: Mapped[str] = mapped_column(String(10), nullable=False, default="manual", server_default="manual")
+    order: Mapped[str] = mapped_column(String(10), nullable=False, default="source", server_default="source")
+    # When the run is expected to finish, given at Start.
+    eta: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     default_assignee_actor_id: Mapped[str | None] = mapped_column(String(26))
     started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

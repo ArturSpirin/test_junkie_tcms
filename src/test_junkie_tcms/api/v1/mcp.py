@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 from test_junkie_tcms import __version__
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
-from test_junkie_tcms.api.v1.schemas import Page
+from test_junkie_tcms.api.v1.schemas import Page, UtcDateTime
 from test_junkie_tcms.auth.deps import OrgContext, get_db, require_any_scope
 from test_junkie_tcms.auth.scopes import ADMIN, AUDIT_READ
 from test_junkie_tcms.db.base import aware
@@ -141,8 +141,9 @@ def _ceil(value: datetime, bucket: str) -> datetime:
 def _range(
     since: datetime | None, until: datetime | None, bucket: str, default_span: timedelta | None = None
 ) -> tuple[datetime, datetime]:
-    """The [since, until) a stats call covers: rounded out to whole buckets, `default_span` (else the bucket's)
-    back from `until` when `since` is left out, at most 90 days. Every stats call uses it, so they can't drift."""
+    """The [since, until) a stats call covers: rounded out to whole buckets, `default_span` (else the
+    bucket's) back from `until` when `since` is left out, at most 90 days. Every stats call uses it, so
+    they can't drift."""
     until = _ceil(until or stats.now(), bucket)
     since = _floor(since, bucket) if since else until - (default_span or DEFAULT_SPAN[bucket])
     if since >= until:
@@ -170,8 +171,8 @@ def _rows(db: Session, org_id: str, since: datetime, until: datetime | None = No
 @router.get("/orgs/{org}/mcp/tools", response_model=McpToolsOut, **op("mcp_tools_list", AUDIT_READ, "admin"))
 def mcp_tools_list(
     request: Request,
-    since: datetime | None = Query(None, description=SINCE),
-    until: datetime | None = Query(None, description=UNTIL),
+    since: UtcDateTime | None = Query(None, description=SINCE),
+    until: UtcDateTime | None = Query(None, description=UNTIL),
     ctx: OrgContext = Depends(require_any_scope(ADMIN, AUDIT_READ)),
     db: Session = Depends(get_db),
 ):
@@ -227,8 +228,8 @@ def mcp_tools_list(
 @router.get("/orgs/{org}/mcp/usage", response_model=McpUsageOut, **op("mcp_usage", AUDIT_READ, "admin"))
 def mcp_usage(
     request: Request,
-    since: datetime | None = Query(None, description=SINCE),
-    until: datetime | None = Query(None, description=UNTIL),
+    since: UtcDateTime | None = Query(None, description=SINCE),
+    until: UtcDateTime | None = Query(None, description=UNTIL),
     bucket: Literal["hour", "day"] = Query("hour"),
     tool: str | None = Query(None, description="Exact tool name"),
     actor: str | None = Query(None, description="Actor id"),
@@ -286,8 +287,8 @@ def mcp_server_get(request: Request, ctx: OrgContext = Depends(require_any_scope
 
 @router.get("/orgs/{org}/mcp/clients", response_model=McpClientsOut, **op("mcp_clients", AUDIT_READ, "admin"))
 def mcp_clients(
-    since: datetime | None = Query(None, description=SINCE),
-    until: datetime | None = Query(None, description=UNTIL),
+    since: UtcDateTime | None = Query(None, description=SINCE),
+    until: UtcDateTime | None = Query(None, description=UNTIL),
     ctx: OrgContext = Depends(require_any_scope(ADMIN, AUDIT_READ)),
     db: Session = Depends(get_db),
 ):
@@ -319,8 +320,8 @@ def mcp_clients(
 
 @router.get("/orgs/{org}/mcp/calls", response_model=Page[McpCallOut], **op("mcp_calls", AUDIT_READ, "admin"))
 def mcp_calls(
-    since: datetime | None = Query(None, description="From this time, inclusive"),
-    until: datetime | None = Query(None, description="Up to this time, exclusive"),
+    since: UtcDateTime | None = Query(None, description="From this time, inclusive"),
+    until: UtcDateTime | None = Query(None, description="Up to this time, exclusive"),
     tool: str | None = Query(None, description="Exact tool name"),
     actor: str | None = Query(None, description="Actor id"),
     cursor: str | None = Query(None, description="next_cursor from the previous page"),

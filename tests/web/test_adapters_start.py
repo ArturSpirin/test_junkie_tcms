@@ -1,7 +1,8 @@
 """Web adapter for Start a cycle, run in node against a live server: the wizard's steps (plan or features, the
 runner counts from the preview, the machines with a busy one's queue ETA, none online), starting a cycle in
-each mode read back from the server, the live cycle's states (queued, live, mixed, done, a stalled machine),
-the job writes (reassign, cancel), and a raw error."""
+each mode (with split, retries and queuing on an offline machine) read back from the server, the live cycle's
+states (queued, live, mixed, done, a stalled machine, stopped), the writes (reassign, cancel, stop), and a raw
+error."""
 
 import json
 from datetime import timedelta
@@ -194,6 +195,19 @@ class WebStartAdapter:
         assert cy["manual"]["count"] == 2 and cy["finished"]
 
     @test()
+    def test_stop_cancels_the_queued_jobs_and_the_live_cycle_says_who_stopped_it(self, suite_parameter):
+        w = self.world()
+        ids = [w["a"].consumer["id"], w["b"].consumer["id"]]
+        c = self.start_cycle({"plan": w["plan"]["id"], "name": "Smoke", "mode": "auto", "machines": ids})
+        assert self.load({"id": c["id"]})["data"]["cycle"]["stopped"] is False
+        self.js(f"return await a.actions.stop({json.dumps(c['id'])}, ctx);")
+        back = ok(self.live.owner.get(url(f"/cycles/{c['id']}")))
+        assert back["stopped_at"] and back["status"] == "open"
+        assert {j["status"] for j in job_list(self.live.owner, c["id"])} == {"cancelled"}
+        cy = self.load({"id": c["id"]})["data"]["cycle"]
+        assert (cy["stopped"], cy["stoppedBy"]) == (True, "Olive Owner")
+
+    @test()
     def test_mixed_run_assigns_the_manual_cases(self, suite_parameter):
         w = self.world()
         c = self.start_cycle(
@@ -270,3 +284,30 @@ class WebStartAdapter:
         direct = self.live.owner.post(url("/products/PAY/cycles"), json=body)
         assert direct.status_code == 409 and out["status"] == 409
         assert out["raw"] == as_sent(direct)
+
+    @test()
+    def test_split_retries_and_queue_when_offline_reach_the_server(self, suite_parameter):
+        w, _ = self.stalled()
+        c = self.start_cycle(
+            {
+                "plan": w["plan"]["id"],
+                "name": "Smoke",
+                "mode": "auto",
+                "machines": [w["a"].consumer["id"]],
+                "split": "by_feature",
+                "retries": "2",
+                "offline": True,
+            }
+        )
+        back = ok(self.live.owner.get(url(f"/cycles/{c['id']}")))
+        assert (back["split"], back["retries"], back["queued_offline"]) == ("by_feature", 2, 1)
+        manual = self.start_cycle(
+            {
+                "plan": w["plan"]["id"],
+                "name": "By hand",
+                "mode": "manual",
+                "split": "first_free",
+                "retries": 2,
+            }
+        )
+        assert (manual["split"], manual["retries"]) == ("even", 0)

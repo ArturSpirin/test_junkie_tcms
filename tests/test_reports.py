@@ -395,7 +395,15 @@ class Reports:
         for cc, status in zip(s["cc"], ("success", "success", "skip", "ignore"), strict=False):
             ok(record(owner, cc, status=status, comment={"markdown": "Why"}), 201)
         kpis = report(owner, s["release"]["id"])["kpis"]
-        assert kpis == {"cases": 5, "ran": 4, "fail": 0, "error": 0, "skip": 1, "drift": 0, "success_rate": 50}
+        assert kpis == {
+            "cases": 5,
+            "ran": 4,
+            "fail": 0,
+            "error": 0,
+            "skip": 1,
+            "drift": 0,
+            "success_rate": 50,
+        }
 
     @test()
     def test_feature_verdict_and_drift(self, suite_parameter):
@@ -442,7 +450,12 @@ class Reports:
         ok(record(self.agent(), ccs[cases[1]["id"]], status="cancel"), 201)
         out = ok(owner.get(url("/report"), params={"from": "2026-11-01", "to": "2026-11-30"}))
         [row] = out["products"]
-        assert (row["name"], row["cases"], row["automated_pct"], row["open_cycles"]) == ("PAY product", 3, 33, 1)
+        assert (row["name"], row["cases"], row["automated_pct"], row["open_cycles"]) == (
+            "PAY product",
+            3,
+            33,
+            1,
+        )
         assert counts({"counts": row["results"]}, "success", "cancel", "untested", "total") == (1, 1, 1, 3)
         assert row["success_rate"] == 50
         assert out["kpis"] == {
@@ -473,15 +486,27 @@ class Reports:
         path = url(f"/products/{s['product']['id']}/report")
         out = ok(owner.get(path, params={"from": "2026-11-11", "to": "2026-11-11"}))
         whole = out["whole"]
-        assert whole["kpis"] == {"cases": 3, "ran": 2, "fail": 1, "error": 0, "skip": 0, "drift": 0, "success_rate": 50}
-        assert [(f["path"], f["counts"]["total"], f["in_release"], f["verdict"]) for f in whole["features"]] == [
+        assert whole["kpis"] == {
+            "cases": 3,
+            "ran": 2,
+            "fail": 1,
+            "error": 0,
+            "skip": 0,
+            "drift": 0,
+            "success_rate": 50,
+        }
+        assert [
+            (f["path"], f["counts"]["total"], f["in_release"], f["verdict"]) for f in whole["features"]
+        ] == [
             ("Basket", 1, False, "not_started"),
             ("Checkout › Card", 2, False, "at_risk"),
         ]
         assert out["trend"]["total"] == 2
         before = ok(owner.get(path, params={"from": "2026-11-01", "to": "2026-11-10"}))["whole"]
         assert (before["kpis"]["ran"], before["kpis"]["cases"]) == (0, 3)
-        one = ok(owner.get(path, params={"release": s["release"]["id"], "from": "2026-11-11", "to": "2026-11-11"}))
+        one = ok(
+            owner.get(path, params={"release": s["release"]["id"], "from": "2026-11-11", "to": "2026-11-11"})
+        )
         assert (one["whole"], one["trend"]["total"]) == (None, 2)
 
     @test()
@@ -491,21 +516,40 @@ class Reports:
         bot = self.agent()
         defect = {"url": "https://bugs.example.com/LAB-412", "key": "LAB-412"}
         ok(record(bot, s["cc"][0], status="fail"), 201)
-        ok(record(bot, s["cc"][0], status="success", comment={"markdown": "Passes on retry"}, defects=[defect]), 201)
+        ok(
+            record(
+                bot, s["cc"][0], status="success", comment={"markdown": "Passes on retry"}, defects=[defect]
+            ),
+            201,
+        )
         path = url(f"/features/{s['child']['id']}/report")
         params = {"release": s["release"]["id"]}
         [item] = ok(owner.get(path, params=params))["items"]
         assert (item["status"], item["ran_version"], item["current_version"]) == ("success", 1, 1)
-        assert (item["actor"], item["attempt"], item["comment"]) == ({"kind": "agent", "name": "bot"}, 2, "Passes on retry")
+        assert (item["actor"], item["attempt"], item["comment"]) == (
+            {"kind": "agent", "name": "bot"},
+            2,
+            "Passes on retry",
+        )
         assert item["defects"] == [defect]
         assert (item["last_result"]["status"], item["last_result"]["version"]) == ("success", 1)
         case = s["cases"][0]
         ok(owner.patch(url(f"/cases/{case['id']}"), json={"title": "New"}, headers={"If-Match": '"1"'}))
         report_ = ok(owner.get(path, params=params))
         [item] = report_["items"]
-        assert (item["status"], item["stale"], item["ran_version"], item["actor"]) == ("untested", True, None, None)
+        assert (item["status"], item["stale"], item["ran_version"], item["actor"]) == (
+            "untested",
+            True,
+            None,
+            None,
+        )
         last = item["last_result"]
-        assert (last["status"], last["version"], last["attempt"], last["actor"]["name"]) == ("success", 1, 2, "bot")
+        assert (last["status"], last["version"], last["attempt"], last["actor"]["name"]) == (
+            "success",
+            1,
+            2,
+            "bot",
+        )
         assert (report_["kpis"]["drift"], item["current_version"]) == (1, 2)
 
     @test()
@@ -528,13 +572,23 @@ class Reports:
         ok(record(owner, s["cc"][0], status="success"), 201)
         ok(record(owner, s["cc"][1], status="fail"), 201)
         rerun = make_cycle(
-            owner, s["product"]["id"], name="Rerun", environment="staging", case_ids=[c["id"] for c in s["cases"]]
+            owner,
+            s["product"]["id"],
+            name="Rerun",
+            environment="staging",
+            case_ids=[c["id"] for c in s["cases"]],
         )
         self.at(datetime(2026, 10, 30, 12, 0, tzinfo=UTC))
         for cc in cycle_cases(owner, rerun["id"]):
             ok(record(owner, cc["id"], status="success"), 201)
-        out = ok(owner.get(url(f"/features/{s['child']['id']}/report"), params={"from": "2026-11-20", "to": "2026-11-21"}))
-        runs = [(h["cycle_id"], h["release_version"], h["environment"], h["success_rate"]) for h in out["history"]]
+        out = ok(
+            owner.get(
+                url(f"/features/{s['child']['id']}/report"), params={"from": "2026-11-20", "to": "2026-11-21"}
+            )
+        )
+        runs = [
+            (h["cycle_id"], h["release_version"], h["environment"], h["success_rate"]) for h in out["history"]
+        ]
         assert runs == [(rerun["id"], None, "staging", 100), (s["cycle"]["id"], "1.0", None, 50)]
         assert out["history"][1]["counts"]["fail"] == 1
         assert out["history"][0]["at"].startswith("2026-10-30T12:00:00")
@@ -556,9 +610,11 @@ class Reports:
         }
         for path, (keys, params) in old.items():
             assert keys <= set(ok(owner.get(url(path), params=params))), path
-        [item] = ok(owner.get(url(f"/features/{s['child']['id']}/report"), params={"release": s["release"]["id"]}))[
-            "items"
-        ]
-        assert {"id", "key", "title", "feature_id", "status", "stale", "cycle_id", "last_result_at"} <= set(item)
+        [item] = ok(
+            owner.get(url(f"/features/{s['child']['id']}/report"), params={"release": s["release"]["id"]})
+        )["items"]
+        assert {"id", "key", "title", "feature_id", "status", "stale", "cycle_id", "last_result_at"} <= set(
+            item
+        )
         [f] = report(owner, s["release"]["id"])["features"]
         assert {"feature_id", "name", "in_release", "counts", "ready"} <= set(f)

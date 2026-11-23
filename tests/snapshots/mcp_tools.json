@@ -3,9 +3,45 @@
   "annotations": {
    "destructive_hint": false,
    "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Actors List. Every actor and token name in the org, past ones too, so old rows still show a name.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "actors_list",
+  "path": "/api/v1/orgs/{org}/actors",
+  "scope": "read",
+  "toolset": "core"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
    "read_only_hint": false
   },
   "args": {
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
    "idempotency_key": {
     "location": "header",
     "wire": "Idempotency-Key"
@@ -31,6 +67,17 @@
   "input_schema": {
    "additionalProperties": false,
    "properties": {
+    "description": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
     "idempotency_key": {
      "anyOf": [
       {
@@ -146,6 +193,62 @@
   "annotations": {
    "destructive_hint": false,
    "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "agent_id": {
+    "location": "path",
+    "wire": "agent_id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Agents Enable. 422 when the owner has left or the agent's role is now above the owner's, as on create.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "agent_id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "agent_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "agents_enable",
+  "path": "/api/v1/orgs/{org}/agents/{agent_id}/enable",
+  "scope": "admin",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
    "read_only_hint": true
   },
   "args": {
@@ -210,6 +313,10 @@
     "location": "path",
     "wire": "agent_id"
    },
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
    "name": {
     "location": "body",
     "wire": "name"
@@ -229,6 +336,17 @@
    "properties": {
     "agent_id": {
      "type": "string"
+    },
+    "description": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
     },
     "name": {
      "anyOf": [
@@ -359,6 +477,10 @@
     "location": "query",
     "wire": "actor_id"
    },
+   "actor_kind": {
+    "location": "query",
+    "wire": "actor_kind"
+   },
    "cursor": {
     "location": "query",
     "wire": "cursor"
@@ -378,6 +500,10 @@
    "org": {
     "location": "path",
     "wire": "org"
+   },
+   "q": {
+    "location": "query",
+    "wire": "q"
    },
    "since": {
     "location": "query",
@@ -416,6 +542,23 @@
        "type": "null"
       }
      ]
+    },
+    "actor_kind": {
+     "anyOf": [
+      {
+       "enum": [
+        "user",
+        "agent",
+        "token",
+        "consumer"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "user: a member in the app; token: a member through a token; agent; consumer"
     },
     "cursor": {
      "anyOf": [
@@ -457,6 +600,18 @@
     "org": {
      "description": "Org slug",
      "type": "string"
+    },
+    "q": {
+     "anyOf": [
+      {
+       "maxLength": 200,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Text in the action, entity or actor name"
     },
     "since": {
      "anyOf": [
@@ -506,6 +661,38 @@
   "method": "GET",
   "name": "audit_list",
   "path": "/api/v1/orgs/{org}/audit",
+  "scope": "audit:read",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Audit Retention. The stated retention policy, and the oldest row actually kept: nothing purges audit_event yet.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "audit_retention",
+  "path": "/api/v1/orgs/{org}/audit/retention",
   "scope": "audit:read",
   "toolset": "admin"
  },
@@ -662,6 +849,20 @@
        ],
        "description": "Free-form, for plugins; at most 16 KB as JSON",
        "title": "Custom"
+      },
+      "description": {
+       "anyOf": [
+        {
+         "$ref": "#/$defs/MarkdownIn"
+        },
+        {
+         "$ref": "#/$defs/DocIn"
+        },
+        {
+         "type": "null"
+        }
+       ],
+       "title": "Description"
       },
       "expected_version": {
        "anyOf": [
@@ -1000,6 +1201,10 @@
     "location": "body",
     "wire": "custom"
    },
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
    "feature_id": {
     "location": "body",
     "wire": "feature_id"
@@ -1214,6 +1419,19 @@
      ],
      "description": "Free-form, for plugins; at most 16 KB as JSON"
     },
+    "description": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MarkdownIn"
+      },
+      {
+       "$ref": "#/$defs/DocIn"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
     "feature_id": {
      "type": "string"
     },
@@ -1370,6 +1588,46 @@
   "name": "cases_create",
   "path": "/api/v1/orgs/{org}/products/{product}/cases",
   "scope": "write:cases",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "case": {
+    "location": "path",
+    "wire": "case"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Cases Cycles. The cycles the case is in, newest first, with the version each pinned.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "case",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "cases_cycles",
+  "path": "/api/v1/orgs/{org}/cases/{case}/cycles",
+  "scope": "read",
   "toolset": "cases"
  },
  {
@@ -1691,6 +1949,135 @@
   "annotations": {
    "destructive_hint": false,
    "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "case": {
+    "location": "path",
+    "wire": "case"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Cases Markdown Get. The case's current version as one md-bundle file, the same file an `md-bundle` export holds for\nit. The ETag is the version, for `cases_markdown_put`'s `If-Match`.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case": {
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "case",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "cases_markdown_get",
+  "path": "/api/v1/orgs/{org}/cases/{case}/markdown",
+  "scope": "read",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "case": {
+    "location": "path",
+    "wire": "case"
+   },
+   "change_note": {
+    "location": "body",
+    "wire": "change_note"
+   },
+   "expected_version": {
+    "location": "header",
+    "wire": "If-Match"
+   },
+   "markdown": {
+    "location": "body",
+    "wire": "markdown"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "rich": {
+    "location": "query",
+    "wire": "rich"
+   }
+  },
+  "description": "Cases Markdown Put. Save an edited `cases_markdown_get` file as the case's next version, through the same parser and\nwrite path as an `md-bundle` import. The file's `key` must be this case and its `version` the\n`If-Match` one; a file with no description section keeps the stored description; a changed `feature`\nis 422 (use `cases_move`). An unchanged file writes no version.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "case": {
+     "type": "string"
+    },
+    "change_note": {
+     "anyOf": [
+      {
+       "maxLength": 500,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "expected_version": {
+     "description": "The version you last read; a stale one fails with 409 and current_version",
+     "minimum": 0,
+     "type": "integer"
+    },
+    "markdown": {
+     "description": "One md-bundle file, as cases_markdown_get gives",
+     "maxLength": 1048576,
+     "type": "string"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "rich": {
+     "default": "markdown",
+     "description": "Rich fields as markdown (default), doc, or both",
+     "enum": [
+      "markdown",
+      "doc",
+      "both"
+     ],
+     "type": "string"
+    }
+   },
+   "required": [
+    "case",
+    "expected_version",
+    "markdown",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "PUT",
+  "name": "cases_markdown_put",
+  "path": "/api/v1/orgs/{org}/cases/{case}/markdown",
+  "scope": "write:cases",
+  "toolset": "cases"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
    "read_only_hint": false
   },
   "args": {
@@ -1912,6 +2299,10 @@
     "location": "body",
     "wire": "custom"
    },
+   "description": {
+    "location": "body",
+    "wire": "description"
+   },
    "expected_version": {
     "location": "header",
     "wire": "If-Match"
@@ -2120,6 +2511,19 @@
       }
      ],
      "description": "Free-form, for plugins; at most 16 KB as JSON"
+    },
+    "description": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MarkdownIn"
+      },
+      {
+       "$ref": "#/$defs/DocIn"
+      },
+      {
+       "type": "null"
+      }
+     ]
     },
     "expected_version": {
      "description": "The version you last read; a stale one fails with 409 and current_version",
@@ -2446,6 +2850,94 @@
    "read_only_hint": true
   },
   "args": {
+   "consumer_id": {
+    "location": "path",
+    "wire": "consumer_id"
+   },
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "status": {
+    "location": "query",
+    "wire": "status"
+   }
+  },
+  "description": "Consumers Jobs. The jobs sent to this machine, newest first, each with its `reason` when it was rejected or failed.\nOnly jobs in products you can see.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "consumer_id": {
+     "type": "string"
+    },
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "enum": [
+        "queued",
+        "claimed",
+        "running",
+        "done",
+        "failed",
+        "cancelled",
+        "rejected"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "consumer_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "consumers_jobs",
+  "path": "/api/v1/orgs/{org}/consumers/{consumer_id}/jobs",
+  "scope": "read",
+  "toolset": "consumers"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
    "cursor": {
     "location": "query",
     "wire": "cursor"
@@ -2534,6 +3026,118 @@
  },
  {
   "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "consumer_id": {
+    "location": "path",
+    "wire": "consumer_id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Consumers Pause. Stop sending it new jobs: claims return none and new cycles can't choose it. A job it holds runs to\nthe end. Pausing a paused consumer changes nothing.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "consumer_id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "consumer_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "consumers_pause",
+  "path": "/api/v1/orgs/{org}/consumers/{consumer_id}/pause",
+  "scope": "admin",
+  "toolset": "consumers"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "consumer_id": {
+    "location": "path",
+    "wire": "consumer_id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Consumers Resume. It takes jobs again. Resuming a consumer that isn't paused changes nothing.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "consumer_id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "consumer_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "consumers_resume",
+  "path": "/api/v1/orgs/{org}/consumers/{consumer_id}/resume",
+  "scope": "admin",
+  "toolset": "consumers"
+ },
+ {
+  "annotations": {
    "destructive_hint": true,
    "idempotent_hint": false,
    "read_only_hint": false
@@ -2570,6 +3174,86 @@
   "name": "consumers_revoke",
   "path": "/api/v1/orgs/{org}/consumers/{consumer_id}",
   "scope": "admin",
+  "toolset": "consumers"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "consumer_id": {
+    "location": "path",
+    "wire": "consumer_id"
+   },
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "project": {
+    "location": "query",
+    "wire": "project"
+   }
+  },
+  "description": "Consumers Roster. The tests in the machine's last inventory, by project then as listed, each with the key of the case\nwhose automation_ref it is (null when none you can see).",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "consumer_id": {
+     "type": "string"
+    },
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "project": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Only this project's refs"
+    }
+   },
+   "required": [
+    "consumer_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "consumers_roster",
+  "path": "/api/v1/orgs/{org}/consumers/{consumer_id}/roster",
+  "scope": "read",
   "toolset": "consumers"
  },
  {
@@ -2981,7 +3665,7 @@
     "wire": "rich"
    }
   },
-  "description": "Cycle Cases Refresh Version. Re-pins the case to its current version, only while it has no result (409 once one is recorded).",
+  "description": "Cycle Cases Refresh Version. Re-pins the case to its current version. A case with results goes back to untested on the new\nversion for a rerun; its results stay as history, each with the version it ran.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
@@ -5760,6 +6444,10 @@
    "read_only_hint": false
   },
   "args": {
+   "accept_jobs": {
+    "location": "body",
+    "wire": "accept_jobs"
+   },
    "idempotency_key": {
     "location": "header",
     "wire": "Idempotency-Key"
@@ -5785,6 +6473,11 @@
   "input_schema": {
    "additionalProperties": false,
    "properties": {
+    "accept_jobs": {
+     "default": true,
+     "description": "False pairs the consumer paused",
+     "type": "boolean"
+    },
     "idempotency_key": {
      "anyOf": [
       {
@@ -5831,6 +6524,104 @@
   "method": "POST",
   "name": "pairings_approve",
   "path": "/api/v1/orgs/{org}/pair/approve",
+  "scope": "admin",
+  "toolset": "consumers"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "user_code": {
+    "location": "body",
+    "wire": "user_code"
+   }
+  },
+  "description": "Pairings Deny. Refuse a pending request: the machine's next poll gets 403 access_denied.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "user_code": {
+     "maxLength": 9,
+     "minLength": 8,
+     "type": "string"
+    }
+   },
+   "required": [
+    "org",
+    "user_code"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "pairings_deny",
+  "path": "/api/v1/orgs/{org}/pair/deny",
+  "scope": "admin",
+  "toolset": "consumers"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "user_code": {
+    "location": "path",
+    "wire": "user_code"
+   }
+  },
+  "description": "Pairings Get. What the machine said about itself when it asked to pair, before an admin approves or denies it.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "user_code": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "org",
+    "user_code"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "pairings_get",
+  "path": "/api/v1/orgs/{org}/pair/{user_code}",
   "scope": "admin",
   "toolset": "consumers"
  },
@@ -7660,7 +8451,7 @@
     "wire": "org"
    }
   },
-  "description": "Reports Cycle. One cycle's counts by status, as they stand (pinned versions, no stale check).",
+  "description": "Reports Cycle. One cycle's counts by pinned status, and `stale`: its live cases pinned behind the current version.\nA case refreshed to the current version but not rerun yet counts as `untested`, not `stale`.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
@@ -7699,6 +8490,10 @@
     "location": "path",
     "wire": "feature_id"
    },
+   "from": {
+    "location": "query",
+    "wire": "from"
+   },
    "limit": {
     "location": "query",
     "wire": "limit"
@@ -7710,9 +8505,17 @@
    "release": {
     "location": "query",
     "wire": "release"
+   },
+   "to": {
+    "location": "query",
+    "wire": "to"
+   },
+   "tz": {
+    "location": "query",
+    "wire": "tz"
    }
   },
-  "description": "Reports Feature. The feature subtree's cases in the release: totals, and one page of cases by case number.",
+  "description": "Reports Feature. The feature subtree's cases in the release (or, with no release, in the period): totals, one page of\ncases by case number, and the subtree's last 5 runs.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
@@ -7730,6 +8533,18 @@
     "feature_id": {
      "type": "string"
     },
+    "from": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "First day, in `tz`; default 29 days before `to`"
+    },
     "limit": {
      "default": 50,
      "maximum": 200,
@@ -7741,14 +8556,37 @@
      "type": "string"
     },
     "release": {
-     "description": "A release id of the feature's product",
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "A release id of the feature's product; default the whole product"
+    },
+    "to": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Last day, in `tz`, included; default today"
+    },
+    "tz": {
+     "default": "UTC",
+     "description": "An IANA time zone, e.g. America/Los_Angeles",
      "type": "string"
     }
    },
    "required": [
     "feature_id",
-    "org",
-    "release"
+    "org"
    ],
    "type": "object"
   },
@@ -7765,6 +8603,10 @@
    "read_only_hint": true
   },
   "args": {
+   "from": {
+    "location": "query",
+    "wire": "from"
+   },
    "org": {
     "location": "path",
     "wire": "org"
@@ -7772,12 +8614,32 @@
    "release_status": {
     "location": "query",
     "wire": "release_status"
+   },
+   "to": {
+    "location": "query",
+    "wire": "to"
+   },
+   "tz": {
+    "location": "query",
+    "wire": "tz"
    }
   },
-  "description": "Reports Org. Every product the caller can see (not archived), with its releases in the given statuses.",
+  "description": "Reports Org. Every product the caller can see (not archived), with its releases in the given statuses, its live\ncases, open cycles and the period's results; the org's KPIs and trend over those products.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
+    "from": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "First day, in `tz`; default 29 days before `to`"
+    },
     "org": {
      "description": "Org slug",
      "type": "string"
@@ -7789,6 +8651,23 @@
       "type": "string"
      },
      "type": "array"
+    },
+    "to": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Last day, in `tz`, included; default today"
+    },
+    "tz": {
+     "default": "UTC",
+     "description": "An IANA time zone, e.g. America/Los_Angeles",
+     "type": "string"
     }
    },
    "required": [
@@ -7809,6 +8688,10 @@
    "read_only_hint": true
   },
   "args": {
+   "from": {
+    "location": "query",
+    "wire": "from"
+   },
    "org": {
     "location": "path",
     "wire": "org"
@@ -7820,12 +8703,32 @@
    "release": {
     "location": "query",
     "wire": "release"
+   },
+   "to": {
+    "location": "query",
+    "wire": "to"
+   },
+   "tz": {
+    "location": "query",
+    "wire": "tz"
    }
   },
-  "description": "Reports Product",
+  "description": "Reports Product. With `release`: that release's totals and its trend. Without: every listed release's totals, the\nproduct's trend, and `whole`, the product as it stands in the period with one row per feature.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
+    "from": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "First day, in `tz`; default 29 days before `to`"
+    },
     "org": {
      "description": "Org slug",
      "type": "string"
@@ -7843,6 +8746,23 @@
       }
      ],
      "description": "A release id; default every release that isn't cancelled"
+    },
+    "to": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Last day, in `tz`, included; default today"
+    },
+    "tz": {
+     "default": "UTC",
+     "description": "An IANA time zone, e.g. America/Los_Angeles",
+     "type": "string"
     }
    },
    "required": [
@@ -7864,6 +8784,10 @@
    "read_only_hint": true
   },
   "args": {
+   "from": {
+    "location": "query",
+    "wire": "from"
+   },
    "org": {
     "location": "path",
     "wire": "org"
@@ -7871,17 +8795,54 @@
    "release_id": {
     "location": "path",
     "wire": "release_id"
+   },
+   "to": {
+    "location": "query",
+    "wire": "to"
+   },
+   "tz": {
+    "location": "query",
+    "wire": "tz"
    }
   },
-  "description": "Reports Release. Release readiness: the counts, `ready`, one row per release feature (`in_release: true`, even with\nno cases), then rows for cases of features outside the release (`in_release: false`). Not ready while\na release feature has no case.",
+  "description": "Reports Release. Release readiness: the counts, `ready`, one row per release feature (`in_release: true`, even with\nno cases), then rows for cases of features outside the release (`in_release: false`). Not ready while\na release feature has no case. `trend` is the release's results in the period.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
+    "from": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "First day, in `tz`; default 29 days before `to`"
+    },
     "org": {
      "description": "Org slug",
      "type": "string"
     },
     "release_id": {
+     "type": "string"
+    },
+    "to": {
+     "anyOf": [
+      {
+       "format": "date",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Last day, in `tz`, included; default today"
+    },
+    "tz": {
+     "default": "UTC",
+     "description": "An IANA time zone, e.g. America/Los_Angeles",
      "type": "string"
     }
    },
@@ -8548,7 +9509,7 @@
        "type": "null"
       }
      ],
-     "description": "Case-insensitive text in the title, preconditions or steps"
+     "description": "Case-insensitive text in the title, description, preconditions or steps"
     },
     "tag": {
      "default": [],

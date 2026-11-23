@@ -25,6 +25,7 @@ from test_junkie_tcms.db import migrate
 from test_junkie_tcms.settings import Settings
 
 POSTGRES_URL = os.environ.get("TJ_TCMS_TEST_POSTGRES_URL")
+PG_TEST_TIMEZONE = "America/Los_Angeles"
 OWNER_EMAIL = "owner@example.com"
 PASSWORD = "correct horse battery"
 
@@ -70,6 +71,11 @@ class Env:
                 self._pg_name = f"tcms_test_{uuid.uuid4().hex[:12]}"
                 with self._pg_admin.connect() as conn:
                     conn.execute(text(f'CREATE DATABASE "{self._pg_name}"'))
+                    # A non-UTC database, so a time read back in the server's zone fails here, not only in
+                    # prod (CI's Postgres runs in UTC). make_engine must still read every time in UTC.
+                    conn.execute(
+                        text(f"ALTER DATABASE \"{self._pg_name}\" SET timezone TO '{PG_TEST_TIMEZONE}'")
+                    )
                 self._database_url = admin_url.set(database=self._pg_name).render_as_string(
                     hide_password=False
                 )

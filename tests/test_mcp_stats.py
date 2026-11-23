@@ -18,11 +18,11 @@ from test_junkie_tcms.mcp_server.generator import build_tools, tool_list_hash
 from tests import support
 from tests.catalog_seed import ok, url
 from tests.support import add_member, login
+from tests.test_mcp_drift import TOOL_COUNT
 from tests.test_mcp_server import call, rpc, token, tool_names
 
 T0 = datetime(2026, 11, 14, 10, 15, tzinfo=UTC)
 MCP_OPS = {"mcp_tools_list", "mcp_usage", "mcp_server_get", "mcp_clients", "mcp_updates", "mcp_calls"}
-TOOL_COUNT = 93
 
 
 def make_clock(env):
@@ -254,6 +254,38 @@ class McpStats:
         assert api.get(url("/mcp/usage"), params=backwards).status_code == 422
         too_long = {"bucket": "day", "since": "2026-01-01T00:00:00Z"}
         assert api.get(url("/mcp/usage"), params=too_long).status_code == 422
+
+    @test()
+    def test_usage_buckets_a_non_utc_range_at_utc_boundaries(self, suite_parameter):
+        mcp = self.mcp()
+        make_clock(self.env)
+        admin = token(self.env.owner, "admin", "read")
+        raw_call(mcp, admin, "me_get")
+        api = self.env.bearer(admin)
+        # 11:00Z and Nov 15 04:00Z: the day is cut at UTC midnight, not the caller's.
+        pacific = {"bucket": "day", "since": "2026-11-14T03:00:00-08:00"}
+        pacific["until"] = "2026-11-14T20:00:00-08:00"
+        daily = ok(api.get(url("/mcp/usage"), params=pacific))
+        assert (daily["since"], daily["until"]) == ("2026-11-14T00:00:00Z", "2026-11-16T00:00:00Z")
+        assert [(b["start"], b["calls"]) for b in daily["items"]] == [("2026-11-14T00:00:00Z", 1)]
+        # 10:45Z: truncated to 10:00Z, so the 10:00Z hour with the call is in range.
+        hourly = ok(api.get(url("/mcp/usage"), params={"since": "2026-11-14T16:15:00+05:30"}))
+        assert hourly["since"] == "2026-11-14T10:00:00Z"
+        assert [(b["start"], b["calls"]) for b in hourly["items"]] == [("2026-11-14T10:00:00Z", 1)]
+
+    @test()
+    def test_tools_and_clients_answer_a_non_utc_range_in_utc(self, suite_parameter):
+        mcp = self.mcp()
+        make_clock(self.env)
+        admin = token(self.env.owner, "admin", "read")
+        raw_call(mcp, admin, "me_get")
+        api = self.env.bearer(admin)
+        params = {"since": "2026-11-14T02:15:00-08:00", "until": "2026-11-14T03:15:00-08:00"}
+        for path in ("/mcp/tools", "/mcp/clients"):
+            body = ok(api.get(url(path), params=params))
+            assert (body["since"], body["until"]) == ("2026-11-14T10:00:00Z", "2026-11-14T12:00:00Z"), path
+        clients = ok(api.get(url("/mcp/clients"), params=params))["items"]
+        assert [(c["calls"], c["last_hour"]) for c in clients] == [(1, "2026-11-14T10:00:00Z")]
 
     @test()
     def test_server_get_gives_the_version_and_tool_list_hash(self, suite_parameter):

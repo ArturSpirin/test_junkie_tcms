@@ -6,10 +6,10 @@ const sum = (c) => Object.values(c).reduce((a, b) => a + b, 0);
 const pct = (c) => Math.round(((c.success || 0) / Math.max(1, sum(c) - (c.untested || 0))) * 100);
 const LEVELS = [["org", "Org"], ["product", "Product"], ["feature", "Feature"]];
 const level = (on) => `<div class="seg" role="tablist" aria-label="Report level">${LEVELS.map(([h, l]) => `<button class="${h === on ? "on" : ""}" data-level="${h}">${l}</button>`).join("")}</div>`;
-const head = (crumbs, eyebrow, h1, on, op, period = {}) => `<div class="crumbs">${crumbs}</div>
+const head = (crumbs, eyebrow, h1, on, period = {}) => `<div class="crumbs">${crumbs}</div>
 <div class="eyebrow">${eyebrow}</div>
 <div class="ph" style="margin-top:6px"><h1>${h1}</h1><div class="rp-tools">${level(on)}${dr(Object.assign({ value: "30d" }, period))}</div></div>
-<p class="sub" style="margin-top:-10px;margin-bottom:22px">Results count only against the case_version pinned in each cycle. <span class="mono faint">${op}</span></p>`;
+<p class="sub" style="margin-top:-10px;margin-bottom:22px">Results count only against the case_version pinned in each cycle.</p>`;
 const kpis = (k) => `<div class="kpis">${k.map(([l, v, d]) => `<div class="kpi"><div class="l">${l}</div><div class="v">${v}</div>${d ? `<div class="d">${d}</div>` : ""}</div>`).join("")}</div>`;
 const sep = '<span class="sep">/</span>';
 const date = (iso) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d); };
@@ -33,7 +33,7 @@ const orgBody = (d) => {
   P.map((p) => `<tr><td><a href="#product"><span class="key">${esc(p.key)}</span> <span class="ell" style="display:inline-block;max-width:280px;vertical-align:bottom">${esc(p.name)}</span></a></td><td class="num">${p.cases}</td><td class="num">${p.automatedPct}%</td><td>${sum(p.results) ? bar(p.results) : '<span class="faint">no results yet</span>'}</td><td class="num">${sum(p.results) ? pct(p.results) + "%" : "–"}</td><td class="num">${p.openCycles}</td></tr>`).join("") +
   `</tbody></table></div><div class="mlist">` + P.map((p) => `<div class="it"><div class="row"><span class="key">${esc(p.key)}</span><a href="#product" class="ell" style="flex:1">${esc(p.name)}</a><b>${sum(p.results) ? pct(p.results) + "%" : "–"}</b></div>${sum(p.results) ? bar(p.results) : '<span class="faint" style="font-size:12px">no results yet</span>'}<span class="muted" style="font-size:12px">${p.cases} cases · ${p.automatedPct}% automated · ${p.openCycles} open cycles</span></div>`).join("") + `</div></div><div style="margin-top:14px">${legend()}</div>`;
 };
-const orgHead = (d, period) => head(crumbs([["Insights"], ["Reports"]]).slice(20, -6), "Org report", esc(d.ctx.org.name), "org", "reports_org", period);
+const orgHead = (d, period) => head(crumbs([["Insights"], ["Reports"]]).slice(20, -6), "Org report", esc(d.ctx.org.name), "org", period);
 const org = (d) => orgHead(d, d.period) + orgBody(d);
 
 /* product: release readiness */
@@ -48,7 +48,7 @@ const orgLink = (d) => `<a href="#org">${esc(d.ctx.org.name)}</a>`;
 const productLabel = (p) => esc(`${p.key} · ${p.name}`);
 const product = (d) => {
   const p = d.product, r = d.release, k = r.kpis, x = r.driftExample;
-  return head(`${orgLink(d)}${sep}<a href="${lnk("products.html")}">${productLabel(p)}</a>${sep}<a href="${lnk("releases.html#detail")}">version ${esc(r.ver)}</a>${sep}<span>Readiness</span>`, "Release readiness", `${esc(p.name)} · release ${esc(r.ver)}`, "product", `reports_release (${esc(r.ver)}) · reports_product (${esc(p.key)})`) +
+  return head(`${orgLink(d)}${sep}<a href="${lnk("products.html")}">${productLabel(p)}</a>${sep}<a href="${lnk("releases.html#detail")}">version ${esc(r.ver)}</a>${sep}<span>Readiness</span>`, "Release readiness", `${esc(p.name)} · release ${esc(r.ver)}`, "product") +
   `<div class="rel-pick"><span class="mini-lbl" style="margin:0">Release</span>${dd({ value: r.ver, options: releaseOptions(r), cls: "block", search: "Find a release", open: !!r.open, label: "Release" })}</div>` +
   kpis([["In affected features", k.cases, "cases"], ["Ran", `${k.ran} of ${k.cases}`, `${k.ranPct}% have a result`], ["Fail · error", `${k.fail} · ${k.error}`, `${st("skip", { label: `${k.skip} skip` })}`], ["Version drift", k.drift, `${results(k.drift)} on an older case_version`]]) +
   `<div class="card"><div class="hd"><span class="eyebrow">Features</span>Per affected feature<span class="r faint" style="font-size:12px">from ${r.cycles} release cycles · pinned versions</span></div><div class="tbl-wrap mswap cue"><table class="t"><thead><tr><th>Feature</th><th class="num">Cases</th><th style="min-width:200px">Latest result per case</th><th>Version drift</th><th>Readiness</th></tr></thead><tbody>` +
@@ -62,7 +62,7 @@ const product = (d) => {
 const note = (c) => c.noteKind === "issue" ? `<a class="key">${esc(c.note)}</a>` : c.noteKind === "attempt" ? `<span class="chip acc">${esc(c.note)}</span>` : esc(c.note);
 const feature = (d) => {
   const p = d.product, r = d.release, f = d.feature, k = f.kpis, o = k.results;
-  return head(`${orgLink(d)}${sep}<a href="${lnk("products.html")}">${productLabel(p)}</a>${sep}<a href="#product">version ${esc(r.ver)}</a>${sep}<a href="${lnk("tree.html")}">${esc(f.path)}</a>`, "Feature report", esc(f.name), "feature", `reports_feature (${esc(f.name)}, release ${esc(r.ver)})`) +
+  return head(`${orgLink(d)}${sep}<a href="${lnk("products.html")}">${productLabel(p)}</a>${sep}<a href="#product">version ${esc(r.ver)}</a>${sep}<a href="${lnk("tree.html")}">${esc(f.path)}</a>`, "Feature report", esc(f.name), "feature") +
   kpis([["Cases", k.cases, bar(o)], ["Success", o.success, `${o.fail} fail · ${o.error} error · ${o.skip} skip · ${o.ignore} ignore`], ["Success rate", `${k.successPct}%`, `over the last ${f.history.length} runs`], ["Version drift", k.drift, `${results(k.drift)} on an older case_version`]]) +
   `<div class="card"><div class="hd"><span class="eyebrow">Cases</span>Latest result in ${esc(r.ver)} cycles</div><div class="tbl-wrap mswap cue"><table class="t"><thead><tr><th>Case</th><th>Ran on</th><th>Result</th><th>By</th><th class="hide-m">When</th><th class="hide-m">Note</th></tr></thead><tbody>` +
   f.cases.map((c) => `<tr><td><a href="${lnk("case.html")}" class="key">${esc(c.key)}</a> <span class="ell" style="display:inline-block;max-width:340px;vertical-align:bottom" title="${esc(c.title)}">${esc(c.title)}</span></td><td>${ver(c.ranOn, 1)}${c.current > c.ranOn ? ` <span class="drift">current v${c.current}</span>` : ""}</td><td>${st(c.result)}${c.why ? `<span class="why">${esc(c.why)}</span>` : ""}</td><td>${c.by ? actor(c.by.kind, c.by.id, { k: false }) : '<span class="faint">–</span>'}</td><td class="hide-m faint" style="font-size:12.5px">${esc(c.when || "–")}</td><td class="hide-m" style="font-size:12.5px">${note(c)}</td></tr>`).join("") +
@@ -73,7 +73,7 @@ const feature = (d) => {
 
 const empty = (d) => {
   const p = d.product;
-  return head(`${orgLink(d)}${sep}<a href="${lnk("products.html")}">Products</a>${sep}<span>${productLabel(p)}</span>`, "Product report", esc(p.name), "product", `reports_product (${esc(p.key)})`) +
+  return head(`${orgLink(d)}${sep}<a href="${lnk("products.html")}">Products</a>${sep}<span>${productLabel(p)}</span>`, "Product report", esc(p.name), "product") +
   `<div class="card"><div class="empty"><div class="ill">${I.report}</div><h3>No results yet</h3><p style="margin:0">${esc(p.key)} has ${p.cases} cases but no cycle has recorded a result. Reports fill in once a cycle runs.</p><a class="btn primary" href="${lnk("cycles.html#new-cycle")}">${I.plus}New cycle</a></div></div>`;
 };
 

@@ -69,6 +69,27 @@ class WebStructure:
         assert hits == [], hits
 
     @test()
+    def test_menu_button_names_the_nav_it_opens(self):
+        src = (JS / "shell.js").read_text(encoding="utf-8")
+        burger = re.search(r"<button[^>]*\bdata-nav-toggle\b[^>]*>", src).group(0)
+        assert 'aria-expanded="false"' in burger, burger
+        controls = re.search(r'aria-controls="([^"]+)"', burger).group(1)
+        assert re.search(rf'<nav\b[^>]*\bid="{controls}"', src), f"no nav with id {controls!r}"
+
+    @test()
+    def test_only_set_nav_writes_the_nav_open_class(self):
+        # the sidebar class and the Menu button's aria-expanded change together, in one place
+        writes = re.compile(r"classList\.\w+\(\s*[\"']nav-open[\"']")
+        shell = (JS / "shell.js").read_text(encoding="utf-8")
+        set_nav = re.search(r"const setNav = \(open\) => \{(.*?)\n  \};", shell, re.S).group(1)
+        assert writes.search(set_nav), "setNav no longer writes nav-open"
+        hits = []
+        for p in JS.rglob("*.js"):
+            src = p.read_text(encoding="utf-8").replace(set_nav, "")
+            hits += [p.relative_to(JS).as_posix() for _ in writes.finditer(src)]
+        assert hits == [], hits
+
+    @test()
     def test_data_modules_import_nothing(self):
         hits = [
             p.name for p in (JS / "data").glob("*.js") if ANY_IMPORT.search(p.read_text(encoding="utf-8"))

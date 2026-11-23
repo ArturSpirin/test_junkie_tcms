@@ -24,6 +24,9 @@ from test_junkie_tcms.api.v1.schemas import (
     ConsumerOut,
     PairingApprove,
     PairingCreated,
+    PairingDeny,
+    PairingIn,
+    PairingPreview,
     PairingToken,
     PairingTokenIn,
 )
@@ -84,8 +87,9 @@ def _rate_limit(request: Request) -> str | None:
     response_model=PairingCreated,
     **op("pairings_create", None, "consumers", mcp=False),
 )
-def pairings_create(request: Request, db: Session = Depends(get_db)):
-    """No auth: a consumer asks to pair; an admin approves the user code on the Consumers screen."""
+def pairings_create(request: Request, body: PairingIn | None = None, db: Session = Depends(get_db)):
+    """No auth: a consumer asks to pair, optionally telling about itself; an admin previews the user
+    code on the Consumers screen and approves or denies it."""
     ip = _rate_limit(request)
     device_code = secrets.token_urlsafe(32)
     user_code = _user_code()
@@ -98,6 +102,7 @@ def pairings_create(request: Request, db: Session = Depends(get_db)):
             status="pending",
             expires_at=utcnow() + EXPIRES_IN,
             client_ip=ip,
+            machine=body.model_dump() if body else None,
         )
     )
     db.commit()
@@ -112,10 +117,12 @@ def pairings_create(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/pair/token", response_model=PairingToken, **op("pairings_token", None, "consumers", mcp=False))
 def pairings_token(body: PairingTokenIn, db: Session = Depends(get_db)):
-    """Poll: 428 until approved, then the token once; 410 once expired or claimed."""
+    """Poll: 428 until approved, then the token once; 403 once denied; 410 once expired or claimed."""
     row = db.scalar(select(PairingRequest).where(PairingRequest.device_code_hash == _hash(body.device_code)))
     if row is None:
         raise ProblemError(404, "Unknown device code", error="invalid_grant")
+    if row.status == "denied":
+        raise ProblemError(403, "An admin denied the pairing request", error="access_denied")
     if row.status == "claimed" or aware(row.expires_at) <= utcnow():
         raise ProblemError(410, "The pairing request expired or was already used", error="expired_token")
     if row.status == "pending":
@@ -187,7 +194,11 @@ def pairings_approve(
     db.add(actor)
     db.flush()
     consumer = Consumer(
-        org_id=ctx.org.id, name=body.name, actor_id=actor.id, approved_by_actor_id=ctx.actor.id
+        org_id=ctx.org.id,
+        name=body.name,
+        actor_id=actor.id,
+        approved_by_actor_id=ctx.actor.id,
+        paused_at=None if body.accept_jobs else utcnow(),
     )
     db.add(consumer)
     db.flush()
@@ -201,3 +212,47 @@ def pairings_approve(
     return consumer_out(
         consumer, product_ids, consumer_project_counts(db, [consumer.id])[consumer.id], utcnow()
     )
+
+
+@router.post("/orgs/{org}/pair/deny", status_code=204, **op("pairings_deny", ADMIN, "consumers"))
+def pairings_deny(
+    body: PairingDeny,
+    ctx: OrgContext = Depends(require_scope(ADMIN)),
+    idem: Idem = Depends(idempotency),
+    db: Session = Depends(get_db),
+):
+    """Refuse a pending request: the machine's next poll gets 403 access_denied."""
+    row = _find(db, ctx, body.user_code)
+    if row.status != "pending":
+        raise ProblemError(409, f"The pairing request is already {row.status}", code="pairing_not_pending")
+    row.org_id = ctx.org.id
+    row.status = "denied"
+    audit.record(
+        db, ctx, "pairing.deny", "pairing_request", row.id, {"status": {"from": "pending", "to": "denied"}}
+    )
+    db.commit()
+
+
+@router.get(
+    "/orgs/{org}/pair/{user_code}",
+    response_model=PairingPreview,
+    **op("pairings_get", ADMIN, "consumers"),
+)
+def pairings_get(
+    user_code: str, ctx: OrgContext = Depends(require_scope(ADMIN)), db: Session = Depends(get_db)
+):
+    """What the machine said about itself when it asked to pair, before an admin approves or denies it."""
+    row = _find(db, ctx, user_code)
+    return PairingPreview(
+        user_code=row.user_code, status=row.status, expires_at=row.expires_at, **(row.machine or {})
+    )
+
+
+def _find(db: Session, ctx: OrgContext, user_code: str) -> PairingRequest:
+    """A pending request belongs to no org yet; once decided, only its org sees it."""
+    row = db.scalar(select(PairingRequest).where(PairingRequest.user_code == normalize_user_code(user_code)))
+    if row is None or row.org_id not in (None, ctx.org.id):
+        raise HTTPException(404, "No pairing request with that code")
+    if row.status == "pending" and aware(row.expires_at) <= utcnow():
+        raise ProblemError(410, "The pairing request expired; start pairing again", error="expired_token")
+    return row

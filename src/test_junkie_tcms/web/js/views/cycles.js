@@ -60,7 +60,7 @@ const newCycle = (d) => {
   <div class="field"><label>Default assignee</label>${dd({ value: f.assignee, options: whoOpts(d), cls: "block up", label: "Default assignee" })}</div></div>
   <div class="tg-list" style="margin-bottom:18px">${tg(true, "Skip draft cases", `${f.drafts} drafts in these features stay out of the cycle`)}${tg(false, "Notify the assignee", `Email ${esc(person(f.assignee)[0])} when the cycle opens`)}</div>
   <div class="banner info mb0">${I.pin}<div><b>${f.total} cases</b> (${f.ready} ready, ${f.drafts} draft skipped, ${f.deprecated} deprecated). Each is pinned at its <b>current version</b> now, e.g. ${esc(f.sample.key)} ${ver(f.sample.ver, 1)}. Later edits don't change this cycle.</div></div>`,
-  `<span class="l mono">POST /cycles</span><button class="btn" data-back>Cancel</button><button class="btn primary" data-create>Create cycle</button>`, "wide");
+  `<button class="btn" data-back>Cancel</button><button class="btn primary" data-create>Create cycle</button>`, "wide");
 };
 
 const bulkRelease = (d) => d.releases.find((r) => r.ver === d.bulk.release);
@@ -71,7 +71,7 @@ const bulkPick = (d) => {
   <div class="field mb0"><label>Release</label>${dd({ value: r.ver, options: releaseOpts(d).filter((o) => o.v !== "none" && o !== "-"), search: "Find a release", open: true, cls: "block inl", label: "Release" })}</div>
   <div class="sel-card" style="margin-top:16px"><span class="ic">${I.flag}</span><b><span class="mono">${esc(r.ver)}</span> ${esc(r.name)}</b><span class="pill ${r.status}">${r.status}</span><span class="muted" style="font-size:12.5px;grid-column:2 / -1">Target ${esc(r.date)} · ${r.features} affected features · ${d.bulk.ready} ready cases</span></div>
   <div class="faint" style="font-size:12px;margin-top:10px">Released and cancelled releases can't get new cycles.</div>`,
-  `<span class="l mono">GET /releases?status=planned,in_progress</span><button class="btn" data-back>Cancel</button><button class="btn primary" data-hash="bulk-preview">Next${I.chev}</button>`, "wide");
+  `<button class="btn" data-back>Cancel</button><button class="btn primary" data-hash="bulk-preview">Next${I.chev}</button>`, "wide");
 };
 
 const bulkTotals = (d) => ({ cycles: d.bulk.features.length, cases: d.bulk.features.reduce((a, f) => a + f.cases, 0) });
@@ -86,7 +86,7 @@ const bulkPreview = (d) => {
   <div class="mlist">${b.features.map((f) => `<div class="it"><span class="ell">${esc(f.path)}</span><span class="muted" style="font-size:12px">${f.cases} cases${f.drafts ? ` · ${f.drafts} draft skipped` : ""}</span>${dd({ value: f.assignee, options: who, cls: "sm block", label: "Assignee for " + f.path })}</div>`).join("")}</div></div>
   <div class="tg-list" style="margin-top:16px">${tg(true, "Group as one bulk batch", `The release report adds the ${n.cycles} cycles up`)}${tg(true, "Skip draft cases", `${b.drafts} drafts stay out`)}</div>
   <div class="banner info mb0" style="margin-top:16px">${I.pin}<div>${n.cases} cases, each <b>pinned at its current version</b>. Grouped as one bulk batch so the release report adds them up.</div></div>`,
-  `<span class="l mono">POST /releases/${esc(r.ver)}/cycles:bulk</span><button class="btn" data-hash="bulk-pick-release">${I.chevl}Back</button><button class="btn primary" data-hash="bulk-created">Create ${n.cycles} cycles</button>`, "wide");
+  `<button class="btn" data-hash="bulk-pick-release">${I.chevl}Back</button><button class="btn primary" data-hash="bulk-created">Create ${n.cycles} cycles</button>`, "wide");
 };
 const bulkCreated = (d) => {
   const n = bulkTotals(d);
@@ -133,7 +133,7 @@ const refreshConfirm = (d) => {
   return modal(`Refresh ${esc(f.key)} to v${f.to}?`, `<p style="margin-top:0">This cycle has ${esc(f.key)} pinned at ${ver(f.from, 1)}. v${f.to} changed:</p>
     <div class="diff card"><div class="bd" style="font-size:13px">Step ${esc(f.step)} expected: <del>${esc(f.before)}</del> <ins>${esc(f.after)}</ins><br>Tags: <ins>${esc(f.tagsAdded.join(", "))}</ins></div></div>
     <p class="muted" style="font-size:13px">Allowed only before the first result. The refresh is recorded in the audit log as <code>cycle_case.refresh_version</code>.</p>`,
-  `<span class="l mono">POST /cycles/${esc(d.cycle.id)}/cases/${esc(f.key)}:refresh-version</span><button class="btn" data-back>Cancel</button><button class="btn primary" data-hash="refresh-409">Refresh to v${f.to}</button>`);
+  `<button class="btn" data-back>Cancel</button><button class="btn primary" data-hash="refresh-409">Refresh to v${f.to}</button>`);
 };
 const refused = (d) => `<div class="banner err">${I.warn}<div style="flex:1;min-width:0"><b>Not refreshed.</b> A result came in before the refresh:
 <pre class="raw">${esc(d.error)}</pre></div></div>`;

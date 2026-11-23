@@ -129,6 +129,26 @@ class CsvIo:
         assert (case["title"], case["current_version"]) == ("Pay by saved card", 2)
 
     @test()
+    def test_export_has_the_description_and_an_old_header_keeps_it(self, suite_parameter):
+        owner = self.env.owner
+        s = source(owner)
+        ok(
+            owner.patch(
+                url("/cases/PAY-1"),
+                json={"description": {"markdown": "Card payments"}},
+                headers={"If-Match": '"1"'},
+            )
+        )
+        items = rows(export(owner, s["product"]["id"]))
+        assert items[0]["description"].strip() == "Card payments"
+        old = [{k: v for k, v in r.items() if k != "description"} for r in items]
+        old[0]["title"] = "Pay by saved card"
+        out = ok(do_import(owner, s["product"]["id"], to_csv(old)))
+        assert (out["created"], out["updated"], out["unchanged"]) == (0, 1, 1)
+        case = ok(owner.get(url("/cases/PAY-1")))
+        assert (case["title"], case["description"].strip()) == ("Pay by saved card", "Card payments")
+
+    @test()
     def test_version_mismatch_rejects_the_whole_import(self, suite_parameter):
         owner = self.env.owner
         s = source(owner)
@@ -155,6 +175,20 @@ class CsvIo:
         assert [(e["row"], e["column"]) for e in r.json()["errors"]] == [(2, "version")]
 
     @test()
+    def test_a_title_of_only_spaces_is_a_row_error(self, suite_parameter):
+        owner = self.env.owner
+        s = source(owner)
+        p = s["product"]["id"]
+        items = rows(export(owner, p))
+        items[0]["title"] = "   "
+        items.append({**items[1], "key": "", "version": "", "title": " \t "})
+        r = do_import(owner, p, to_csv(items))
+        assert r.status_code == 422, r.text
+        assert [(e["row"], e["column"]) for e in r.json()["errors"]] == [(1, "title"), (3, "title")]
+        assert ok(owner.get(url("/cases/PAY-1")))["title"] == "Pay by card"
+        assert cases_count(owner, p) == 2
+
+    @test()
     def test_feature_change_on_a_keyed_row_is_a_row_error(self, suite_parameter):
         owner = self.env.owner
         s = source(owner)
@@ -176,6 +210,47 @@ class CsvIo:
         assert r.status_code == 422, r.text
         assert {e["column"] for e in r.json()["errors"]} == {"feature"}
         assert cases_count(owner, s["product"]["id"]) == 2
+
+    @test()
+    def test_a_feature_name_of_only_spaces_in_the_path_is_a_row_error(self, suite_parameter):
+        owner = self.env.owner
+        s = source(owner)
+        p = s["product"]["id"]
+        tree = ok(owner.get(url(f"/products/{p}/features")))
+        new = {**rows(export(owner, p))[0], "key": "", "version": ""}
+        for path in ("Checkout >    > New", "  \t  ", "Refunds > \t "):
+            r = do_import(owner, p, to_csv([{**new, "feature": path}]), create_features=True)
+            assert r.status_code == 422, (path, r.text)
+            [error] = r.json()["errors"]
+            assert error["column"] == "feature", (path, error)
+        assert "is empty" in error["detail"], error
+        assert ok(owner.get(url(f"/products/{p}/features"))) == tree
+        assert cases_count(owner, p) == 2
+
+    @test()
+    def test_spaces_around_feature_names_in_the_path_find_the_same_feature(self, suite_parameter):
+        owner = self.env.owner
+        s = source(owner)
+        p = s["product"]["id"]
+        new = {**rows(export(owner, p))[0], "key": "", "version": ""}
+
+        def feature_of(path: str) -> str:
+            [key] = ok(do_import(owner, p, to_csv([{**new, "feature": path}]), create_features=True))["keys"]
+            return ok(owner.get(url(f"/cases/{key}")))["feature_id"]
+
+        def shape(nodes: list[dict]) -> list:
+            return [(f["id"], f["name"], shape(f["children"])) for f in nodes]
+
+        def features() -> list:
+            return shape(ok(owner.get(url(f"/products/{p}/features")))["items"])
+
+        assert feature_of(" Checkout  >  Card ") == s["child"]["id"]
+        first = feature_of("  Refunds >  Partial ")
+        tree = features()
+        [refunds] = [f for f in tree if f[1] == "Refunds"]
+        assert refunds[2] == [(first, "Partial", [])]
+        assert feature_of("Refunds  > Partial  ") == first  # the second import reuses what the first made
+        assert features() == tree
 
     @test()
     def test_duplicate_key_is_a_row_error(self, suite_parameter):

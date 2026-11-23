@@ -3,7 +3,7 @@
 
 import json
 import re
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
@@ -16,6 +16,7 @@ from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.if_match import if_match, stale
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, SortKey, count, page_params, paginate
+from test_junkie_tcms.api.selection import descendants, feature_children
 from test_junkie_tcms.api.v1.catalog import (
     get_product,
     product_features,
@@ -24,6 +25,7 @@ from test_junkie_tcms.api.v1.catalog import (
     rich_out,
 )
 from test_junkie_tcms.api.v1.catalog import to_doc as _to_doc
+from test_junkie_tcms.api.v1.execution_schemas import CaseCycleOut
 from test_junkie_tcms.api.v1.schemas import (
     CaseBulkIn,
     CaseBulkItem,
@@ -41,6 +43,7 @@ from test_junkie_tcms.api.v1.schemas import (
     RichMode,
     StepOut,
     TagOut,
+    UtcDateTime,
 )
 from test_junkie_tcms.auth.deps import OrgContext, get_db, require_scope
 from test_junkie_tcms.auth.scopes import READ, WRITE_CASES
@@ -51,6 +54,7 @@ from test_junkie_tcms.db.models import (
     Actor,
     CaseVersion,
     CaseVersionTag,
+    Cycle,
     CycleCase,
     Feature,
     Product,
@@ -155,21 +159,7 @@ def version_tags(db: Session, version_ids: list[str]) -> dict[str, list[str]]:
 
 def subtree(db: Session, org_id: str, product_id: str, feature_ids: list[str]) -> set[str]:
     """The features and every feature under them."""
-    children: dict[str | None, list[str]] = {}
-    for f_id, parent in db.execute(
-        select(Feature.id, Feature.parent_id).where(
-            Feature.org_id == org_id, Feature.product_id == product_id
-        )
-    ):
-        children.setdefault(parent, []).append(f_id)
-    seen: set[str] = set()
-    todo = list(feature_ids)
-    while todo:
-        f_id = todo.pop()
-        if f_id not in seen:
-            seen.add(f_id)
-            todo.extend(children.get(f_id, []))
-    return seen
+    return descendants(feature_children(db, org_id, product_id), feature_ids)
 
 
 def feature_rank(db: Session, org_id: str, product_id: str) -> dict[str, int]:
@@ -265,17 +255,13 @@ def _check_values(name: str, values: list[str], allowed: tuple[str, ...]) -> Non
         raise HTTPException(422, f"{name} must be one of {', '.join(allowed)}; got {', '.join(bad)}")
 
 
-def _utc(value: datetime) -> datetime:
-    """A query time as stored: UTC; a time without a zone is taken as UTC."""
-    return value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
-
-
 ## Content: what a version holds
 
 
 def content_of(v: CaseVersion, tags: list[str]) -> dict[str, Any]:
     return {
         "title": v.title,
+        "description": v.description,
         "preconditions": v.preconditions,
         "steps": v.steps,
         "priority": v.priority,
@@ -307,6 +293,8 @@ def apply_fields(body: CaseFields, current: dict[str, Any]) -> dict[str, Any]:
     title = getattr(body, "title", None)
     if title is not None:
         new["title"] = title
+    if body.description is not None:
+        new["description"] = _to_doc("description", body.description)
     if body.preconditions is not None:
         new["preconditions"] = _to_doc("preconditions", body.preconditions)
     if body.steps is not None:
@@ -348,7 +336,7 @@ def _steps_md(steps: list[dict[str, Any]]) -> list[dict[str, str]]:
 
 
 def _printable(field: str, value: Any) -> Any:
-    if field == "preconditions":
+    if field in ("description", "preconditions"):
         return doc_to_md(value)
     if field == "steps":
         return _steps_md(value)
@@ -403,6 +391,8 @@ def add_version(
         version=number,
         title=content["title"],
         title_text=content["title"],
+        description=content["description"],
+        description_text=doc_to_text(content["description"]),
         preconditions=content["preconditions"],
         preconditions_text=doc_to_text(content["preconditions"]),
         steps=content["steps"],
@@ -416,6 +406,7 @@ def add_version(
         custom=content["custom"],
         change_note=change_note,
         created_by_actor_id=ctx.actor.id,
+        **ctx.provenance(),
     )
     db.add(v)
     db.flush()
@@ -434,7 +425,10 @@ def create_case(
 ) -> tuple[TestCase, CaseVersion, dict[str, Any]]:
     require_active_product(db, product.id)
     product_features(db, ctx, product.id, [feature_id])
-    content = apply_fields(body, {"title": title, "preconditions": empty_doc(), "steps": [], **DEFAULTS})
+    content = apply_fields(
+        body,
+        {"title": title, "description": empty_doc(), "preconditions": empty_doc(), "steps": [], **DEFAULTS},
+    )
     content["title"] = title
     number = db.execute(
         update(Product)
@@ -527,6 +521,7 @@ def case_out(
         last_result=result,
         last_result_at=result_at,
         title=v.title,
+        description=rich_out(v.description, mode),
         preconditions=rich_out(v.preconditions, mode),
         steps=_steps_out(v.steps, mode),
         priority=v.priority,
@@ -557,6 +552,7 @@ def version_out(db: Session, case: TestCase, v: CaseVersion, mode: RichMode) -> 
         key=case_key(product, case),
         version=v.version,
         title=v.title,
+        description=rich_out(v.description, mode),
         preconditions=rich_out(v.preconditions, mode),
         steps=_steps_out(v.steps, mode),
         priority=v.priority,
@@ -569,6 +565,9 @@ def version_out(db: Session, case: TestCase, v: CaseVersion, mode: RichMode) -> 
         tags=version_tags(db, [v.id])[v.id],
         change_note=v.change_note,
         created_by_actor_id=v.created_by_actor_id,
+        via=v.via,
+        token_id=v.token_id,
+        on_behalf_of_user_id=v.on_behalf_of_user_id,
         created_at=v.created_at,
     )
 
@@ -593,7 +592,7 @@ def cases_list(
         [], description="Repeatable; the last result in any cycle, `untested` when the case has none"
     ),
     priority: list[str] = Query([], description="Repeatable"),
-    updated_since: datetime | None = Query(None, description="Cases changed at or after this time"),
+    updated_since: UtcDateTime | None = Query(None, description="Cases changed at or after this time"),
     edited_by: list[str] = Query([], description="Repeatable actor ids; who made the current version"),
     edited_by_kind: Literal["user", "agent"] | None = Query(None, description="Who made the current version"),
     has_ref: bool | None = Query(None, description="Whether the case has an automation_ref"),
@@ -634,7 +633,7 @@ def cases_list(
         _check_values("priority", priority, PRIORITIES)
         query = query.where(CaseVersion.priority.in_(priority))
     if updated_since is not None:
-        query = query.where(TestCase.updated_at >= _utc(updated_since))
+        query = query.where(TestCase.updated_at >= updated_since)
     if edited_by:
         query = query.where(CaseVersion.created_by_actor_id.in_(edited_by))
     if edited_by_kind is not None:
@@ -777,11 +776,45 @@ def cases_versions_list(
             title=v.title,
             change_note=v.change_note,
             created_by_actor_id=v.created_by_actor_id,
+            via=v.via,
+            token_id=v.token_id,
+            on_behalf_of_user_id=v.on_behalf_of_user_id,
             created_at=v.created_at,
         )
         for v in rows
     ]
     return Page[CaseVersionSummary](items=items, next_cursor=cursor, total=total)
+
+
+@router.get(CASE + "/cycles", response_model=list[CaseCycleOut], **op("cases_cycles", READ, "cases"))
+def cases_cycles(
+    case: str,
+    ctx: OrgContext = Depends(require_scope(READ)),
+    db: Session = Depends(get_db),
+):
+    """The cycles the case is in, newest first, with the version each pinned."""
+    c = get_case(db, ctx, case)
+    rows = db.execute(
+        select(CycleCase, Cycle)
+        .join(Cycle, and_(Cycle.org_id == CycleCase.org_id, Cycle.id == CycleCase.cycle_id))
+        .where(CycleCase.org_id == c.org_id, CycleCase.case_id == c.id)
+        .order_by(Cycle.started_at.desc(), Cycle.id.desc())
+    )
+    return [
+        CaseCycleOut(
+            cycle_id=cycle.id,
+            name=cycle.name,
+            cycle_status=cycle.status,
+            environment=cycle.environment,
+            started_at=cycle.started_at,
+            closed_at=cycle.closed_at,
+            cycle_case_id=cc.id,
+            case_version=cc.case_version,
+            status=cc.status,
+            last_result_at=cc.last_result_at,
+        )
+        for cc, cycle in rows
+    ]
 
 
 @router.get(

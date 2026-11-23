@@ -1,14 +1,29 @@
 from datetime import date, datetime
 from typing import Annotated, Any, Generic, Literal, TypeVar
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, Field, model_validator
+from pydantic import (
+    AfterValidator,
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
 
 from test_junkie_tcms.db.base import aware
 
-# A stored time read back from SQLite is naive; mark it UTC so the API always says so.
+# The type of every API time, in and out: a caller's offset or a naive time read back from SQLite becomes UTC.
+# Every datetime query param and body field uses it (or ZonedUtcDateTime); tests/test_utc_inputs.py checks.
 UtcDateTime = Annotated[datetime, AfterValidator(aware)]
+# An input time that must carry a zone (a naive one is a 422), then made UTC.
+ZonedUtcDateTime = Annotated[AwareDatetime, AfterValidator(aware)]
 
 Role = Literal["viewer", "tester", "editor", "admin", "owner"]
+# The one name check for every write (org, member, agent, token, invite, product, feature, release, plan,
+# cycle, consumer; API, bulk, CSV and Markdown import, MCP): stripped first, so a name of only spaces is
+# refused like an empty one.
+Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]
 
 
 class Out(BaseModel):
@@ -49,11 +64,11 @@ class OrgOut(Out):
     id: str
     slug: str
     name: str
-    created_at: datetime
+    created_at: UtcDateTime
 
 
 class OrgUpdate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
+    name: Name
 
 
 class MemberOut(BaseModel):
@@ -62,12 +77,13 @@ class MemberOut(BaseModel):
     email: str
     name: str
     role: str
-    removed_at: datetime | None = None
+    removed_at: UtcDateTime | None = None
+    last_active_at: UtcDateTime | None = None
 
 
 class MemberAdd(BaseModel):
     email: str = Field(min_length=3, max_length=320)
-    name: str = Field(min_length=1, max_length=200)
+    name: Name
     role: Role
     # Only used when the email has no account yet.
     password: str | None = Field(None, min_length=8, max_length=1000)
@@ -82,20 +98,45 @@ class AgentOut(Out):
     name: str
     role: str
     owner_user_id: str
-    disabled_at: datetime | None = None
-    created_at: datetime
+    description: str | None = None
+    disabled_at: UtcDateTime | None = None
+    last_active_at: UtcDateTime | None = None
+    created_at: UtcDateTime
 
 
 class AgentCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
+    name: Name
     role: Role
+    description: str | None = Field(None, max_length=500)
     # Defaults to the calling user.
     owner_user_id: str | None = None
 
 
 class AgentUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     role: Role | None = None
+    # An empty string clears it.
+    description: str | None = Field(None, max_length=500)
+
+
+class DirectoryActor(BaseModel):
+    id: str
+    kind: Literal["user", "agent", "consumer"]
+    name: str
+    disabled: bool = Field(description="A removed member, a disabled agent or a revoked consumer")
+
+
+class DirectoryToken(BaseModel):
+    id: str
+    name: str
+    actor_id: str
+
+
+class ActorDirectory(BaseModel):
+    """Names for every actor and token that can appear on a row, past ones included; no emails or roles."""
+
+    actors: list[DirectoryActor]
+    tokens: list[DirectoryToken]
 
 
 class TokenOut(Out):
@@ -105,18 +146,18 @@ class TokenOut(Out):
     actor_id: str
     scopes: list[str]
     product_ids: list[str] | None = None
-    expires_at: datetime | None = None
-    revoked_at: datetime | None = None
-    last_used_at: datetime | None = None
-    created_at: datetime
+    expires_at: UtcDateTime | None = None
+    revoked_at: UtcDateTime | None = None
+    last_used_at: UtcDateTime | None = None
+    created_at: UtcDateTime
 
 
 class TokenCreate(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
+    name: Name
     scopes: list[str] = Field(min_length=1)
     # Defaults to the caller's own actor.
     actor_id: str | None = None
-    expires_at: datetime | None = None
+    expires_at: ZonedUtcDateTime | None = None
     # Limit the token to these products; None means every product (or the caller's own limit).
     product_ids: list[str] | None = None
 
@@ -153,9 +194,7 @@ class InviteCreated(InviteOut):
 class InviteAccept(BaseModel):
     token: str = Field(min_length=1, max_length=200)
     # Both or neither: with them, an invitee with no account signs up and is signed in.
-    name: str | None = Field(
-        None, min_length=1, max_length=200, description="Signup only: the new user's name"
-    )
+    name: Name | None = Field(None, description="Signup only: the new user's name")
     password: str | None = Field(
         None, min_length=8, max_length=1000, description="Signup only: the new user's password"
     )
@@ -186,7 +225,6 @@ class DocIn(BaseModel):
 
 
 RichIn = MarkdownIn | DocIn
-Name = Field(min_length=1, max_length=200)
 
 
 class Patch(BaseModel):
@@ -209,12 +247,12 @@ class ProductOut(BaseModel):
 
 class ProductCreate(BaseModel):
     key: str = Field(pattern=r"^[A-Z][A-Z0-9]{1,9}$", description="Short key, e.g. PAY; can't change later")
-    name: str = Name
+    name: Name
     description: RichIn | None = None
 
 
 class ProductUpdate(Patch):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     description: RichIn | None = None
 
 
@@ -250,14 +288,14 @@ class FeatureTree(BaseModel):
 
 
 class FeatureCreate(BaseModel):
-    name: str = Name
+    name: Name
     description: RichIn | None = None
     parent_id: str | None = None
     owner_actor_id: str | None = None
 
 
 class FeatureUpdate(Patch):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     description: RichIn | None = None
     owner_actor_id: str | None = None
 
@@ -286,19 +324,19 @@ class ReleaseOut(BaseModel):
 
 class ReleaseCreate(BaseModel):
     version: str = Field(min_length=1, max_length=64)
-    name: str = Name
+    name: Name
     status: ReleaseStatus = "planned"
     target_date: date | None = None
-    released_at: datetime | None = None
+    released_at: UtcDateTime | None = None
     notes: RichIn | None = None
 
 
 class ReleaseUpdate(Patch):
     version: str | None = Field(None, min_length=1, max_length=64)
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     status: ReleaseStatus | None = None
     target_date: date | None = None
-    released_at: datetime | None = None
+    released_at: UtcDateTime | None = None
     notes: RichIn | None = None
 
 
@@ -344,6 +382,10 @@ class PlanEntryOut(Out):
     feature_id: str | None = None
     query: dict[str, Any] | None = None
     position: int
+    cases: int = Field(0, description="How many live cases the entry selects now")
+    new_cases: int = Field(
+        0, description="How many of those no earlier entry selects; they sum to the plans_resolve total"
+    )
 
 
 PlanStatus = Literal["draft", "active", "archived"]
@@ -362,13 +404,13 @@ class PlanOut(BaseModel):
 
 
 class PlanCreate(BaseModel):
-    name: str = Name
+    name: Name
     description: RichIn | None = None
     release_id: str | None = None
 
 
 class PlanUpdate(Patch):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     description: RichIn | None = None
     release_id: str | None = None
     status: PlanStatus | None = None
@@ -392,7 +434,9 @@ CaseStatus = Literal["draft", "ready", "deprecated"]
 Automation = Literal["manual", "automated", "to_automate"]
 Priority = Literal["low", "medium", "high", "critical"]
 CaseType = Literal["functional", "regression", "smoke", "acceptance", "performance", "security", "other"]
-Title = Field(min_length=1, max_length=500)
+# The one title check for every case write (create, update, bulk, CSV and Markdown import, MCP): stripped
+# first, so a title of only spaces is refused like an empty one.
+CaseTitle = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
 ChangeNote = Field(None, max_length=500)
 
 
@@ -422,6 +466,7 @@ class CaseFields(BaseModel):
     """The versioned content; on an update, a field left out keeps its current value."""
 
     model_config = ConfigDict(extra="forbid")
+    description: RichIn | None = None
     preconditions: RichIn | None = None
     steps: list[StepIn] | None = Field(None, max_length=200)
     priority: Priority | None = None
@@ -439,11 +484,11 @@ class CaseFields(BaseModel):
 
 class CaseCreate(CaseFields):
     feature_id: str
-    title: str = Title
+    title: CaseTitle
 
 
 class CaseUpdate(CaseFields):
-    title: str | None = Field(None, min_length=1, max_length=500)
+    title: CaseTitle | None = None
 
 
 class CaseOut(BaseModel):
@@ -455,6 +500,7 @@ class CaseOut(BaseModel):
     current_version: int
     position: int = Field(description="Index among the cases of its feature, for manual order")
     title: str
+    description: RichOut
     preconditions: RichOut
     steps: list[StepOut]
     priority: str
@@ -480,6 +526,7 @@ class CaseVersionOut(BaseModel):
     key: str
     version: int
     title: str
+    description: RichOut
     preconditions: RichOut
     steps: list[StepOut]
     priority: str
@@ -492,6 +539,9 @@ class CaseVersionOut(BaseModel):
     tags: list[str]
     change_note: str | None = None
     created_by_actor_id: str
+    via: str | None = Field(None, description="ui, api or mcp; null on versions saved before provenance")
+    token_id: str | None = None
+    on_behalf_of_user_id: str | None = Field(None, description="The owner of the agent that saved it")
     created_at: UtcDateTime
 
 
@@ -500,7 +550,25 @@ class CaseVersionSummary(BaseModel):
     title: str
     change_note: str | None = None
     created_by_actor_id: str
+    via: str | None = Field(None, description="ui, api or mcp; null on versions saved before provenance")
+    token_id: str | None = None
+    on_behalf_of_user_id: str | None = Field(None, description="The owner of the agent that saved it")
     created_at: UtcDateTime
+
+
+class CaseMarkdownOut(BaseModel):
+    case_id: str
+    key: str
+    version: int
+    markdown: str = Field(description="The case as one md-bundle file: JSON front matter, title, sections")
+
+
+class CaseMarkdownIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    markdown: str = Field(
+        max_length=1024 * 1024, description="One md-bundle file, as cases_markdown_get gives"
+    )
+    change_note: str | None = ChangeNote
 
 
 class CaseRestore(BaseModel):
@@ -522,7 +590,7 @@ class CaseBulkItem(CaseFields):
     key: str | None = None
     expected_version: int | None = Field(None, ge=1)
     feature_id: str | None = None
-    title: str | None = Field(None, min_length=1, max_length=500)
+    title: CaseTitle | None = None
 
 
 class CaseBulkIn(BaseModel):
@@ -548,7 +616,7 @@ class TagOut(BaseModel):
 
 class AuditOut(Out):
     id: str
-    created_at: datetime
+    created_at: UtcDateTime
     actor_id: str
     token_id: str | None
     on_behalf_of_user_id: str | None
@@ -557,6 +625,13 @@ class AuditOut(Out):
     entity_type: str
     entity_id: str
     changes: dict[str, Any] | None
+
+
+class AuditRetentionOut(BaseModel):
+    days: int = Field(description="The retention policy; not enforced yet, so no row is deleted")
+    oldest_kept: UtcDateTime | None = Field(
+        description="The oldest stored audit row; null when there is none"
+    )
 
 
 ConsumerStatus = Literal["online", "offline", "busy", "revoked"]
@@ -568,6 +643,29 @@ class PairingCreated(BaseModel):
     verification_uri: str
     expires_in: int
     interval: int
+
+
+class PairingIn(BaseModel):
+    """What the machine tells about itself, shown to the admin before approving. Every field is optional."""
+
+    os: str | None = Field(None, max_length=200)
+    tj_version: str | None = Field(None, max_length=64)
+    python: str | None = Field(None, max_length=64)
+    projects: list[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, max_length=50)
+
+
+class PairingPreview(BaseModel):
+    user_code: str
+    status: Literal["pending", "approved", "claimed", "denied"]
+    expires_at: UtcDateTime
+    os: str | None = None
+    tj_version: str | None = None
+    python: str | None = None
+    projects: list[str] = []
+
+
+class PairingDeny(BaseModel):
+    user_code: str = Field(min_length=8, max_length=9)
 
 
 class PairingTokenIn(BaseModel):
@@ -583,8 +681,9 @@ class PairingToken(BaseModel):
 
 class PairingApprove(BaseModel):
     user_code: str = Field(min_length=8, max_length=9)
-    name: str = Field(min_length=1, max_length=200, description="User-given; never the machine's hostname")
+    name: Name = Field(description="User-given; never the machine's hostname")
     product_ids: list[str] = Field(min_length=1)
+    accept_jobs: bool = Field(True, description="False pairs the consumer paused")
 
 
 class ConsumerOut(BaseModel):
@@ -598,6 +697,7 @@ class ConsumerOut(BaseModel):
     tj_version: str | None = None
     python: str | None = None
     os: str | None = None
+    paused_at: UtcDateTime | None = Field(None, description="Set while paused: it takes no new jobs")
     revoked_at: UtcDateTime | None = None
     created_at: UtcDateTime
 
@@ -617,10 +717,22 @@ class InventorySummary(Out):
 class ConsumerDetail(ConsumerOut):
     heartbeats: list[HeartbeatOut] = Field(description="The last 24 h, newest first")
     inventory: list[InventorySummary]
+    jobs_today: int = Field(description="Jobs created for it in the last 24 h (a rolling window)")
+    rejected_today: int = Field(description="Of those, the ones it rejected")
+    tests_found: int = Field(description="Refs in its inventory, across projects")
+    tests_linked: int = Field(description="Of those, the ones linked to a case you can see")
+
+
+class RosterItem(BaseModel):
+    project: str
+    ref: str
+    case_key: str | None = Field(
+        None, description="The case whose automation_ref is this ref, if you can see it"
+    )
 
 
 class ConsumerUpdate(BaseModel):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     product_ids: list[str] | None = Field(None, min_length=1)
 
 

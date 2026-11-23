@@ -289,7 +289,7 @@ when the agent's owner is no longer a member or the agent's role is now above th
 
 An agent's `name` is the shared name rule (trimmed, 1 to 200 characters) and also lowercase letters and digits
 with single dashes between them (`nightly-bot`), else a 422. It is unique among the org's agents, disabled ones
-included, else a 409; a consumer may share it. Migration `0018` renamed existing agents to fit: each name was
+included, else a 409; a consumer may share it. Migration `0019` renamed existing agents to fit: each name was
 lowercased with runs of other characters turned into one dash (`agent` when nothing was left). An already valid
 name kept its own, and a later duplicate in the same org got `-2`, `-3`, oldest first.
 

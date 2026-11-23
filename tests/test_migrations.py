@@ -227,7 +227,7 @@ class Migrations:
             engine.dispose()
 
     @test()
-    def test_0018_gives_agents_valid_names_unique_per_org_and_drops_request_columns_on_downgrade(
+    def test_0019_gives_agents_valid_names_unique_per_org_and_drops_request_columns_on_downgrade(
         self, suite_parameter
     ):
         owner = self.env.owner
@@ -242,7 +242,7 @@ class Migrations:
             return {c["name"] for c in inspect(conn).get_columns("audit_event")}
 
         try:
-            command.downgrade(alembic_config(database_url), "0017")
+            command.downgrade(alembic_config(database_url), "0018")
             with engine.begin() as conn:
                 assert not {"request_id", "tool"} & columns(conn)
                 org_id, user_id, actor_id = conn.execute(
@@ -284,7 +284,7 @@ class Migrations:
                 "A4": "Build Box",
                 other["id"]: "ci-bot",  # unique per org: globex keeps its own ci-bot
             }
-            command.downgrade(alembic_config(database_url), "0017")
+            command.downgrade(alembic_config(database_url), "0018")
             with engine.connect() as conn:
                 assert not {"request_id", "tool"} & columns(conn)
                 assert conn.scalar(text("SELECT name FROM actor WHERE id = 'A1'")) == "ci-bot-2"  # one-way

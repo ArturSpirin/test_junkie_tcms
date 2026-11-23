@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Every API time input (`since`, `until`, `updated_since`, `expires_at`, `released_at`) given in another zone is read as the same instant in UTC, so MCP stats buckets start at UTC midnight and echo `Z`; org, member, agent, token and audit times also come back in UTC on SQLite.
 - Web app: the narrow-width Menu button says whether the menu is open (`aria-expanded`) and which nav it opens (`aria-controls`).
 - A cycle case edited after it has results can be refreshed to the current case version and rerun in the same cycle (no more `409 has_results`); each result records the case version it ran (`case_version`), release and feature reports keep a stale case's last result, and the cycle report counts its `stale` cases.
 - Consumers: `consumers_jobs` lists a machine's jobs, which keep a `reason`; a machine can reject a job with a reason (its open cases cancel); admins can pause and resume a consumer, or pair it paused; admins can preview (`pairings_get`) and deny (`pairings_deny`) a pending pairing; `consumers_roster` lists the inventory refs with their linked case. The detail adds jobs and rejected in the last 24 h and tests found and linked.

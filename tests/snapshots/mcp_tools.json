@@ -2446,6 +2446,94 @@
    "read_only_hint": true
   },
   "args": {
+   "consumer_id": {
+    "location": "path",
+    "wire": "consumer_id"
+   },
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "status": {
+    "location": "query",
+    "wire": "status"
+   }
+  },
+  "description": "Consumers Jobs. The jobs sent to this machine, newest first, each with its `reason` when it was rejected or failed.\nOnly jobs in products you can see.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "consumer_id": {
+     "type": "string"
+    },
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "status": {
+     "anyOf": [
+      {
+       "enum": [
+        "queued",
+        "claimed",
+        "running",
+        "done",
+        "failed",
+        "cancelled",
+        "rejected"
+       ],
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "consumer_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "consumers_jobs",
+  "path": "/api/v1/orgs/{org}/consumers/{consumer_id}/jobs",
+  "scope": "read",
+  "toolset": "consumers"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
    "cursor": {
     "location": "query",
     "wire": "cursor"
@@ -2534,6 +2622,118 @@
  },
  {
   "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "consumer_id": {
+    "location": "path",
+    "wire": "consumer_id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Consumers Pause. Stop sending it new jobs: claims return none and new cycles can't choose it. A job it holds runs to\nthe end. Pausing a paused consumer changes nothing.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "consumer_id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "consumer_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "consumers_pause",
+  "path": "/api/v1/orgs/{org}/consumers/{consumer_id}/pause",
+  "scope": "admin",
+  "toolset": "consumers"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "consumer_id": {
+    "location": "path",
+    "wire": "consumer_id"
+   },
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Consumers Resume. It takes jobs again. Resuming a consumer that isn't paused changes nothing.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "consumer_id": {
+     "type": "string"
+    },
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    }
+   },
+   "required": [
+    "consumer_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "consumers_resume",
+  "path": "/api/v1/orgs/{org}/consumers/{consumer_id}/resume",
+  "scope": "admin",
+  "toolset": "consumers"
+ },
+ {
+  "annotations": {
    "destructive_hint": true,
    "idempotent_hint": false,
    "read_only_hint": false
@@ -2570,6 +2770,86 @@
   "name": "consumers_revoke",
   "path": "/api/v1/orgs/{org}/consumers/{consumer_id}",
   "scope": "admin",
+  "toolset": "consumers"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "consumer_id": {
+    "location": "path",
+    "wire": "consumer_id"
+   },
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "project": {
+    "location": "query",
+    "wire": "project"
+   }
+  },
+  "description": "Consumers Roster. The tests in the machine's last inventory, by project then as listed, each with the key of the case\nwhose automation_ref it is (null when none you can see).",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "consumer_id": {
+     "type": "string"
+    },
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "project": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Only this project's refs"
+    }
+   },
+   "required": [
+    "consumer_id",
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "consumers_roster",
+  "path": "/api/v1/orgs/{org}/consumers/{consumer_id}/roster",
+  "scope": "read",
   "toolset": "consumers"
  },
  {
@@ -5760,6 +6040,10 @@
    "read_only_hint": false
   },
   "args": {
+   "accept_jobs": {
+    "location": "body",
+    "wire": "accept_jobs"
+   },
    "idempotency_key": {
     "location": "header",
     "wire": "Idempotency-Key"
@@ -5785,6 +6069,11 @@
   "input_schema": {
    "additionalProperties": false,
    "properties": {
+    "accept_jobs": {
+     "default": true,
+     "description": "False pairs the consumer paused",
+     "type": "boolean"
+    },
     "idempotency_key": {
      "anyOf": [
       {
@@ -5831,6 +6120,104 @@
   "method": "POST",
   "name": "pairings_approve",
   "path": "/api/v1/orgs/{org}/pair/approve",
+  "scope": "admin",
+  "toolset": "consumers"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": false
+  },
+  "args": {
+   "idempotency_key": {
+    "location": "header",
+    "wire": "Idempotency-Key"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "user_code": {
+    "location": "body",
+    "wire": "user_code"
+   }
+  },
+  "description": "Pairings Deny. Refuse a pending request: the machine's next poll gets 403 access_denied.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "idempotency_key": {
+     "anyOf": [
+      {
+       "maxLength": 255,
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Optional. A retry with the same key returns the first result for 24 h"
+    },
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "user_code": {
+     "maxLength": 9,
+     "minLength": 8,
+     "type": "string"
+    }
+   },
+   "required": [
+    "org",
+    "user_code"
+   ],
+   "type": "object"
+  },
+  "method": "POST",
+  "name": "pairings_deny",
+  "path": "/api/v1/orgs/{org}/pair/deny",
+  "scope": "admin",
+  "toolset": "consumers"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
+   },
+   "user_code": {
+    "location": "path",
+    "wire": "user_code"
+   }
+  },
+  "description": "Pairings Get. What the machine said about itself when it asked to pair, before an admin approves or denies it.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "user_code": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "org",
+    "user_code"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "pairings_get",
+  "path": "/api/v1/orgs/{org}/pair/{user_code}",
   "scope": "admin",
   "toolset": "consumers"
  },

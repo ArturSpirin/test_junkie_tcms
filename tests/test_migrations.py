@@ -147,6 +147,29 @@ class Migrations:
         finally:
             engine.dispose()
 
+    @test()
+    def test_0014_keeps_pending_pairings_and_drops_denied_on_downgrade(self, suite_parameter):
+        owner, anon = self.env.owner, self.env.client()
+        kept = ok(anon.post("/api/v1/pair", json={"os": "Linux"}), 201)["user_code"]
+        denied = ok(anon.post("/api/v1/pair"), 201)["user_code"]
+        assert owner.post("/api/v1/orgs/acme/pair/deny", json={"user_code": denied}).status_code == 204
+        database_url = self.env.database_url
+        engine = create_engine(database_url)
+        rows = "SELECT user_code, status FROM pairing_request ORDER BY user_code"
+        try:
+            command.downgrade(alembic_config(database_url), "0013")
+            with engine.connect() as conn:
+                assert "machine" not in {c["name"] for c in inspect(conn).get_columns("pairing_request")}
+                assert "paused_at" not in {c["name"] for c in inspect(conn).get_columns("consumer")}
+                assert "reason" not in {c["name"] for c in inspect(conn).get_columns("job")}
+                assert list(conn.execute(text(rows))) == [(kept, "pending")]
+            migrate.upgrade(database_url)
+            with engine.connect() as conn:
+                assert list(conn.execute(text(rows))) == [(kept, "pending")]
+                assert conn.scalar(text("SELECT machine FROM pairing_request")) is None
+        finally:
+            engine.dispose()
+
     @test(parameters=["UPDATE audit_event SET action = 'x'", "DELETE FROM audit_event"])
     def test_raw_sql_cannot_change_audit_event(self, parameter, suite_parameter):
         statement = parameter

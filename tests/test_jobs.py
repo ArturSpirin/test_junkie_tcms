@@ -10,8 +10,9 @@ from test_junkie_tcms.api.v1 import consumers, cycles, job_queue, jobs, results
 from test_junkie_tcms.db.base import utcnow
 from test_junkie_tcms.db.models import Consumer, Cycle, Job
 from tests import support
-from tests.catalog_seed import ok, seed, url
+from tests.catalog_seed import events, ok, seed, url
 from tests.execution_seed import cycle_cases, make_case
+from tests.support import add_member, login
 from tests.test_consumers import ROSTER, FakeConsumer, approve, count, set_column
 
 REF_OK, REF_BAD = ROSTER[0]["id"], ROSTER[1]["id"]
@@ -85,8 +86,8 @@ def next_job(fake, wait: int = 0):
     return fake.client.get("/api/v1/consumers/me/jobs/next", params={"wait": wait})
 
 
-def report(fake, job_id: str, state: str, *items):
-    body = {"state": state, "results": [{"ref": r, "status": s} for r, s in items]}
+def report(fake, job_id: str, state: str, *items, **extra):
+    body = {"state": state, "results": [{"ref": r, "status": s} for r, s in items], **extra}
     return fake.client.post(f"/api/v1/consumers/me/jobs/{job_id}/state", json=body)
 
 
@@ -223,6 +224,105 @@ class Jobs:
         got = statuses(owner, cycle["id"])
         assert got[world["cases"]["bad"]["id"]][2] == "cancel"
 
+    @test()
+    def test_rejected_job_keeps_its_reason_and_cancels_its_cases(self, suite_parameter):
+        owner = self.env.owner
+        clock = make_clock(self.env)
+        world = make_world(self.env, owner, clock)
+        a = world["a"]
+        cycle = ok(create(owner, world, a), 201)
+        job = ok(next_job(a))
+        assert report(a, job["id"], "rejected").status_code == 422  # a rejection says why
+        done = ok(report(a, job["id"], "rejected", reason="project web is not checked out"))
+        assert (done["job"]["status"], done["job"]["reason"]) == (
+            "rejected",
+            "project web is not checked out",
+        )
+        assert consumer_status(owner, a) == "online"
+        got = statuses(owner, cycle["id"])
+        assert got[world["cases"]["ok"]["id"]][2] == got[world["cases"]["bad"]["id"]][2] == "cancel"
+        cc = next(c for c in cycle_cases(owner, cycle["id"]) if c["case_id"] == world["cases"]["ok"]["id"])
+        [result] = ok(owner.get(url(f"/cycle-cases/{cc['id']}/results"), params={"mode": "markdown"}))[
+            "items"
+        ]
+        assert "project web is not checked out" in str(result["comment"])
+        assert [j["status"] for j in job_list(owner, cycle["id"])] == ["rejected"]  # not requeued
+
+    # Jobs per machine, pause
+
+    @test()
+    def test_consumer_jobs_list_newest_first_with_reasons(self, suite_parameter):
+        owner = self.env.owner
+        clock = make_clock(self.env)
+        world = make_world(self.env, owner, clock)
+        a = world["a"]
+        cid = a.consumer["id"]
+        first = ok(create(owner, world, a), 201)
+        rejected = ok(next_job(a))
+        ok(report(a, rejected["id"], "rejected", reason="no browser"))
+        ok(create(owner, world, a), 201)
+        listed = ok(owner.get(url(f"/consumers/{cid}/jobs")))
+        assert [j["status"] for j in listed["items"]] == ["queued", "rejected"] and listed["total"] == 2
+        assert listed["items"][1]["cycle_id"] == first["id"] and listed["items"][1]["reason"] == "no browser"
+        only = ok(owner.get(url(f"/consumers/{cid}/jobs"), params={"status": "rejected"}))["items"]
+        assert [j["id"] for j in only] == [rejected["id"]]
+        assert owner.get(url(f"/consumers/{cid}/jobs"), params={"status": "nope"}).status_code == 422
+        detail = ok(owner.get(url(f"/consumers/{cid}")))
+        assert (detail["jobs_today"], detail["rejected_today"]) == (2, 1)
+        assert ok(owner.get(url(f"/consumers/{world['b'].consumer['id']}/jobs")))["items"] == []
+
+    @test()
+    def test_paused_consumer_keeps_its_job_and_takes_no_new_one(self, suite_parameter):
+        owner = self.env.owner
+        clock = make_clock(self.env)
+        world = make_world(self.env, owner, clock)
+        a = world["a"]
+        cid = a.consumer["id"]
+        ok(create(owner, world, a), 201)
+        held = ok(next_job(a))
+        ok(create(owner, world, a), 201)
+        paused = ok(owner.post(url(f"/consumers/{cid}/pause")))
+        assert paused["paused_at"] is not None
+        ok(owner.post(url(f"/consumers/{cid}/pause")))  # no-op
+        assert ok(next_job(a))["id"] == held["id"]  # the held job runs to the end
+        ok(report(a, held["id"], "done"))
+        assert next_job(a).status_code == 204
+        response = create(owner, world, a)
+        assert response.status_code == 409 and response.json()["code"] == "consumer_paused"
+        actions = [e["action"] for e in events(owner, "consumer") if e["entity_id"] == cid]
+        assert actions.count("consumer.pause") == 1
+        assert ok(owner.post(url(f"/consumers/{cid}/resume")))["paused_at"] is None
+        assert ok(next_job(a))["status"] == "claimed"
+        assert "consumer.resume" in [e["action"] for e in events(owner, "consumer")]
+
+    @test()
+    def test_stall_skips_a_paused_consumer(self, suite_parameter):
+        owner = self.env.owner
+        clock = make_clock(self.env)
+        world = make_world(self.env, owner, clock)
+        a, b = world["a"], world["b"]
+        cycle = ok(create(owner, world, a), 201)
+        ok(next_job(a))
+        ok(owner.post(url(f"/consumers/{b.consumer['id']}/pause")))
+        clock.tick(121)
+        ok(b.heartbeat())
+        [failed] = job_list(owner, cycle["id"])
+        assert (failed["status"], failed["reason"]) == ("failed", "consumer lost")
+
+    @test()
+    def test_pause_and_resume_need_admin_and_a_live_consumer(self, suite_parameter):
+        owner = self.env.owner
+        clock = make_clock(self.env)
+        world = make_world(self.env, owner, clock)
+        cid = world["a"].consumer["id"]
+        add_member(owner, "tess@example.com", "tester")
+        tester = self.env.client()
+        login(tester, "tess@example.com")
+        assert tester.post(url(f"/consumers/{cid}/pause")).status_code == 403
+        assert owner.delete(url(f"/consumers/{cid}")).status_code == 204
+        assert owner.post(url(f"/consumers/{cid}/pause")).status_code == 409
+        assert owner.post(url(f"/consumers/{cid}/resume")).status_code == 409
+
     # Cancel and reassign
 
     @test()
@@ -285,7 +385,7 @@ class Jobs:
         clock.tick(121)
         ok(a.heartbeat())
         [failed] = job_list(owner, cycle["id"])
-        assert failed["status"] == "failed"
+        assert (failed["status"], failed["reason"]) == ("failed", "consumer lost")
         got = statuses(owner, cycle["id"])
         assert got[world["cases"]["ok"]["id"]][2] == got[world["cases"]["bad"]["id"]][2] == "cancel"
         cc = next(c for c in cycle_cases(owner, cycle["id"]) if c["case_id"] == world["cases"]["ok"]["id"])

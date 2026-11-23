@@ -573,6 +573,29 @@ class PairingCreated(BaseModel):
     interval: int
 
 
+class PairingIn(BaseModel):
+    """What the machine tells about itself, shown to the admin before approving. Every field is optional."""
+
+    os: str | None = Field(None, max_length=200)
+    tj_version: str | None = Field(None, max_length=64)
+    python: str | None = Field(None, max_length=64)
+    projects: list[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, max_length=50)
+
+
+class PairingPreview(BaseModel):
+    user_code: str
+    status: Literal["pending", "approved", "claimed", "denied"]
+    expires_at: UtcDateTime
+    os: str | None = None
+    tj_version: str | None = None
+    python: str | None = None
+    projects: list[str] = []
+
+
+class PairingDeny(BaseModel):
+    user_code: str = Field(min_length=8, max_length=9)
+
+
 class PairingTokenIn(BaseModel):
     device_code: str = Field(min_length=1, max_length=200)
 
@@ -588,6 +611,7 @@ class PairingApprove(BaseModel):
     user_code: str = Field(min_length=8, max_length=9)
     name: Name = Field(description="User-given; never the machine's hostname")
     product_ids: list[str] = Field(min_length=1)
+    accept_jobs: bool = Field(True, description="False pairs the consumer paused")
 
 
 class ConsumerOut(BaseModel):
@@ -601,6 +625,7 @@ class ConsumerOut(BaseModel):
     tj_version: str | None = None
     python: str | None = None
     os: str | None = None
+    paused_at: UtcDateTime | None = Field(None, description="Set while paused: it takes no new jobs")
     revoked_at: UtcDateTime | None = None
     created_at: UtcDateTime
 
@@ -620,6 +645,18 @@ class InventorySummary(Out):
 class ConsumerDetail(ConsumerOut):
     heartbeats: list[HeartbeatOut] = Field(description="The last 24 h, newest first")
     inventory: list[InventorySummary]
+    jobs_today: int = Field(description="Jobs created for it in the last 24 h (a rolling window)")
+    rejected_today: int = Field(description="Of those, the ones it rejected")
+    tests_found: int = Field(description="Refs in its inventory, across projects")
+    tests_linked: int = Field(description="Of those, the ones linked to a case you can see")
+
+
+class RosterItem(BaseModel):
+    project: str
+    ref: str
+    case_key: str | None = Field(
+        None, description="The case whose automation_ref is this ref, if you can see it"
+    )
 
 
 class ConsumerUpdate(BaseModel):

@@ -104,8 +104,7 @@ function treeCard(o) {
   else body = rows(o.model, 0, o);
   const cnt = o.q ? (o.model.length ? `${hits(o.model)} cases · ${o.feats} features` : "0 results") : "";
   return `<div class="card tcard"><div class="hd"><div class="tch"><span class="eyebrow">Product</span>${dd({ value: d.picked, options: prodOpts(d), cls: "sm block", search: "Find a product", label: "Product" })}</div>${o.ro ? "" : `<button class="icon-btn" title="New feature" aria-label="New feature">${I.plus}</button>`}</div>
-  ${o.emptyProduct ? "" : psearch({ q: o.q, ph: "Search features and cases", cnt, clear: "#search-cleared" })}
-  <div class="dnd-bar${o.barBad ? " bad" : ""}" id="dndbar" role="status"${o.bar ? "" : " hidden"}>${o.bar || ""}</div>
+  <div class="dnd-slot">${o.emptyProduct ? "" : psearch({ q: o.q, ph: "Search features and cases", cnt, clear: "#search-cleared" })}<div class="dnd-bar${o.barBad ? " bad" : ""}" id="dndbar" role="status"${o.bar ? "" : " hidden"}>${o.bar || ""}</div></div>
   <ul class="tree" id="tree" role="tree" aria-label="Features and cases">${body}</ul>
   ${o.ro || o.emptyProduct ? "" : `<div class="tfoot">${I.drag}<span>Drag any feature or case. Drop on a feature to put it inside; drop between rows to reorder.</span></div>`}</div>`;
 }

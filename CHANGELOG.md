@@ -2,6 +2,7 @@
 
 ## Unreleased
 - A cycle case edited after it has results can be refreshed to the current case version and rerun in the same cycle (no more `409 has_results`); each result records the case version it ran (`case_version`), release and feature reports keep a stale case's last result, and the cycle report counts its `stale` cases.
+- Feature tree: the drag-and-drop hint bar now overlays the search row instead of pushing the tree down, so a drop lands on the row under the pointer.
 - MCP `tools/call` on a tool the caller can't use now says why: 403 `Needs scope <scope>`, or 403 naming its toolset and `?toolsets=`; only a name that isn't a tool is 404 `Unknown tool`.
 - MCP tools list each tool's description, its idempotent and destructive hints and its errors by HTTP status (`errors_by_code`); new `mcp_calls` lists the org's recent MCP calls (kept 7 days) with status and latency.
 - Lists return `total`; products show `feature_count` and `case_count`, feature tree nodes `case_count` and `total_case_count`. The cases list filters by last result, priority, updated since, editor and automation ref, sorts (manual, key, title, updated, result, priority) and its `q` matches keys and steps; cases have a `position` that `cases_move` reorders. SQLite migrations run with foreign keys off and check them after.

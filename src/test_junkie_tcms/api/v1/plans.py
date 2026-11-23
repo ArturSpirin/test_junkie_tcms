@@ -10,7 +10,7 @@ from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
 from test_junkie_tcms.api.selection import plan_cases
 from test_junkie_tcms.api.selection import plan_entries as _entries
-from test_junkie_tcms.api.v1.cases import case_key
+from test_junkie_tcms.api.v1.cases import case_key, resolve_cases
 from test_junkie_tcms.api.v1.catalog import (
     get_plan,
     get_product,
@@ -106,20 +106,16 @@ def _release_features(db: Session, plan: TestPlan, release_id: str) -> list[str]
     return ordered
 
 
-def _check_cases(db: Session, ctx: OrgContext, product_id: str, ids: list[str]) -> None:
-    """422 unless every id is a case of the product; 409 when one is archived."""
-    if not ids:
-        return
-    found = {
-        c.id: c
-        for c in db.scalars(select(TestCase).where(TestCase.org_id == ctx.org.id, TestCase.id.in_(ids)))
-    }
-    for case_id in ids:
-        c = found.get(case_id)
-        if c is None or c.product_id != product_id:
-            raise HTTPException(422, f"case_id {case_id} is not a case of this product")
+def _check_cases(db: Session, ctx: OrgContext, product_id: str, refs: list[str]) -> dict[str, TestCase]:
+    """Each ref (a case key or id) to its case; 422 unless every ref is a case of the product, 409 when one
+    is archived."""
+    if not refs:
+        return {}
+    found = resolve_cases(db, ctx, db.get(Product, product_id), refs)
+    for ref, c in found.items():
         if c.archived_at is not None:
-            raise HTTPException(409, f"Case {case_id} is archived")
+            raise HTTPException(409, f"Case {ref} is archived")
+    return found
 
 
 def _entry_changes(e: PlanEntry) -> dict:
@@ -139,8 +135,8 @@ def plans_list(
     query = select(TestPlan).where(TestPlan.org_id == ctx.org.id, TestPlan.product_id == p.id)
     if not include_archived:
         query = query.where(TestPlan.status != "archived")
-    rows, cursor = paginate(db, query, TestPlan.id, params)
-    return Page[PlanOut](items=[plan_out(db, t, mode) for t in rows], next_cursor=cursor)
+    rows, cursor, total = paginate(db, query, TestPlan.id, params)
+    return Page[PlanOut](items=[plan_out(db, t, mode) for t in rows], next_cursor=cursor, total=total)
 
 
 @router.post(PLANS, status_code=201, response_model=PlanOut, **op("plans_create", WRITE_PLANNING, "planning"))
@@ -237,8 +233,9 @@ def plans_add_entries(
     idem: Idem = Depends(idempotency),
     db: Session = Depends(get_db),
 ):
-    """Appends entries in order: `{case_id}` (a live case of the plan's product), `{feature_id}` (an active
-    feature of it), `{query}`, or `{release_id}` (a release of the product).
+    """Appends entries in order: `{case_id}` (a live case of the plan's product, by key like PAY-12 or id;
+    the entry stores the id), `{feature_id}` (an active feature of it), `{query}`, or `{release_id}` (a
+    release of the product).
 
     A release expands now to one feature entry per feature of the release, in feature tree order, skipping
     features the plan (or this request) already has and archived ones. The release id isn't stored, so a
@@ -251,7 +248,7 @@ def plans_add_entries(
                 422, f"entries[{i}]: give exactly one of case_id, feature_id, query or release_id"
             )
     product_features(db, ctx, plan.product_id, [e.feature_id for e in body.entries if e.feature_id])
-    _check_cases(db, ctx, plan.product_id, [e.case_id for e in body.entries if e.case_id])
+    cases = _check_cases(db, ctx, plan.product_id, [e.case_id for e in body.entries if e.case_id])
     release_ids = list(dict.fromkeys(e.release_id for e in body.entries if e.release_id))
     for release_id in release_ids:
         _check_release(db, ctx, plan.product_id, release_id)
@@ -269,7 +266,7 @@ def plans_add_entries(
                 has.add(e.feature_id)
             targets.append(
                 {
-                    "case_id": e.case_id,
+                    "case_id": cases[e.case_id].id if e.case_id else None,
                     "feature_id": e.feature_id,
                     "query": e.query.model_dump() if e.query else None,
                 }

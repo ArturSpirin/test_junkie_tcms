@@ -22,7 +22,7 @@ from test_junkie_tcms.api.v1.execution_schemas import (
     ResultOut,
     StepResultOut,
 )
-from test_junkie_tcms.api.v1.schemas import MarkdownIn, Page, RichMode
+from test_junkie_tcms.api.v1.schemas import Page, RichMode
 from test_junkie_tcms.auth.deps import OrgContext, get_db, require_scope
 from test_junkie_tcms.auth.scopes import READ, WRITE_EXECUTION
 from test_junkie_tcms.db.base import utcnow
@@ -204,8 +204,8 @@ def results_list(
     """Every attempt for the cycle case, oldest first."""
     cc, _ = get_cycle_case(db, ctx, id)
     query = select(Result).where(Result.org_id == ctx.org.id, Result.cycle_case_id == cc.id)
-    rows, cursor = paginate(db, query, Result.id, params)
-    return Page[ResultOut](items=[result_out(r, mode) for r in rows], next_cursor=cursor)
+    rows, cursor, total = paginate(db, query, Result.id, params)
+    return Page[ResultOut](items=[result_out(r, mode) for r in rows], next_cursor=cursor, total=total)
 
 
 @router.post(
@@ -251,7 +251,7 @@ def results_bulk_create(
                 BulkUnmatched(index=i, case_key=item.case_key, automation_ref=item.automation_ref)
             )
             continue
-        comment = to_doc(f"items[{i}].comment", MarkdownIn(markdown=item.comment) if item.comment else None)
+        comment = to_doc(f"items[{i}].comment", item.comment)
         defects = [d.model_dump(exclude_none=True) for d in item.defects]
         result = record(db, ctx, cc, via, item.status, comment, item.duration_ms, [], [], defects)
         created.append(

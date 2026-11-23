@@ -260,6 +260,11 @@ def def_tokens(tool: ToolSpec) -> int:
     return math.ceil(len(json.dumps(definition(tool), separators=(",", ":")).encode()) / 4)
 
 
+def tool_hash(tool: ToolSpec) -> str:
+    """sha256 of one tool definition as canonical JSON: changes when its name, schema or hints do."""
+    return hashlib.sha256(json.dumps(definition(tool), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
 def tool_list_hash(tools: list[ToolSpec]) -> str:
     """sha256 of every tool definition as canonical JSON, by name: changes when any tool does."""
     defs = [definition(tool) for tool in sorted(tools, key=lambda t: t.name)]

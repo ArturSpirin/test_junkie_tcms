@@ -2,10 +2,17 @@
 
 ## Unreleased
 - Case titles are stripped of leading and trailing spaces, and a title of only spaces is a 422 on create, update, bulk, CSV and Markdown import, and MCP.
+- MCP `tools/call` on a tool the caller can't use now says why: 403 `Needs scope <scope>`, or 403 naming its toolset and `?toolsets=`; only a name that isn't a tool is 404 `Unknown tool`.
+- MCP tools list each tool's description, its idempotent and destructive hints and its errors by HTTP status (`errors_by_code`); new `mcp_calls` lists the org's recent MCP calls (kept 7 days) with status and latency.
+- Lists return `total`; products show `feature_count` and `case_count`, feature tree nodes `case_count` and `total_case_count`. The cases list filters by last result, priority, updated since, editor and automation ref, sorts (manual, key, title, updated, result, priority) and its `q` matches keys and steps; cases have a `position` that `cases_move` reorders. SQLite migrations run with foreign keys off and check them after.
+- Web app screens, static for now: the 16 app views (products, releases, feature tree, cases, case editor, versions, plans, cycles, start run, run, reports, members, tokens, audit, MCP, consumers) as vanilla ES modules in `src/test_junkie_tcms/web/` with no build step. Every view reads its data through one module, `js/data.js`, which the API wiring replaces. Tests render every state under node (CI pins node; no npm).
+- Web app shell: `web/` ships as package data, is served at `/assets/`, and `/` and `/app/...` return `index.html`; `docs/app-api-contract.md` lists the API each view uses. Plan status shows its enum on reads; consumers show `project_count`; MCP tools and usage take `since`/`until`, usage splits reads and writes, and new `mcp_clients` and `mcp_updates` list callers and server starts and tool-list changes.
+- Bulk results take `comment` as `{"markdown"}` or `{"doc"}`, like a single result; a plain string is now a 422. Each bulk comment's cap moves from 20,000 characters to the single-result limit (200,000 for Markdown).
+- README lists what this release has and documents the MCP endpoint and toolsets; a test keeps it in step with the toolsets and settings.
 - Quick start works on Windows: `requirements.lock` is now made by `scripts/lock.py` (uv, universal, with platform markers, checked in CI), and `create-admin` and `sweep-idempotency` apply migrations first.
 - Scaffold: orgs, users, roles, scoped API tokens, session login with CSRF, append-only audit log and outbox; Docker Compose and CI.
 - Catalog: products, feature trees, releases and test plans over the API, with rich text read and written as Markdown.
-- Test cases: every edit saves an immutable version; `If-Match` on case edits, optional `Idempotency-Key` on POSTs; plans name cases and resolve to them.
+- Test cases: every edit saves an immutable version; `If-Match` on case edits, optional `Idempotency-Key` on POSTs; plans name cases and resolve to them. Cycle and plan case refs take a case key (`PAY-12`) or an id.
 - Consumers: device-code pairing, consumer-scoped tokens, list/get/rename/revoke, heartbeats with derived online/offline status, and per-project inventory upload by hash.
 - Member invites (7-day, single-use token shown once and stored hashed); audit log filters by `via`, `action` and `until`.
 - Test plans: new plans start as `draft` (moves `draft → active → archived`, `archived → active`); archived plans are read-only; add a release's features as entries; reorder entries; feature list shows the last editor.
@@ -16,5 +23,6 @@
 - Automated runs: cycles in `automated` or `both` mode send automated cases to chosen online consumers as jobs; consumers long-poll, claim and report; jobs can be cancelled or reassigned, and a stalled job is requeued once, then its cases cancel. New MCP tools `jobs_list`, `jobs_cancel` and `jobs_reassign` (`execution` toolset; the default toolsets now list 24 tools).
 - MCP page stats: each `/mcp` call adds to an hourly `mcp_tool_stat` row (calls, errors, response sizes); `mcp_tools_list`, `mcp_usage` and `mcp_server_get` give per-tool definition and response cost in ≈ tokens, usage by hour or day, and the server version and tool-list hash (scope `admin` or `audit:read`). An `admin` token can now also read the audit log.
 - Reports (org, product, release readiness, feature), case search by text and tag, and all-or-nothing CSV import/export of cases with a `version` column. Their 8 operations are MCP tools (90 in all; the default toolsets now list 27).
+- Release report: one row per release feature, including features with no cases; each row has `in_release` and `ready`, cases outside the release get their own `in_release: false` rows, and a release is not `ready` while a release feature has no case.
 - Tests run on Test Junkie (`test-junkie==0.9a8`), not pytest, locally and in CI: one suite per file, on SQLite and, with `TJ_TCMS_TEST_POSTGRES_URL` set, Postgres.
 - Case import takes an optional `mapping` from your CSV's column names to ours, and `format: "md-bundle"` exports and re-imports cases as a zip of Markdown files, one per case; over MCP a zip arrives as `{content_type, base64}`.

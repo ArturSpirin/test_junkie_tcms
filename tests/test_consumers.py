@@ -102,13 +102,13 @@ class Consumers:
     def product(self):
         return make_product(self.env.owner)
 
-    def paired(self, product=None):
+    def paired(self, product=None, name: str = "build-box"):
         owner = self.env.owner
         if product is None:
             product = self.product()
         fake = FakeConsumer(self.env)
         fake.start()
-        fake.consumer = ok(approve(owner, fake.pairing["user_code"], product_ids=[product["id"]]), 201)
+        fake.consumer = ok(approve(owner, fake.pairing["user_code"], name, [product["id"]]), 201)
         fake.claim()
         return fake
 
@@ -358,6 +358,19 @@ class Consumers:
 
         [summary] = ok(owner.get(f"{ACME}/consumers/{paired.consumer['id']}"))["inventory"]
         assert (summary["project"], summary["hash"], summary["test_count"]) == ("web", digest, 2)
+
+    @test()
+    def test_project_count_is_the_inventoried_projects(self, suite_parameter):
+        owner = self.env.owner
+        product = self.product()
+        paired, idle = self.paired(product), self.paired(product, "idle-box")
+        ok(paired.upload("web", ROSTER))
+        ok(paired.upload("api", ROSTER))
+        listed = {c["id"]: c["project_count"] for c in ok(owner.get(f"{ACME}/consumers"))["items"]}
+        assert listed == {paired.consumer["id"]: 2, idle.consumer["id"]: 0}
+        assert ok(owner.get(f"{ACME}/consumers/{paired.consumer['id']}"))["project_count"] == 2
+        renamed = ok(owner.patch(f"{ACME}/consumers/{paired.consumer['id']}", json={"name": "nightly-1"}))
+        assert renamed["project_count"] == 2
 
     @test()
     def test_inventory_hash_must_match_the_roster(self, suite_parameter):

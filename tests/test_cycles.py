@@ -142,6 +142,48 @@ class Cycles:
         assert [c["position"] for c in cycle_cases(owner, s["cycle"]["id"])] == [1, 2]
 
     @test()
+    def test_cases_are_named_by_key_or_id(self, suite_parameter):
+        owner = self.env.owner
+        s = seed(owner)
+        p = s["product"]["id"]
+        first = make_case(owner, p, s["parent"]["id"], "First")
+        second = make_case(owner, p, s["child"]["id"], "Second")
+        third = make_case(owner, p, s["child"]["id"], "Third")
+        cycle = make_cycle(owner, p, case_ids=["PAY-2", first["id"]])
+        assert [c["case_id"] for c in cycle_cases(owner, cycle["id"])] == [second["id"], first["id"]]
+        # A key and the id of the same case pin it once.
+        both = make_cycle(owner, p, case_ids=["PAY-1", first["id"]])
+        assert [c["case_id"] for c in cycle_cases(owner, both["id"])] == [first["id"]]
+        preview = ok(
+            owner.post(url(f"/products/{p}/cycles/preview"), json={"case_ids": ["PAY-1", third["id"]]})
+        )
+        assert preview["total"] == 2
+        by_key = ok(owner.post(url(f"/cycles/{both['id']}/cases"), json={"case_ids": ["PAY-3", "PAY-1"]}))
+        assert by_key == {"added": [third["id"]], "already_present": [first["id"]]}
+        by_id = ok(owner.post(url(f"/cycles/{cycle['id']}/cases"), json={"case_ids": [third["id"]]}))
+        assert by_id == {"added": [third["id"]], "already_present": []}
+
+    @test()
+    def test_an_unknown_case_ref_is_named_in_the_422(self, suite_parameter):
+        owner = self.env.owner
+        s = seed(owner)
+        other = seed(owner, "OPS")
+        p = s["product"]["id"]
+        make_case(owner, p, s["child"]["id"], "Here")
+        make_case(owner, other["product"]["id"], other["child"]["id"], "Elsewhere")
+        cycle = make_cycle(owner, p)
+        for ref in ("PAY-99", "OPS-1", "01M82X7YPDH6005Y0NKR8EJM8F"):
+            for path, body in (
+                (f"/products/{p}/cycles", {"name": "R", "case_ids": ["PAY-1", ref]}),
+                (f"/products/{p}/cycles/preview", {"case_ids": [ref]}),
+                (f"/cycles/{cycle['id']}/cases", {"case_ids": [ref]}),
+            ):
+                response = owner.post(url(path), json=body)
+                assert response.status_code == 422, (path, ref, response.text)
+                assert response.json()["detail"] == f"case_id {ref} is not a case of this product"
+        assert cycle_cases(owner, cycle["id"]) == []
+
+    @test()
     def test_assign_and_filter_by_assignee(self, suite_parameter):
         owner = self.env.owner
         s = run_seed(owner)

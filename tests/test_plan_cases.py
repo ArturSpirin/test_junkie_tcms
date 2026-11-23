@@ -61,6 +61,27 @@ class PlanCases:
         assert len(ok(owner.get(url(f"/plans/{plan}")))["entries"]) == 2  # nothing added by the failures
 
     @test()
+    def test_case_entries_take_a_key_and_store_the_id(self, suite_parameter):
+        owner = self.env.owner
+        s = self.s()
+        p, plan = s["product"]["id"], s["plan"]["id"]
+        first = make_case(owner, p, s["parent"]["id"], "First")
+        second = make_case(owner, p, s["parent"]["id"], "Second")
+        body = ok(add(owner, plan, {"case_id": "PAY-2"}, {"case_id": first["id"]}))
+        assert [e["case_id"] for e in body["entries"]] == [None, second["id"], first["id"]]
+        assert [k for k, _, _ in resolve(owner, plan)] == ["PAY-2", "PAY-1"]
+        other = make_product(owner, "SHIP")
+        make_case(owner, other["id"], make_feature(owner, other["id"], "Labels")["id"], "Print")
+        for ref in ("PAY-99", "SHIP-1", "01ZZZZZZZZZZZZZZZZZZZZZZZZ"):
+            response = add(owner, plan, {"case_id": ref})
+            assert response.status_code == 422, (ref, response.text)
+            assert response.json()["detail"] == f"case_id {ref} is not a case of this product"
+        ok(owner.post(url("/cases/PAY-1/archive")))
+        archived = add(owner, plan, {"case_id": "PAY-1"})
+        assert archived.status_code == 409 and archived.json()["detail"] == "Case PAY-1 is archived"
+        assert len(ok(owner.get(url(f"/plans/{plan}")))["entries"]) == 3  # nothing added by the failures
+
+    @test()
     def test_resolve_follows_entry_order_once_per_case(self, suite_parameter):
         owner = self.env.owner
         s = self.s()

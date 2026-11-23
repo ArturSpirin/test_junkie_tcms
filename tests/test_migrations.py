@@ -1,9 +1,10 @@
 """Migrations build the models' schema, and the database itself keeps audit_event append-only."""
 
+from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import create_engine, func, select, text
+from sqlalchemy import create_engine, func, inspect, select, text
 from sqlalchemy.exc import DBAPIError
 from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
 from test_junkie.shortcuts import skip
@@ -14,6 +15,7 @@ from test_junkie_tcms.db.migrate import alembic_config
 from test_junkie_tcms.db.models import AuditEvent
 from test_junkie_tcms.db.session import AuditAppendOnlyError, make_engine, make_sessionmaker
 from tests import support
+from tests.catalog_seed import ok, seed, url
 
 
 def _count(engine) -> int:
@@ -89,6 +91,31 @@ class Migrations:
             migrate.upgrade(database_url)
             with engine.connect() as conn:
                 assert conn.scalar(text("SELECT status FROM test_plan WHERE id = 'T1'")) == "active"
+        finally:
+            engine.dispose()
+
+    @test()
+    def test_0012_numbers_positions_in_key_order_and_downgrades(self, suite_parameter):
+        owner = self.env.owner
+        s = seed(owner)
+        p, card, parent = s["product"]["id"], s["child"]["id"], s["parent"]["id"]
+        for feature in (card, parent, card, card, parent):  # PAY-1 to PAY-5
+            ok(owner.post(url(f"/products/{p}/cases"), json={"feature_id": feature, "title": "t"}), 201)
+        database_url = self.env.database_url
+        engine = create_engine(database_url)
+        rows = "SELECT number, feature_id, position, updated_at FROM test_case ORDER BY number"
+        try:
+            with engine.begin() as conn:
+                conn.execute(text("UPDATE test_case SET position = 7"))
+                before = [(n, f, u) for n, f, _, u in conn.execute(text(rows))]
+            command.downgrade(alembic_config(database_url), "0011")
+            with engine.connect() as conn:
+                assert "position" not in {c["name"] for c in inspect(conn).get_columns("test_case")}
+            migrate.upgrade(database_url)
+            with engine.connect() as conn:
+                after = list(conn.execute(text(rows)))
+            assert [(n, f, u) for n, f, _, u in after] == before  # updated_at is left as it was
+            assert [(n, pos) for n, _, pos, _ in after] == [(1, 0), (2, 0), (3, 1), (4, 2), (5, 1)]
         finally:
             engine.dispose()
 

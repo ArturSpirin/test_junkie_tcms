@@ -4833,6 +4833,70 @@
    "org": {
     "location": "path",
     "wire": "org"
+   },
+   "since": {
+    "location": "query",
+    "wire": "since"
+   },
+   "until": {
+    "location": "query",
+    "wire": "until"
+   }
+  },
+  "description": "Mcp Clients. Who called MCP tools over `since`..`until` (by default the last 24 hours, at most 90 days): per actor\n(a member, `user`, or an AI agent, `agent`) its calls, errors and the latest UTC hour with a call, most\ncalls first. A token acts as its actor, so calls made with it are counted there.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "since": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "From this time, inclusive; truncated to the hour (to the day for bucket=day)"
+    },
+    "until": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Up to this time, exclusive; rounded up to the hour (to the day for bucket=day)"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "mcp_clients",
+  "path": "/api/v1/orgs/{org}/mcp/clients",
+  "scope": "audit:read",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "org": {
+    "location": "path",
+    "wire": "org"
    }
   },
   "description": "Mcp Server Get. The MCP server's name, version, tool count and a hash of its tool list, which changes with any tool.",
@@ -4865,12 +4929,101 @@
    "org": {
     "location": "path",
     "wire": "org"
+   },
+   "since": {
+    "location": "query",
+    "wire": "since"
+   },
+   "until": {
+    "location": "query",
+    "wire": "until"
    }
   },
-  "description": "Mcp Tools List. Every MCP tool with its definition cost in \u2248 tokens (bytes \u00f7 4), its calls and errors over the last 7\nand 30 days, and its p50/p95 response cost over 30 days (an upper bound, \u22642x; null with no calls).",
+  "description": "Mcp Tools List. Every MCP tool with its definition cost in \u2248 tokens (bytes \u00f7 4), its calls and errors over the last 7\nand 30 days, and its `calls`, `errors` and p50/p95 response cost (an upper bound, \u22642x; null with no calls)\nover `since`..`until`: by default the last 30 days, at most 90.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
+    "org": {
+     "description": "Org slug",
+     "type": "string"
+    },
+    "since": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "From this time, inclusive; truncated to the hour (to the day for bucket=day)"
+    },
+    "until": {
+     "anyOf": [
+      {
+       "format": "date-time",
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "Up to this time, exclusive; rounded up to the hour (to the day for bucket=day)"
+    }
+   },
+   "required": [
+    "org"
+   ],
+   "type": "object"
+  },
+  "method": "GET",
+  "name": "mcp_tools_list",
+  "path": "/api/v1/orgs/{org}/mcp/tools",
+  "scope": "audit:read",
+  "toolset": "admin"
+ },
+ {
+  "annotations": {
+   "destructive_hint": false,
+   "idempotent_hint": true,
+   "read_only_hint": true
+  },
+  "args": {
+   "cursor": {
+    "location": "query",
+    "wire": "cursor"
+   },
+   "limit": {
+    "location": "query",
+    "wire": "limit"
+   },
+   "org": {
+    "location": "path",
+    "wire": "org"
+   }
+  },
+  "description": "Mcp Updates. The MCP server's starts and tool-list changes, newest first. One row per start: `tools_changed` when\nits tool list differs from the previous row's (naming the tools added, removed and changed), else\n`server_started`. Server-wide: every org sees the same rows, which hold only tool names and versions.",
+  "input_schema": {
+   "additionalProperties": false,
+   "properties": {
+    "cursor": {
+     "anyOf": [
+      {
+       "type": "string"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "description": "next_cursor from the previous page"
+    },
+    "limit": {
+     "default": 50,
+     "maximum": 200,
+     "minimum": 1,
+     "type": "integer"
+    },
     "org": {
      "description": "Org slug",
      "type": "string"
@@ -4882,8 +5035,8 @@
    "type": "object"
   },
   "method": "GET",
-  "name": "mcp_tools_list",
-  "path": "/api/v1/orgs/{org}/mcp/tools",
+  "name": "mcp_updates",
+  "path": "/api/v1/orgs/{org}/mcp/updates",
   "scope": "audit:read",
   "toolset": "admin"
  },
@@ -4919,7 +5072,7 @@
     "wire": "until"
    }
   },
-  "description": "Mcp Usage. MCP calls, errors and response bytes per hour or day (UTC), with p50/p95 response cost in \u2248 tokens (an\nupper bound, \u22642x). Only buckets with calls are listed. Defaults: the last 24 hours by hour, or the last 30\ndays by day; at most 90 days.",
+  "description": "Mcp Usage. MCP calls (split into `reads` and `writes`), errors and response bytes per hour or day (UTC), with\np50/p95 response cost in \u2248 tokens (an upper bound, \u22642x). Only buckets with calls are listed. Defaults: the\nlast 24 hours by hour, or the last 30 days by day; at most 90 days. A read is a call to a tool the running\nserver marks read-only; every other call, including one to a tool it no longer serves, is a write.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
@@ -4956,7 +5109,7 @@
        "type": "null"
       }
      ],
-     "description": "From this time, inclusive; truncated to the bucket"
+     "description": "From this time, inclusive; truncated to the hour (to the day for bucket=day)"
     },
     "tool": {
      "anyOf": [
@@ -4979,7 +5132,7 @@
        "type": "null"
       }
      ],
-     "description": "Up to this time, exclusive; rounded up to the bucket"
+     "description": "Up to this time, exclusive; rounded up to the hour (to the day for bucket=day)"
     }
    },
    "required": [

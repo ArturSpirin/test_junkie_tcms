@@ -33,6 +33,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      # The web view render tests (tests/web) run a plain node script: no npm, no packages.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - run: pip install -r requirements.lock
       - run: pip install --no-deps -e .
       - run: ruff check .

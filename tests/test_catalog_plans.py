@@ -2,6 +2,7 @@
 
 from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
 
+from test_junkie_tcms.db.models import PLAN_STATUSES
 from tests import support
 from tests.catalog_seed import events, make_feature, make_plan, make_product, make_release, ok, url
 
@@ -234,3 +235,10 @@ class CatalogPlans:
         p = make_product(owner)["id"]
         ok(owner.post(url(f"/products/{p}/archive")))
         assert owner.post(url(f"/products/{p}/plans"), json={"name": "x"}).status_code == 409
+
+    @test()
+    def test_openapi_states_the_plan_status_enum_on_reads_and_writes(self, suite_parameter):
+        schemas = ok(self.env.client().get("/api/v1/openapi.json"))["components"]["schemas"]
+        assert schemas["PlanOut"]["properties"]["status"]["enum"] == list(PLAN_STATUSES)
+        write = schemas["PlanUpdate"]["properties"]["status"]["anyOf"][0]
+        assert write["enum"] == list(PLAN_STATUSES)

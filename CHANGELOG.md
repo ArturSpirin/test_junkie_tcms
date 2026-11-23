@@ -2,6 +2,8 @@
 
 ## Unreleased
 - A cycle case edited after it has results can be refreshed to the current case version and rerun in the same cycle (no more `409 has_results`); each result records the case version it ran (`case_version`), release and feature reports keep a stale case's last result, and the cycle report counts its `stale` cases.
+- Web app screens, static for now: the 16 app views (products, releases, feature tree, cases, case editor, versions, plans, cycles, start run, run, reports, members, tokens, audit, MCP, consumers) as vanilla ES modules in `src/test_junkie_tcms/web/` with no build step. Every view reads its data through one module, `js/data.js`, which the API wiring replaces. Tests render every state under node (CI pins node; no npm).
+- Web app shell: `web/` ships as package data, is served at `/assets/`, and `/` and `/app/...` return `index.html`; `docs/app-api-contract.md` lists the API each view uses. Plan status shows its enum on reads; consumers show `project_count`; MCP tools and usage take `since`/`until`, usage splits reads and writes, and new `mcp_clients` and `mcp_updates` list callers and server starts and tool-list changes.
 - Bulk results take `comment` as `{"markdown"}` or `{"doc"}`, like a single result; a plain string is now a 422. Each bulk comment's cap moves from 20,000 characters to the single-result limit (200,000 for Markdown).
 - README lists what this release has and documents the MCP endpoint and toolsets; a test keeps it in step with the toolsets and settings.
 - Quick start works on Windows: `requirements.lock` is now made by `scripts/lock.py` (uv, universal, with platform markers, checked in CI), and `create-admin` and `sweep-idempotency` apply migrations first.

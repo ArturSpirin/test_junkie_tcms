@@ -1,4 +1,5 @@
-// Renders every state of every app view in node, the way the shell does, and prints the result as JSON:
+// Renders every state of every app view in node from the mock fixtures (tests/web/fixtures), the way the shell
+// does, and prints the result as JSON:
 // { "<view>": { "<state>": { "html": "...", "toast": "...", "data": [...], "again": true } | { "error": "..." } } }.
 // "toast" is the state's own toast markup (state.toast, shown by the shell after render), "" when it has none.
 // "data" is every string in the state's loaded data: what the server or a user wrote, which the UI shows raw.
@@ -8,7 +9,7 @@ import { readdirSync } from "node:fs";
 
 const JS = new URL("../../src/test_junkie_tcms/web/js/", import.meta.url);
 const ui = await import(new URL("ui.js", JS).href);
-const data = await import(new URL("data.js", JS).href);
+const data = await import(new URL("./fixtures/data.js", import.meta.url).href);
 const shell = await import(new URL("shell.js", JS).href);
 
 const ctx = await data.context();

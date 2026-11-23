@@ -1,54 +1,111 @@
-/* Versions (releases) view data. Demo data only. */
-const version = (ver, status, when, features, plans, cycles, results, summary) => ({ ver, status, when, features, plans, cycles, results, summary });
-const feature = (path, cases, inVersion, sub = false) => ({ path, cases, inVersion, sub });
+/* Versions (releases) adapter (docs/app-api-contract.md §2): releases_list, releases_get, releases_create,
+   releases_update, releases_set_features and reports_release, with features_list for the feature picker and
+   plans_list and cycles_list matched on release_id. Maps the API onto the shapes views/releases.js renders. */
+import { all, get, org, patch, post, put } from "../api.js";
+import { day, flatten, plain, results, today, when } from "./map.js";
 
-export default {
-  base: {
-    product: { key: "PAY", name: "Payments" },
-    versions: [
-      version("2.15.0", "planned", "Target Dec 18", 4, 1, 0, {}, "Wallet limits, partial refunds"),
-      version("2.14.0", "in_progress", "Target Nov 27", 6, 2, 3, { success: 62, fail: 4, error: 1, skip: 3, untested: 18 }, "3-D Secure 2, saved cards"),
-      version("2.13.0", "released", "Released Fri Oct 30", 5, 1, 4, { success: 140, fail: 2, skip: 4 }, "Payouts v2"),
-      version("2.12.1", "cancelled", "Cancelled Oct 9", 1, null, 0, {}, "Hotfix folded into 2.13.0")
-    ],
-    detail: {
-      ver: "2.14.0", status: "in_progress", target: "Thu Nov 27", features: 6, plans: 2, cycles: 3,
-      kpis: { inScope: 46, fromFeatures: 6, executedPct: 79, executed: 70, cycleCases: 88, passPct: 89 },
-      /* the product's features; inVersion marks the ones this version changes */
-      tree: [
-        feature("Checkout › Card payments", 5, true, true),
-        feature("Checkout › Wallets", 14, true, true),
-        feature("Checkout › 3-D Secure", 9, true, true),
-        feature("Refunds", 22, true),
-        feature("Refunds › Partial refunds", 8, false, true),
-        feature("Payouts", 31, true),
-        feature("Disputes", 17, false)
-      ],
-      testPlans: [
-        { name: "Checkout regression", status: "active", scope: "3 features", href: "plans.html#detail" },
-        { name: "Release smoke", status: "active", scope: "18 cases", href: "plans.html#list" }
-      ],
-      cycleList: [
-        { name: "Checkout · Card payments · staging", status: "open", href: "cycles.html#detail" },
-        { name: "Checkout regression · staging", status: "open", href: "cycles.html#list" },
-        { name: "Release smoke · prod", status: "closed", href: "cycles.html#list" }
-      ],
-      /* what is still open when the version is marked released */
-      untested: 18, openCycles: 2
-    },
+const plural = (n, one) => `${n} ${n === 1 ? one : one + "s"}`;
+const DETAIL_UI = ["set-features", "features-saved", "released"];
+/* a plan's scope in words: its features, else its cases */
+const scope = (p) => {
+  const nf = p.entries.filter((e) => e.feature_id).length;
+  return nf ? plural(nf, "feature") : plural(p.entries.reduce((n, e) => n + (e.cases ?? (e.case_id ? 1 : 0)), 0), "case");
+};
+
+/* the product the view is about: the one in the context (?product=), or the release's own */
+function productOf(ctx, productId) {
+  const p = (productId && ctx.products.find((x) => x.id === productId)) || ctx.product;
+  if (!p) throw new Error("This org has no products yet.");
+  return { id: p.id, key: p.key, name: p.name };
+}
+
+/* three suggested target dates, Fridays 2, 5 and 8 weeks after the latest target (or today) */
+function targets(releases) {
+  const last = releases.filter((r) => r.target_date).sort((a, b) => (a.target_date < b.target_date ? 1 : -1))[0];
+  const base = new Date((last ? last.target_date : today()) + "T00:00:00");
+  return [2, 5, 8].map((weeks) => {
+    const d = new Date(base);
+    d.setDate(d.getDate() + weeks * 7 + ((5 - d.getDay() + 7) % 7));
+    return { v: today(d), label: day(today(d), { day: true }), hint: last ? `${weeks} weeks after ${last.version}` : `in ${weeks} weeks` };
+  });
+}
+
+async function list(at, product, ui) {
+  const [releases, report, plans, cycles] = await Promise.all([
+    all(at("products", product.key, "releases")),
+    get(at("products", product.key, "report")),
+    all(at("products", product.key, "plans")),
+    all(at("products", product.key, "cycles"))
+  ]);
+  const totals = Object.fromEntries(report.releases.map((t) => [t.release.id, t.counts]));
+  const versions = releases.map((r) => ({
+    id: r.id, ver: r.version, status: r.status, when: when(r), features: r.feature_ids.length,
+    plans: plans.filter((p) => p.release_id === r.id).length, cycles: cycles.filter((c) => c.release_id === r.id).length,
+    results: results(totals[r.id]), summary: r.name
+  }));
+  const data = {
+    product, versions, noVersionsFor: product.key,
     draft: {
-      ver: "2.16.0", status: "planned", name: "Spring wallets", target: "jan22", copyFrom: "2.15.0", notes: "",
-      targets: [
-        { v: "dec18", label: "Fri Dec 18", hint: "after 2.15.0" },
-        { v: "jan22", label: "Fri Jan 22", hint: "5 weeks after 2.15.0" },
-        { v: "feb19", label: "Fri Feb 19", hint: "" }
-      ],
-      /* versions whose feature list a new version can copy */
-      copyable: ["2.15.0", "2.14.0"]
+      ver: "", status: "planned", name: "", target: "none", copyFrom: "none", notes: "",
+      targets: targets(releases), copyable: releases.map((r) => r.version)
+    }
+  };
+  if (ui === "new") return { state: "new", data };
+  return { state: versions.length ? "list" : "empty", data };
+}
+
+async function detail(at, ctx, id, ui) {
+  const r = await get(at("releases", id));
+  const product = productOf(ctx, r.product_id);
+  const [report, tree, plans, cycles] = await Promise.all([
+    get(at("releases", id, "report")),
+    get(at("products", product.key, "features")),
+    all(at("products", product.key, "plans")),
+    all(at("products", product.key, "cycles"))
+  ]);
+  const mine = { plans: plans.filter((p) => p.release_id === id), cycles: cycles.filter((c) => c.release_id === id) };
+  const c = report.counts;
+  const executed = (c.total || 0) - (c.untested || 0);
+  const detail = {
+    id: r.id, ver: r.version, name: r.name, status: r.status, target: r.target_date ? day(r.target_date, { day: true }) : "not set",
+    notes: plain(r.notes), features: r.feature_ids.length, plans: mine.plans.length, cycles: mine.cycles.length,
+    kpis: {
+      inScope: report.kpis.cases, fromFeatures: r.feature_ids.length,
+      executedPct: c.total ? Math.round((executed / c.total) * 100) : 0, executed, cycleCases: c.total || 0,
+      passPct: report.kpis.success_rate ?? 0
     },
-    noVersionsFor: "KYC"
+    tree: flatten(tree.items).map((f) => ({ id: f.id, path: f.path, cases: f.total_case_count, inVersion: r.feature_ids.includes(f.id), sub: f.depth > 0 })),
+    testPlans: mine.plans.map((p) => ({ id: p.id, name: p.name, status: p.status, scope: scope(p) })),
+    cycleList: mine.cycles.map((cy) => ({ id: cy.id, name: cy.name, status: cy.status })),
+    untested: c.untested || 0, openCycles: mine.cycles.filter((cy) => cy.status === "open").length
+  };
+  return { state: DETAIL_UI.includes(ui) ? ui : "detail", data: { product, detail } };
+}
+
+/* params: the URL's query (id, product) and ui, the hash's UI state ("new", "set-features", ...). */
+export async function load(params, ctx) {
+  const at = (...rest) => org(ctx.org.id, ...rest);
+  if (params.id) return detail(at, ctx, params.id, params.ui);
+  return list(at, productOf(ctx), params.ui);
+}
+
+const at = (ctx) => (...rest) => org(ctx.org.id, ...rest);
+
+/* The view's writes; each resolves to the ReleaseOut the server returns. */
+export const actions = {
+  /* form: { ver, name, status, target ("none" or YYYY-MM-DD), copyFrom ("none" or a version), notes } */
+  async create(form, ctx, productKey) {
+    const path = at(ctx);
+    const r = await post(path("products", productKey, "releases"), {
+      version: form.ver, name: form.name, status: form.status,
+      target_date: form.target && form.target !== "none" ? form.target : null,
+      notes: form.notes ? { markdown: form.notes } : undefined
+    });
+    if (!form.copyFrom || form.copyFrom === "none") return r;
+    const from = (await all(path("products", productKey, "releases"))).find((x) => x.version === form.copyFrom);
+    return from && from.feature_ids.length ? put(path("releases", r.id, "features"), { feature_ids: from.feature_ids }) : r;
   },
-  states: {
-    empty: { versions: [] }
-  }
+  /* change: any of ReleaseUpdate's fields ({ status: "released", released_at }, { name }, ...) */
+  update: (id, change, ctx) => patch(at(ctx)("releases", id), change),
+  setFeatures: (id, featureIds, ctx) => put(at(ctx)("releases", id, "features"), { feature_ids: featureIds })
 };

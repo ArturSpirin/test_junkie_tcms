@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- A cycle case edited after it has results can be refreshed to the current case version and rerun in the same cycle (no more `409 has_results`); each result records the case version it ran (`case_version`), release and feature reports keep a stale case's last result, and the cycle report counts its `stale` cases.
 - README lists what this release has and documents the MCP endpoint and toolsets; a test keeps it in step with the toolsets and settings.
 - Quick start works on Windows: `requirements.lock` is now made by `scripts/lock.py` (uv, universal, with platform markers, checked in CI), and `create-admin` and `sweep-idempotency` apply migrations first.
 - Scaffold: orgs, users, roles, scoped API tokens, session login with CSRF, append-only audit log and outbox; Docker Compose and CI.

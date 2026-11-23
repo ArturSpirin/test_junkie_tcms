@@ -2856,7 +2856,7 @@
     "wire": "rich"
    }
   },
-  "description": "Cycle Cases Refresh Version. Re-pins the case to its current version, only while it has no result (409 once one is recorded).",
+  "description": "Cycle Cases Refresh Version. Re-pins the case to its current version. A case with results goes back to untested on the new\nversion for a rerun; its results stay as history, each with the version it ran.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {
@@ -7263,7 +7263,7 @@
     "wire": "org"
    }
   },
-  "description": "Reports Cycle. One cycle's counts by status, as they stand (pinned versions, no stale check).",
+  "description": "Reports Cycle. One cycle's counts by pinned status, and `stale`: its live cases pinned behind the current version.\nA case refreshed to the current version but not rerun yet counts as `untested`, not `stale`.",
   "input_schema": {
    "additionalProperties": false,
    "properties": {

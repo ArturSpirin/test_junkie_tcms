@@ -202,7 +202,10 @@ operations.
 | add cases, assign, refresh pinned version | `cycle_cases_list`, `cycle_cases_add`, `cycle_cases_assign`, `cycle_cases_refresh_version` | exists |
 | close, reopen | `cycles_close`, `cycles_reopen` | exists |
 | bulk create, batch | `cycles_bulk_create`, `cycle_batches_get` | exists |
-| batch "created by", closed by, per-feature counts, name pattern and per-cycle assignee, skip drafts, released release refuses cycles | | not yet (F4) |
+| cycle and batch `created_by`/`closed_by` (a batch closes when its last cycle does) | `cycles_get`, `cycle_batches_get` | exists (F4) |
+| per-feature counts (`GET /cycles/{id}/features`) | `cycle_feature_counts` | exists (F4) |
+| `name_pattern` (`{release}`, `{env}`, and `{feature}` or `{plan}`; else 422 `bad_name_pattern`), per-cycle `assignees`, `skip_drafts` | `cycles_bulk_create` | exists (F4) |
+| released release refuses new cycles (409 `release_closed`) | `cycles_create`, `cycles_bulk_create` | exists (F4) |
 
 ### 9. Start a cycle
 
@@ -210,7 +213,8 @@ operations.
 |---|---|---|
 | pick plan or features, preview | `plans_list`, `features_list`, `cycles_preview` | exists |
 | mode, environment, tester, machines | `cycles_create`, `members_list`, `consumers_list` | exists |
-| split strategy, retries, queue when offline, cycle-level stop | | not yet (F4) |
+| `split` (`even` default, `by_feature`, `first_free`), `retries` 0-2 (counts `Result.attempt`), `queue_when_offline` (a revoked machine still 409) | `cycles_create` | exists (F4) |
+| cycle-level stop: cancels queued jobs, running jobs finish, no retries after (second stop 409 `cycle_stopped`) | `cycles_stop` | exists (F4) |
 | ETA, manual case order | | not yet (F8) |
 | "notify the tester" | | out of scope (v1, owner decision) |
 
@@ -222,7 +226,9 @@ operations.
 | record results, attempts | `results_create`, `results_list`, `results_bulk_create` | exists |
 | evidence | `attachments_upload` (413 when too large), `attachments_download` | exists |
 | automated jobs | `jobs_list`, `jobs_cancel`, `jobs_reassign` | exists |
-| per-step ignore/cancel, skip reason code, build under test, undo | | not yet (F4) |
+| step statuses `ignore` and `cancel`; `skip_reason` (`defect`, `env`, `data`, `dep`, `na_env`, `flag`, `other`; only on a skip, `other` needs a comment); `build` (120 chars, blank is null) | `results_create`, `results_bulk_create`, `jobs_report` | exists (F4) |
+| builds under test for the product, newest first, at most 20 | `cycle_builds` | exists (F4) |
+| result undo | | not yet (follow-up) |
 
 ### 11. Reports
 

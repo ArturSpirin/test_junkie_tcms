@@ -1,6 +1,7 @@
 # Changelog
 
 ## Unreleased
+- Cycle and run extras: cycles and batches show `created_by` and `closed_by`; `GET /cycles/{id}/features` counts per feature; bulk create takes `name_pattern`, per-cycle `assignees` and `skip_drafts`; a released release refuses new cycles (409 `release_closed`); cycles take `split`, `retries` (0-2) and `queue_when_offline`, and `POST /cycles/{id}/stop` stops one; steps take `ignore` and `cancel`; results take `skip_reason` and `build`, listed by `GET /cycles/{id}/builds`.
 - Web app shell: `web/` ships as package data, is served at `/assets/`, and `/` and `/app/...` return `index.html`; `docs/app-api-contract.md` lists the API each view uses. Plan status shows its enum on reads; consumers show `project_count`; MCP tools and usage take `since`/`until`, usage splits reads and writes, and new `mcp_clients` and `mcp_updates` list callers and server starts and tool-list changes.
 - Bulk results take `comment` as `{"markdown"}` or `{"doc"}`, like a single result; a plain string is now a 422. Each bulk comment's cap moves from 20,000 characters to the single-result limit (200,000 for Markdown).
 - README lists what this release has and documents the MCP endpoint and toolsets; a test keeps it in step with the toolsets and settings.

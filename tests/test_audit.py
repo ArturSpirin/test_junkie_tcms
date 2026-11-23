@@ -1,8 +1,11 @@
 """The audit log names the person, the agent and the token behind every change, and feeds the outbox."""
 
+from datetime import timedelta, timezone
+
 from sqlalchemy import select
 from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
 
+from test_junkie_tcms.db.base import aware
 from test_junkie_tcms.db.models import AuditEvent, Outbox
 from tests import support
 from tests.support import add_member, login
@@ -147,6 +150,19 @@ class Audit:
         assert _events(owner, via="api", action="member.add") == []
         combined = _events(owner, via="ui", action="member.add", until="2999-01-01T00:00:00Z")
         assert [e["action"] for e in combined] == ["member.add"]
+
+    @test()
+    def test_audit_range_in_another_zone_is_the_same_instant(self, suite_parameter):
+        owner = self.env.owner
+        app = self.env.app
+        add_member(owner, "vic@example.com", "viewer")
+        owner.post("/api/v1/orgs/acme/tokens", json={"name": "t", "scopes": ["read"]})
+        with app.state.sessionmaker() as db:
+            times = {e.action: aware(e.created_at) for e in db.scalars(select(AuditEvent))}
+        pacific = timezone(timedelta(hours=-8))
+        t = times["token.create"].astimezone(pacific).isoformat()
+        assert [e["action"] for e in _events(owner, until=t)] == ["member.add"]
+        assert [e["action"] for e in _events(owner, since=t)] == ["token.create"]
 
     @test()
     def test_audit_rejects_an_unknown_via(self, suite_parameter):

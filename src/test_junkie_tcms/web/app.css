@@ -63,7 +63,7 @@ svg { flex: none; }
 .top { position: fixed; inset: 0 0 auto 0; height: var(--top); display: flex; align-items: center; gap: var(--s3);
   padding: 0 var(--s4); background: var(--glass); backdrop-filter: blur(18px) saturate(1.4); -webkit-backdrop-filter: blur(18px) saturate(1.4);
   border-bottom: 1px solid var(--edge); z-index: 30; }
-.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; white-space: nowrap; color: var(--text); letter-spacing: -.01em; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 600; white-space: nowrap; color: var(--text); letter-spacing: -.01em; border-radius: var(--r-sm); }
 .brand:hover { color: var(--text); }
 .brand .mark { width: 28px; height: 28px; border-radius: 9px; background: linear-gradient(140deg, var(--accent2), var(--accent));
   color: var(--accent-ink); display: grid; place-items: center; font: 700 12px var(--mono); box-shadow: var(--glow); }

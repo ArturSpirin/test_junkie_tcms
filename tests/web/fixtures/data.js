@@ -1,7 +1,7 @@
-/* The one data module every view reads through. Views never fetch or hold data of their own.
-   For now the data are static fixtures in js/data/: each one is { base, states }, and a state's data is base
-   deep-merged with states[state] (objects merge key by key; arrays and other values replace).
-   Wiring the app to the API replaces the bodies of context() and load() and keeps their signatures. */
+/* The mock's fixtures, for the render test only (tests/web/render_states.mjs): the shipped app reads the API
+   through web/js/data/<view>.js adapters and never loads this folder.
+   Each fixture in ./data/ is { base, states }, and a state's data is base deep-merged with states[state]
+   (objects merge key by key; arrays and other values replace). */
 
 const isObj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 
@@ -19,8 +19,10 @@ export async function context() {
   return clone((await import("./data/context.js")).default);
 }
 
-/* The data one view shows in one state (the state ids are the mock's). */
-export async function load(view, state) {
+/* The data one view shows in one mock state; q, when given, replaces the state's own. */
+export async function load(view, state, q) {
   const f = (await import(`./data/${view}.js`)).default;
-  return clone(deepMerge(f.base, (f.states || {})[state] || {}));
+  const out = clone(deepMerge(f.base, (f.states || {})[state] || {}));
+  if (q) out.q = q;
+  return out;
 }

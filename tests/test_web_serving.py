@@ -1,5 +1,5 @@
-"""The app is served from TCMS's own origin: the shell at `/` and `/app/...`, its files at `/assets`, and every
-other route (`/api/v1`, `/mcp`, `/healthz`, the docs) answers as before."""
+"""The app is served from TCMS's own origin: the shell at `/` and `/app/...`, its files at `/assets`, and
+every other route (`/api/v1`, `/mcp`, `/healthz`, the docs) answers as before."""
 
 import glob
 import shutil
@@ -21,7 +21,9 @@ SHELL_PATHS = ("/", "/app", "/app/", "/app/cases/01J00000000000000000000000", "/
 
 
 def web_files() -> list[str]:
-    return sorted(p.relative_to(app_shell.WEB_DIR).as_posix() for p in app_shell.WEB_DIR.rglob("*") if p.is_file())
+    return sorted(
+        p.relative_to(app_shell.WEB_DIR).as_posix() for p in app_shell.WEB_DIR.rglob("*") if p.is_file()
+    )
 
 
 def packaged(root: Path) -> set[str]:
@@ -73,6 +75,22 @@ class WebServing:
         for ref in ("/assets/app.css", "/assets/js/main.js"):
             assert client.get(ref).status_code == 200, ref
 
+    @test()
+    def test_the_shell_links_the_favicon_and_favicon_ico_redirects_to_it(self, suite_parameter):
+        shell = app_shell.SHELL.read_text(encoding="utf-8")
+        assert '<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">' in shell
+        client = self.env.client()
+        icon = client.get("/assets/favicon.svg")
+        assert icon.status_code == 200
+        assert icon.headers["content-type"].startswith("image/svg+xml")
+        for method in (client.get, client.head):
+            response = method("/favicon.ico", follow_redirects=False)
+            assert response.status_code == 307, (method, response.status_code)
+            assert response.headers["location"] == "/assets/favicon.svg", method
+        assert client.get("/favicon.ico").content == icon.content
+        spec = client.get("/api/v1/openapi.json").json()
+        assert "/favicon.ico" not in spec["paths"]
+
     # The files
 
     @test()
@@ -84,6 +102,20 @@ class WebServing:
             response = client.get(f"/assets/{rel}")
             assert response.status_code == 200, rel
             assert response.content == (app_shell.WEB_DIR / rel).read_bytes(), rel
+
+    @test()
+    def test_assets_are_served_no_cache_and_revalidate_to_304(self, suite_parameter):
+        # no-cache makes the browser revalidate each load, so an upgrade never runs stale JS.
+        client = self.env.client()
+        for rel in web_files():
+            response = client.get(f"/assets/{rel}")
+            assert response.status_code == 200, rel
+            assert response.headers.get("cache-control") == "no-cache", rel
+            etag = response.headers["etag"]
+            again = client.get(f"/assets/{rel}", headers={"If-None-Match": etag})
+            assert again.status_code == 304, (rel, again.status_code)
+            assert again.headers.get("cache-control") == "no-cache", rel
+            assert again.content == b"", rel
 
     @test()
     def test_a_nested_font_is_served_at_assets_fonts(self, suite_parameter):
@@ -107,7 +139,12 @@ class WebServing:
     @test()
     def test_a_missing_or_escaping_asset_is_a_problem_404(self, suite_parameter):
         client = self.env.client()
-        for path in ("/assets/nope.js", "/assets/%2e%2e/app.py", "/assets/..%2fapp.py", "/assets/js/../../app.py"):
+        for path in (
+            "/assets/nope.js",
+            "/assets/%2e%2e/app.py",
+            "/assets/..%2fapp.py",
+            "/assets/js/../../app.py",
+        ):
             response = client.get(path)
             assert response.status_code == 404, (path, response.status_code)
             assert response.headers["content-type"].startswith("application/problem+json"), path
@@ -129,7 +166,15 @@ class WebServing:
     @test()
     def test_api_unknown_paths_stay_problem_404s(self, suite_parameter):
         client = self.env.client()
-        for path in ("/api/v1/nope", "/api/v1/orgs/acme/nope", "/api", "/mcpx", "/other", "/apps", "/app.css"):
+        for path in (
+            "/api/v1/nope",
+            "/api/v1/orgs/acme/nope",
+            "/api",
+            "/mcpx",
+            "/other",
+            "/apps",
+            "/app.css",
+        ):
             response = client.get(path)
             assert response.status_code == 404, (path, response.status_code)
             assert response.headers["content-type"].startswith("application/problem+json"), path

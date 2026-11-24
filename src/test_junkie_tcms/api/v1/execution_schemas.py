@@ -1,15 +1,29 @@
 """Request and response bodies for execution (T4): cycles, bulk cycles, results and attachments."""
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, model_validator
 
 from test_junkie_tcms.api.v1.schemas import Link, Name, Out, Patch, RichIn, RichOut, StepOut, UtcDateTime
+from test_junkie_tcms.db.models import MAX_RETRIES, SKIP_REASONS, SPLIT_STRATEGIES, STEP_STATUSES
 
 CycleCaseStatus = Literal["untested", "success", "fail", "error", "ignore", "skip", "cancel"]
 ResultStatus = Literal["success", "fail", "error", "ignore", "skip", "cancel"]
-StepStatus = Literal["untested", "success", "fail", "error", "skip"]
+StepStatus = Literal[STEP_STATUSES]
+SkipReason = Literal[SKIP_REASONS]
+SplitStrategy = Literal[SPLIT_STRATEGIES]
 Environment = Field(None, max_length=64)
+
+
+def _blank_none(value: Any) -> Any:
+    if isinstance(value, str):
+        value = value.strip()
+        return value or None
+    return value
+
+
+# The build under test (e.g. "2.4.1+412"), trimmed; blank means none.
+Build = Annotated[Annotated[str, Field(max_length=120)] | None, BeforeValidator(_blank_none)]
 
 
 class CycleSource(BaseModel):
@@ -24,19 +38,32 @@ class CycleSource(BaseModel):
     # automated and both send cases with a known automation_ref to these online consumers (T8).
     mode: Literal["manual", "automated", "both"] = "manual"
     consumer_ids: list[str] | None = Field(None, max_length=50)
+    # Leave draft cases out, as archived and deprecated ones always are.
+    skip_drafts: bool = False
+    # How automated cases are shared among the consumers, and how often a failed one runs again.
+    split: SplitStrategy = "even"
+    retries: int = Field(0, ge=0, le=MAX_RETRIES)
+    # Queue jobs for chosen consumers that are offline, instead of refusing them.
+    queue_when_offline: bool = False
 
 
 class CycleCreate(CycleSource):
-    name: str = Name
+    name: Name
     environment: str | None = Environment
     release_id: str | None = None
     default_assignee_actor_id: str | None = None
+    eta: UtcDateTime | None = None
+    # source keeps the source's order; feature walks the feature tree; priority puts critical first.
+    order: Literal["source", "feature", "priority"] = "source"
+    # Cases (keys or ids) to run first, in this order; the rest follow in `order`. Stores order manual.
+    case_order: list[str] | None = Field(None, max_length=1000)
 
 
 class CycleUpdate(Patch):
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     environment: str | None = Environment
     default_assignee_actor_id: str | None = None
+    eta: UtcDateTime | None = None
 
 
 class CycleOut(BaseModel):
@@ -50,12 +77,38 @@ class CycleOut(BaseModel):
     environment: str | None
     status: str
     mode: str
+    order: str
+    eta: UtcDateTime | None
     default_assignee_actor_id: str | None
     started_at: UtcDateTime
     closed_at: UtcDateTime | None
+    created_by_actor_id: str
+    closed_by_actor_id: str | None
+    split: str
+    retries: int
+    stopped_at: UtcDateTime | None
+    stopped_by_actor_id: str | None
     created_at: UtcDateTime
     updated_at: UtcDateTime
     counts: dict[str, int]
+    # Jobs waiting for a consumer that is offline.
+    queued_offline: int = 0
+    # On create only: the cases left out, by reason.
+    skipped: dict[str, int] | None = None
+
+
+class FeatureCountsOut(BaseModel):
+    """A cycle's case statuses for one feature; feature_id is null for cases with no feature."""
+
+    feature_id: str | None
+    name: str | None
+    total: int
+    counts: dict[str, int]
+
+
+class CycleBuildOut(BaseModel):
+    build: str
+    last_at: UtcDateTime
 
 
 class PreviewFeature(BaseModel):
@@ -119,12 +172,32 @@ class CycleCaseOut(BaseModel):
     steps: list[StepOut]
 
 
+class CaseCycleOut(BaseModel):
+    """A cycle a case is in, with the version the cycle pinned and the case's status there."""
+
+    cycle_id: str
+    name: str
+    cycle_status: str
+    environment: str | None
+    started_at: UtcDateTime
+    closed_at: UtcDateTime | None
+    cycle_case_id: str
+    case_version: int
+    status: str
+    last_result_at: UtcDateTime | None
+
+
 class BulkCycleCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     mode: Literal["features", "plans"] = "features"
     plan_ids: list[str] | None = Field(None, max_length=200)
-    name: str | None = Field(None, min_length=1, max_length=200)
+    name: Name | None = None
     environment: str | None = Environment
+    # Each cycle's name, from {feature} (or {plan}), {release} and {env}; none keeps "<name> · <feature>".
+    name_pattern: str | None = Field(None, min_length=1, max_length=200)
+    # A feature id (or plan id in plans mode) to that cycle's default assignee.
+    assignees: dict[str, str] = Field(default_factory=dict, max_length=200)
+    skip_drafts: bool = False
 
 
 class CycleBatchOut(BaseModel):
@@ -134,6 +207,10 @@ class CycleBatchOut(BaseModel):
     name: str
     mode: str
     environment: str | None
+    created_by_actor_id: str
+    # Null while any of its cycles is open; else the latest-closed cycle's.
+    closed_at: UtcDateTime | None
+    closed_by_actor_id: str | None
     created_at: UtcDateTime
     cycles: list[CycleOut]
 
@@ -154,6 +231,8 @@ class ResultCreate(BaseModel):
     steps: list[StepResultIn] = Field(default_factory=list, max_length=200)
     attachment_ids: list[str] = Field(default_factory=list, max_length=50)
     defects: list[Link] = Field(default_factory=list, max_length=50)
+    skip_reason: SkipReason | None = None
+    build: Build = None
 
 
 class StepResultOut(BaseModel):
@@ -167,6 +246,7 @@ class ResultOut(BaseModel):
     id: str
     cycle_case_id: str
     attempt: int
+    case_version: int
     status: str
     actor_id: str
     via: str
@@ -175,6 +255,8 @@ class ResultOut(BaseModel):
     steps: list[StepResultOut]
     attachment_ids: list[str]
     defects: list[dict[str, Any]]
+    skip_reason: str | None
+    build: str | None
     at: UtcDateTime
 
 
@@ -188,6 +270,8 @@ class BulkResultItem(BaseModel):
     comment: RichIn | None = None
     duration_ms: int | None = Field(None, ge=0)
     defects: list[Link] = Field(default_factory=list, max_length=50)
+    skip_reason: SkipReason | None = None
+    build: Build = None
 
 
 class BulkResultsIn(BaseModel):
@@ -225,6 +309,7 @@ class JobOut(BaseModel):
     claimed_at: UtcDateTime | None
     last_beat_at: UtcDateTime | None
     finished_at: UtcDateTime | None
+    reason: str | None = Field(None, description="Why it ended rejected or failed, when known")
     created_at: UtcDateTime
     updated_at: UtcDateTime
 
@@ -237,12 +322,23 @@ class JobResultItem(BaseModel):
     status: ResultStatus
     duration_ms: int | None = Field(None, ge=0)
     comment: RichIn | None = None
+    skip_reason: SkipReason | None = None
+    build: Build = None
 
 
 class JobReportIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    state: Literal["running", "done", "failed"]
+    state: Literal["running", "done", "failed", "rejected"]
     results: list[JobResultItem] = Field(default_factory=list, max_length=500)
+    reason: str | None = Field(
+        None, min_length=1, max_length=500, description="Why the job was rejected (required) or failed"
+    )
+
+    @model_validator(mode="after")
+    def _rejected_has_reason(self) -> "JobReportIn":
+        if self.state == "rejected" and self.reason is None:
+            raise ValueError("A rejected job needs a reason")
+        return self
 
 
 class JobReportOut(BaseModel):

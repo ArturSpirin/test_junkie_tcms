@@ -82,6 +82,16 @@ class Tokens:
         assert _create(owner, expires_at="2030-01-01T00:00:00").status_code == 422
 
     @test()
+    def test_expiry_in_another_zone_is_kept_as_the_same_instant_in_utc(self, suite_parameter):
+        owner = self.env.owner
+        created = _create(owner, expires_at="2030-01-01T16:00:00-08:00")
+        assert created.status_code == 201, created.text
+        assert created.json()["expires_at"] == "2030-01-02T00:00:00Z"
+        items = owner.get("/api/v1/orgs/acme/tokens").json()["items"]
+        [listed] = [t for t in items if t["id"] == created.json()["id"]]
+        assert listed["expires_at"] == "2030-01-02T00:00:00Z"
+
+    @test()
     def test_bad_or_malformed_bearer_is_401(self, suite_parameter):
         assert self.env.bearer("tjt_notarealtoken").get("/api/v1/me").status_code == 401
         client = self.env.client()

@@ -1,57 +1,132 @@
-/* Audit log view data. Demo data only. */
-/* actor is { kind, id }: kind person (id = handle), agent, token or system; onBehalfOf is a person's handle */
-const ev = (day, time, actor, token, onBehalfOf, via, action, type, id, version, summary, detail) => ({ day, time, actor, token, onBehalfOf, via, action, type, id, version, summary, ...(detail ? { detail } : {}) });
-const person = (id) => ({ kind: "person", id });
-const agent = (id) => ({ kind: "agent", id });
+/* Audit log adapter (docs/app-api-contract.md §14): audit_list with its filters (actor_id, actor_kind, action, via,
+   entity_type, entity_id, since, until and q are the server's), audit_retention, actors_list for names,
+   agents_list and members_list for the actor filter, and cases_get for a case's key and title.
+   Maps the API onto the shapes views/audit.js renders. */
+import { all, get, org, page } from "../api.js";
+import { day } from "./map.js";
 
-const EVENTS = [
-  ev("Fri Nov 13", "10:05 AM PT", person("dana"), "", "", "ui", "cases.restore", "case", "PAY-101", 8, "Restored v5 as v8"),
-  ev("Fri Nov 13", "2:05 AM PT", agent("ci-reporter"), "tjt_8f3k2a1q", "", "reporter", "results.create", "cycle_case", "PAY-102", 3, "success · Smoke · nightly"),
-  ev("Thu Nov 12", "4:20 PM PT", person("lee"), "", "", "ui", "results.create", "cycle_case", "PAY-101", 7, "fail · step 3 · LAB-418"),
-  ev("Thu Nov 12", "3:14 PM PT", agent("triage-bot"), "tjt_q7m2c9xd", "dana", "mcp", "cases.update", "case", "PAY-101", 7, "steps reordered, expected changed, tag visa", {
-    at: "2026-11-12T15:14:07-08:00", requestId: "req_01JD6QW8T3BN", tool: "cases_update",
-    changes: [
-      { field: "steps[st_2m8x].position", before: 4, after: 3 },
-      { field: "steps[st_2m8x].expected", before: "Payment succeeds and order status is paid", after: "Payment succeeds: order status is paid; a receipt email is queued" },
-      { field: "tags", before: ["smoke"], after: ["smoke", "visa"] }
-    ]
-  }),
-  ev("Thu Nov 12", "11:40 AM PT", person("dana"), "", "", "ui", "cycles.bulk_create", "release", "2.14.0", 0, "4 cycles, one per affected feature"),
-  ev("Thu Nov 12", "9:02 AM PT", { kind: "token", id: "tjt_3n5wv0ke" }, "tjt_3n5wv0ke", "dana", "api", "cases.import", "feature", "Refunds › refund_webhook_retry", 0, "6 cases from CSV"),
-  ev("Wed Nov 11", "5:30 PM PT", person("dana"), "", "", "ui", "tokens.create", "token", "tjt_q7m2c9xd", 0, "owner triage-bot · read, write:cases, write:planning"),
-  ev("Wed Nov 11", "5:28 PM PT", person("dana"), "", "", "ui", "agents.create", "agent", "triage-bot", 0, "role editor"),
-  ev("Wed Nov 11", "3:00 AM PT", { kind: "system", id: "system" }, "", "", "system", "cycle_cases.refresh", "cycle_case", "PAY-107", 4, "v3 → v4 before first result")
-];
-const BY_AGENT = EVENTS.filter((e) => e.actor.id === "triage-bot" || e.id === "triage-bot" || e.id === "tjt_q7m2c9xd");
-const BY_CASE = EVENTS.filter((e) => e.id === "PAY-101").concat([
-  ev("Tue Nov 10", "11:02 AM PT", person("lee"), "", "", "ui", "cases.update", "case", "PAY-101", 6, "Added receipt email check"),
-  ev("Tue Oct 20", "10:12 AM PT", person("dana"), "", "", "ui", "cases.create", "case", "PAY-101", 1, "Created")
-]);
+const PAGE = 50;
+const RANGES = { today: 0, "7d": 6, "14d": 13, "30d": 29 };
+const KINDS = ["person", "agent", "token", "consumer"];
+/* the actor filter's kinds as audit_list's actor_kind */
+const ACTOR_KIND = { person: "user", agent: "agent", token: "token", consumer: "consumer" };
+/* the directory's actor kinds as the view's */
+const KIND = { user: "person", agent: "agent", consumer: "consumer" };
+/* object types the view names differently from the API's entity_type */
+const TYPE = { case: "test_case" };
+const typeLabel = (t) => Object.keys(TYPE).find((k) => TYPE[k] === t) || t;
 
-export default {
-  base: {
-    orgSlug: "northwind",
-    retention: { days: 90, oldest: "Sat Aug 15" },
-    /* the actor filter's choices beyond the fixed kinds */
-    agents: [{ id: "triage-bot", owner: "dana", role: "editor" }, { id: "ci-reporter", owner: "lee", role: "tester" }],
-    members: [{ handle: "dana", role: "admin" }, { handle: "lee", role: "editor" }, { handle: "priya", role: "tester" }],
-    /* filter values; range is the date range (from is an ISO date, to defaults to today); query is the API query string */
-    filter: { actor: "any", action: "any", via: "any", type: "any", entityId: "", viaOpen: false, range: { value: "7d" }, query: "?since=2026-11-08" },
-    events: EVENTS,
-    /* index of the expanded event, -1 for none */
-    open: -1,
-    entity: null
-  },
-  states: {
-    "filter-open": { filter: { viaOpen: true } },
-    "filtered-agent": { filter: { actor: "agent:triage-bot", query: "?actor=agent:triage-bot&since=2026-11-08" }, events: BY_AGENT },
-    expanded: { open: EVENTS.findIndex((e) => e.actor.id === "triage-bot") },
-    entity: {
-      entity: { type: "case", id: "PAY-101", title: "Pay with a saved Visa card" },
-      filter: { type: "case", entityId: "PAY-101", range: { value: "30d" }, query: "?entity_type=case&entity_id=PAY-101&since=2026-10-16" },
-      events: BY_CASE
-    },
-    empty: { filter: { actor: "agent:triage-bot", range: { value: "today" }, query: "?actor=agent:triage-bot&since=2026-11-14T00:00:00-08:00" }, events: [] },
-    retention: { filter: { range: { value: "custom", applied: true, from: "2026-08-15" }, query: "?since=2026-08-15" }, events: EVENTS.slice(-2) }
+const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const midnight = (iso) => { const [y, m, d] = iso.split("-").map(Number); return new Date(y, m - 1, d); };
+const daysAgo = (n) => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - n); return d; };
+const clock = (iso) => new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZoneName: "short" });
+
+/* the period as audit_list's since (inclusive) and until (exclusive), from ?range= or ?range=custom&from=&to= */
+function period(params, fallback) {
+  const value = params.range in RANGES || params.range === "custom" ? params.range : fallback;
+  if (value === "custom" && params.from) {
+    const to = params.to || isoDay(new Date());
+    const end = midnight(to);
+    end.setDate(end.getDate() + 1);
+    return { range: { value, applied: true, from: params.from, to }, since: midnight(params.from).toISOString(), until: end.toISOString() };
   }
+  const v = value === "custom" ? fallback : value;
+  return { range: { value: v }, since: daysAgo(RANGES[v]).toISOString(), until: undefined };
+}
+
+/* a change as [before, after]: the API writes [before, after], {from, to}, or a plain value (a create) */
+function pair(v) {
+  if (Array.isArray(v) && v.length === 2) return v;
+  if (v && typeof v === "object" && !Array.isArray(v) && "from" in v && "to" in v) return [v.from, v.to];
+  return [null, v];
+}
+const shown = (v) => (v === null || v === undefined ? "" : Array.isArray(v) ? v.map((x) => (x && typeof x === "object" ? JSON.stringify(x) : x)) : typeof v === "object" ? JSON.stringify(v) : v);
+
+function event(a, names) {
+  const who = names.actors[a.actor_id];
+  const kind = who ? KIND[who.kind] || "person" : "person";
+  const changes = Object.entries(a.changes || {}).filter(([k]) => k !== "entity_version").map(([field, v]) => {
+    const [before, after] = pair(v);
+    return { field, before: shown(before), after: shown(after) };
+  });
+  const version = a.changes && a.changes.entity_version ? pair(a.changes.entity_version)[1] || 0 : 0;
+  const c = a.entity_type === "test_case" ? names.cases[a.entity_id] : null;
+  return {
+    eid: a.id, day: day(a.created_at, { day: true }), time: clock(a.created_at),
+    actor: { kind, id: a.actor_id, name: who ? who.name : a.actor_id },
+    token: a.token_id ? (names.tokens[a.token_id] || a.token_id) : "",
+    onBehalfOf: a.on_behalf_of_user_id ? names.users[a.on_behalf_of_user_id] || a.on_behalf_of_user_id : "",
+    via: a.via, action: a.action, type: typeLabel(a.entity_type), id: c ? c.key : a.entity_id, entityId: a.entity_id,
+    version, summary: changes.map((x) => x.field).join(", "),
+    detail: { at: a.created_at, requestId: a.request_id || "", tool: a.tool || "", changes },
+    raw: a
+  };
+}
+
+/* the audit_list query for the URL's filters */
+function query(params, p) {
+  const actor = params.actor || "any";
+  const q = {
+    since: p.since, until: p.until, q: (params.q || "").trim(),
+    action: params.action && params.action !== "any" ? params.action : undefined,
+    via: params.via && params.via !== "any" ? params.via : undefined,
+    entity_type: params.type && params.type !== "any" ? TYPE[params.type] || params.type : undefined,
+    entity_id: params.entity || undefined
+  };
+  if (ACTOR_KIND[actor]) q.actor_kind = ACTOR_KIND[actor];
+  else if (actor !== "any") q.actor_id = actor.replace(/^agent:/, "");
+  return q;
+}
+
+/* params: the URL's query (actor, action, via, type, entity, q, range, from, to, open) and ui ("filter-open"). */
+export async function load(params, ctx) {
+  const at = (...rest) => org(ctx.org.id, ...rest);
+  const p = period(params, params.entity ? "30d" : "7d");
+  const [rows, retention, directory, agents, members] = await Promise.all([
+    page(at("audit"), { ...query(params, p), limit: PAGE }),
+    get(at("audit", "retention")),
+    get(at("actors")),
+    all(at("agents")),
+    all(at("members"))
+  ]);
+  const caseIds = [...new Set(rows.items.filter((a) => a.entity_type === "test_case").map((a) => a.entity_id))];
+  if (params.entity && params.type === "case" && !caseIds.includes(params.entity)) caseIds.push(params.entity);
+  const cases = Object.fromEntries(await Promise.all(caseIds.map(async (id) => [id, await get(at("cases", id))])));
+  const users = Object.fromEntries(members.map((m) => [m.user_id, m.actor_id]));
+  const names = {
+    actors: Object.fromEntries(directory.actors.map((a) => [a.id, a])),
+    tokens: Object.fromEntries(directory.tokens.map((t) => [t.id, t.name])),
+    users, cases
+  };
+  const events = rows.items.map((a) => event(a, names));
+  const actor = params.actor || "any";
+  const named = actor.replace(/^agent:/, "");
+  const actorLabel = KINDS.includes(actor) || actor === "any" ? actor : (names.actors[named] || { name: named }).name;
+  const filter = {
+    actor, actorLabel, action: params.action || "any", via: params.via || "any", type: params.type || "any",
+    entityId: params.entity || "", entityLabel: params.entity && cases[params.entity] ? cases[params.entity].key : params.entity || "",
+    q: (params.q || "").trim(), viaOpen: params.ui === "filter-open", range: p.range
+  };
+  const data = {
+    retention: { days: retention.days, oldest: retention.oldest_kept ? day(retention.oldest_kept, { day: true }) : "", oldestDay: retention.oldest_kept ? isoDay(new Date(retention.oldest_kept)) : "" },
+    agents: agents.map((a) => ({ id: a.id, name: a.name, owner: users[a.owner_user_id] || a.owner_user_id, role: a.role })),
+    members: members.filter((m) => !m.removed_at).map((m) => ({ handle: m.actor_id, role: m.role })),
+    filter, events, total: rows.total, open: events.findIndex((e) => e.eid === params.open), entity: null
+  };
+  if (params.entity) {
+    const c = cases[params.entity];
+    data.entity = { type: filter.type === "any" ? "" : filter.type, id: c ? c.key : params.entity, key: c ? c.key : "", title: c ? c.title : "" };
+    return { state: "entity", data };
+  }
+  if (!events.length) return { state: "empty", data };
+  if (params.ui === "filter-open") return { state: "filter-open", data };
+  if (data.open >= 0) return { state: "expanded", data };
+  if (p.range.from && data.retention.oldestDay && p.range.from < data.retention.oldestDay) return { state: "retention", data };
+  const filtered = actor !== "any" || filter.action !== "any" || filter.via !== "any" || filter.type !== "any" || filter.q || p.range.value !== "7d";
+  return { state: filtered ? "filtered-agent" : "default", data };
+}
+
+/* The view's reads beyond the page: export resolves to every AuditOut the current filters match. */
+export const actions = {
+  export: (params, ctx) => all(org(ctx.org.id, "audit"), query(params, period(params, params.entity ? "30d" : "7d")))
 };

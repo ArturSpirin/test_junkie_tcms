@@ -337,10 +337,13 @@ function dr(c = {}) {
 </div></div>`;
 }
 
-/* ---------- toast ---------- */
+/* ---------- toast ----------
+   A state's own toast is declarative (state.toast(d), state.toastKeep), so the shell shows it after render and
+   the render tests see its markup; toastHtml() is that markup. */
+const toastHtml = (html, err) => `<div class="toast live-t${err ? " err" : ""}" role="status">${html}</div>`;
 function toast(html, err, keep) {
   document.querySelectorAll(".toast.live-t").forEach((t) => t.remove());
-  document.body.insertAdjacentHTML("beforeend", `<div class="toast live-t${err ? " err" : ""}" role="status">${html}</div>`);
+  document.body.insertAdjacentHTML("beforeend", toastHtml(html, err));
   if (!keep) setTimeout(() => document.querySelectorAll(".toast.live-t").forEach((t) => t.remove()), 3200);
 }
 
@@ -359,11 +362,74 @@ function installIds() {
   new MutationObserver(ddIds).observe(document.body, { childList: true, subtree: true });
 }
 
+/* ---------- in-app history ----------
+   Each history entry this page made carries its depth in history.state, so a close button knows whether
+   history.back() stays in the app; a modal loaded straight from its URL has nothing to go back to. */
+let depth = 0;
+function installDepth() {
+  if (!history.state || history.state.tjDepth == null) history.replaceState({ ...history.state, tjDepth: 0 }, "");
+  depth = history.state.tjDepth;
+  window.addEventListener("hashchange", () => {
+    if (!history.state || history.state.tjDepth == null) history.replaceState({ ...history.state, tjDepth: depth + 1 }, "");
+    depth = history.state.tjDepth;
+  });
+}
+/* back one step, or to the view's default state (an empty hash) when there is no in-app entry to go back to */
+function back() {
+  if (depth > 0) { history.back(); return; }
+  history.replaceState({ ...history.state, tjDepth: 0 }, "", location.pathname + location.search);
+  window.dispatchEvent(new HashChangeEvent("hashchange"));
+}
+
+/* ---------- modals ----------
+   A modal is a hash state, and #main is re-rendered on every hash change, so the control that opened one is
+   remembered by a key (its data-go, data-hash or href, its text, and its place among controls with that key),
+   not as an element. */
+const FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [contenteditable="true"], [tabindex]:not([tabindex="-1"])';
+const focusables = (root) => [...root.querySelectorAll(FOCUSABLE)].filter((el) => el.getClientRects().length && !el.closest("[hidden]"));
+const OPENER = "button, a[href], [data-go], [data-hash]";
+const openerKey = (el) => ["data-go", "data-hash", "href"].map((a) => el.getAttribute(a) || "").join("|") + "|" + el.textContent.trim();
+let opener = null, shown = null;
+function modalSync() {
+  const m = document.querySelector(".modal");
+  if (m && m !== shown) {
+    shown = m;
+    const f = m.querySelector("[autofocus]") || focusables(m.querySelector(".mb") || m)[0] || focusables(m)[0];
+    if (f) f.focus();
+  } else if (!m && shown) {
+    shown = null;
+    if (!opener) return;
+    const el = [...document.querySelectorAll(OPENER)].filter((x) => !x.closest(".modal") && openerKey(x) === opener.key)[opener.i];
+    opener = null;
+    if (el) el.focus();
+  }
+}
+function installModal() {
+  document.addEventListener("click", (e) => {
+    const el = e.target.closest && e.target.closest(OPENER);
+    if (!el || el.closest(".modal")) return;
+    const key = openerKey(el);
+    opener = { key, i: [...document.querySelectorAll(OPENER)].filter((x) => !x.closest(".modal") && openerKey(x) === key).indexOf(el) };
+  }, true);
+  modalSync();
+  new MutationObserver(modalSync).observe(document.body, { childList: true, subtree: true });
+}
+/* Tab and Shift+Tab wrap inside the open modal */
+function modalTab(e) {
+  const m = document.querySelector(".modal");
+  if (!m) return;
+  const fs = focusables(m);
+  if (!fs.length) { e.preventDefault(); return; }
+  const first = fs[0], last = fs[fs.length - 1], a = document.activeElement;
+  if (e.shiftKey && (a === first || !m.contains(a))) { e.preventDefault(); last.focus(); }
+  else if (!e.shiftKey && (a === last || !m.contains(a))) { e.preventDefault(); first.focus(); }
+}
+
 /* ---------- live delegation ---------- */
 function installLive() {
   document.addEventListener("click", (e) => {
     const t = e.target;
-    if (t.closest("[data-back]")) { history.back(); return; }
+    if (t.closest("[data-back]")) { back(); return; }
     const trig = t.closest(".dd-t");
     if (trig) {
       const d = trig.parentElement;
@@ -452,7 +518,15 @@ function installLive() {
   });
   document.addEventListener("keydown", (e) => {
     const d = e.target.closest && e.target.closest(".dd");
-    if (e.key === "Escape") { ddClose(); document.querySelectorAll(".dr.open").forEach((x) => x.classList.remove("open")); return; }
+    if (e.key === "Escape") {
+      // the innermost thing closes first: an open menu or range, then the modal, through its own close button
+      const ranges = [...document.querySelectorAll(".dr.open:not([data-pinned])")];
+      if (document.querySelector(".dd.open") || ranges.length) { ddClose(); ranges.forEach((x) => x.classList.remove("open")); return; }
+      const x = document.querySelector(".modal .mh [data-back]");
+      if (x) { e.preventDefault(); x.click(); }
+      return;
+    }
+    if (e.key === "Tab") { modalTab(e); return; }
     if (!d) return;
     const opts = [...d.querySelectorAll(".dd-o:not(.dis):not([hidden])")];
     if (!opts.length) return;
@@ -474,11 +548,16 @@ function installLive() {
 }
 
 /* wires tooltips, dropdowns, the editor and the date range to the document; browser only, called once by main.js */
-export function install() { installTips(); installLive(); installIds(); }
+export function install() { installTips(); installDepth(); installLive(); installIds(); installModal(); }
 
-const modal = (title, body, foot, cls = "") => `<div class="modal-back"><div class="modal ${cls}" role="dialog" aria-modal="true" aria-label="${title}">
+/* every footer (dialog .mf, card .foot-bar) is built here: the buttons, and on the left an optional note in plain
+   words for the person using it. The note is text, escaped here, never markup: API and MCP op names belong in the
+   docs, not the footer (tests/web/test_render.py guards it). tone "faint" dims the note. */
+const foot = (actions, note = "", tone = "") => `${note ? `<span class="l${tone ? " " + tone : ""}">${esc(note)}</span>` : ""}${actions || ""}`;
+const footBar = (actions, note = "", tone = "") => `<div class="foot-bar">${foot(actions, note, tone)}</div>`;
+const modal = (title, body, actions, cls = "", note = "", tone = "") => `<div class="modal-back"><div class="modal ${cls}" role="dialog" aria-modal="true" aria-label="${title}">
   <div class="mh"><h2>${title}</h2><button class="icon-btn" aria-label="Close" data-back>${I.x}</button></div>
-  <div class="mb">${body}</div>${foot ? `<div class="mf">${foot}</div>` : ""}</div></div>`;
+  <div class="mb">${body}</div>${actions || note ? `<div class="mf">${foot(actions, note, tone)}</div>` : ""}</div></div>`;
 
 /* links name a view and its state as "<view>.html#<state>"; the app serves every view from one page, ?view=<view> */
 const lnk = (h) => {
@@ -492,5 +571,5 @@ const crumbs = (items) => `<div class="crumbs">${[[esc(orgName)]].concat(items).
 const psearch = (o) => `<div class="psearch"><label class="in-ic">${I.search}<input class="in" value="${esc(o.q || "")}" placeholder="${o.ph}" aria-label="${o.ph}">${o.q ? `<a class="x" href="${lnk(o.clear)}" aria-label="Clear search">${I.x}</a>` : ""}</label>${o.q ? `<span class="cnt">${o.cnt}</span>` : ""}${o.extra || ""}</div>`;
 const hl = (s, q) => (q ? s.replace(new RegExp("(" + q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + ")", "ig"), "<mark>$1</mark>") : s);
 
-export { psearch, hl, I, actor, st, disc, ver, bar, legend, counts, tipH, tipA, pinTip, crumbs, lnk, STATUS, dd, ddFit, tg, rte, toMd, dr, toast, modal, esc };
+export { psearch, hl, I, actor, st, disc, ver, bar, legend, counts, tipH, tipA, pinTip, crumbs, lnk, STATUS, dd, ddFit, tg, rte, toMd, dr, toast, toastHtml, modal, footBar, esc };
 

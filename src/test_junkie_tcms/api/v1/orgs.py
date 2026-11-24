@@ -8,10 +8,14 @@ from test_junkie_tcms import audit
 from test_junkie_tcms.api.idempotency import Idem, idempotency
 from test_junkie_tcms.api.operations import op
 from test_junkie_tcms.api.pagination import PageParams, page_params, paginate
+from test_junkie_tcms.api.v1.catalog import name_filter, name_q
 from test_junkie_tcms.api.v1.schemas import (
+    ActorDirectory,
     AgentCreate,
     AgentOut,
     AgentUpdate,
+    DirectoryActor,
+    DirectoryToken,
     MemberAdd,
     MemberOut,
     MemberUpdate,
@@ -31,7 +35,7 @@ from test_junkie_tcms.auth.deps import (
 from test_junkie_tcms.auth.passwords import hash_password
 from test_junkie_tcms.auth.scopes import ADMIN, READ, ROLE_RANK
 from test_junkie_tcms.db.base import utcnow
-from test_junkie_tcms.db.models import Actor, Consumer, Membership, Org, User
+from test_junkie_tcms.db.models import Actor, ApiToken, Consumer, Membership, Org, User
 
 router = APIRouter(tags=["orgs"])
 ORG = "/orgs/{org}"
@@ -76,6 +80,7 @@ def _member_out(db: Session, m: Membership) -> MemberOut:
         name=user.name,
         role=m.role,
         removed_at=m.removed_at,
+        last_active_at=actor.last_active_at,
     )
 
 
@@ -119,11 +124,17 @@ def _active_owners(db: Session, org_id: str) -> int:
 
 @router.get(ORG + "/members", response_model=Page[MemberOut], **op("members_list", READ, "admin"))
 def members_list(
+    q: str | None = name_q("the name or email"),
     ctx: OrgContext = Depends(require_scope(READ)),
     params: PageParams = Depends(page_params),
     db: Session = Depends(get_db),
 ):
-    query = select(Membership).where(Membership.org_id == ctx.org.id, Membership.removed_at.is_(None))
+    query = (
+        select(Membership)
+        .join(User, User.id == Membership.user_id)
+        .where(Membership.org_id == ctx.org.id, Membership.removed_at.is_(None))
+    )
+    query = name_filter(query, q, User.name, User.email)
     rows, cursor, total = paginate(db, query, Membership.id, params)
     return Page[MemberOut](items=[_member_out(db, m) for m in rows], next_cursor=cursor, total=total)
 
@@ -202,6 +213,17 @@ def _get_agent(db: Session, ctx: OrgContext, agent_id: str) -> Actor:
     return agent
 
 
+def check_agent_name_free(db: Session, org_id: str, name: str, but: str | None = None) -> None:
+    """A disabled agent keeps its name: the audit log still shows it."""
+    query = select(Actor.id).where(
+        Actor.org_id == org_id, Actor.kind == "agent", _NOT_CONSUMER, Actor.name == name
+    )
+    if but is not None:
+        query = query.where(Actor.id != but)
+    if db.scalar(query) is not None:
+        raise HTTPException(409, f"An agent is already named {name!r}")
+
+
 def _check_agent_role(db: Session, ctx: OrgContext, owner_user_id: str, role: str) -> None:
     owner_role = member_role(db, ctx.org.id, owner_user_id)
     if owner_role is None:
@@ -230,10 +252,21 @@ def agents_create(
 ):
     owner = body.owner_user_id or ctx.actor.user_id or ctx.actor.owner_user_id
     _check_agent_role(db, ctx, owner, body.role)
-    agent = Actor(org_id=ctx.org.id, kind="agent", name=body.name, owner_user_id=owner, role=body.role)
+    check_agent_name_free(db, ctx.org.id, body.name)
+    agent = Actor(
+        org_id=ctx.org.id,
+        kind="agent",
+        name=body.name,
+        owner_user_id=owner,
+        role=body.role,
+        description=body.description or None,
+    )
     db.add(agent)
     db.flush()
-    audit.record(db, ctx, "agent.create", "actor", agent.id, {"name": body.name, "role": body.role})
+    changes = {"name": body.name, "role": body.role}
+    if agent.description:
+        changes["description"] = agent.description
+    audit.record(db, ctx, "agent.create", "actor", agent.id, changes)
     db.commit()
     return agent
 
@@ -252,8 +285,13 @@ def agents_update(
         changes["role"] = [agent.role, body.role]
         agent.role = body.role
     if body.name is not None and body.name != agent.name:
+        check_agent_name_free(db, ctx.org.id, body.name, but=agent.id)
         changes["name"] = [agent.name, body.name]
         agent.name = body.name
+    description = (body.description or None) if body.description is not None else agent.description
+    if description != agent.description:
+        changes["description"] = [agent.description, description]
+        agent.description = description
     if changes:
         audit.record(db, ctx, "agent.update", "actor", agent.id, changes)
         db.commit()
@@ -275,3 +313,52 @@ def agents_disable(
         audit.record(db, ctx, "agent.disable", "actor", agent.id)
     db.commit()  # a no-op commits too, so an Idempotency-Key replays it
     return agent
+
+
+@router.post(
+    ORG + "/agents/{agent_id}/enable", response_model=AgentOut, **op("agents_enable", ADMIN, "admin")
+)
+def agents_enable(
+    agent_id: str,
+    ctx: OrgContext = Depends(require_scope(ADMIN)),
+    idem: Idem = Depends(idempotency),
+    db: Session = Depends(get_db),
+):
+    """422 when the owner has left or the agent's role is now above the owner's, as on create."""
+    agent = _get_agent(db, ctx, agent_id)
+    if agent.disabled_at is not None:
+        _check_agent_role(db, ctx, agent.owner_user_id, agent.role)
+        agent.disabled_at = None
+        audit.record(db, ctx, "agent.enable", "actor", agent.id)
+    db.commit()  # a no-op commits too, so an Idempotency-Key replays it
+    return agent
+
+
+@router.get(ORG + "/actors", response_model=ActorDirectory, **op("actors_list", READ, "core"))
+def actors_list(ctx: OrgContext = Depends(require_scope(READ)), db: Session = Depends(get_db)):
+    """Every actor and token name in the org, past ones too, so old rows still show a name."""
+    consumers = {c.actor_id: c for c in db.scalars(select(Consumer).where(Consumer.org_id == ctx.org.id))}
+    removed = set(
+        db.scalars(
+            select(Membership.user_id).where(
+                Membership.org_id == ctx.org.id, Membership.removed_at.is_not(None)
+            )
+        )
+    )
+    actors = []
+    for a in db.scalars(select(Actor).where(Actor.org_id == ctx.org.id).order_by(Actor.id)):
+        consumer = consumers.get(a.id)
+        if consumer is not None:
+            actors.append(
+                DirectoryActor(
+                    id=a.id, kind="consumer", name=consumer.name, disabled=consumer.revoked_at is not None
+                )
+            )
+        else:
+            disabled = a.disabled_at is not None or a.user_id in removed
+            actors.append(DirectoryActor(id=a.id, kind=a.kind, name=a.name, disabled=disabled))
+    tokens = [
+        DirectoryToken(id=t.id, name=t.name, actor_id=t.actor_id)
+        for t in db.scalars(select(ApiToken).where(ApiToken.org_id == ctx.org.id).order_by(ApiToken.id))
+    ]
+    return ActorDirectory(actors=actors, tokens=tokens)

@@ -4,7 +4,7 @@ import re
 from typing import Any
 
 from fastapi import HTTPException, Query
-from sqlalchemy import and_, func, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from test_junkie_tcms.api.v1.schemas import DocIn, RichIn, RichMode
@@ -50,6 +50,24 @@ def set_rich(row: Any, field: str, value: RichIn, changes: dict[str, list]) -> N
         changes[field] = [doc_to_md(old), doc_to_md(doc)]
         setattr(row, field, doc)
         setattr(row, f"{field}_text", doc_to_text(doc))
+
+
+def name_q(what: str = "the name") -> Any:
+    """The `q` query param of a list: a case-insensitive part of `what`."""
+    return Query(None, max_length=200, description=f"A case-insensitive part of {what}")
+
+
+def contains_ci(column: Any, text: str) -> Any:
+    """`column` holds `text`, ignoring case; `%` and `_` in it match only themselves."""
+    return func.lower(column).contains(text.lower(), autoescape=True)
+
+
+def name_filter(query: Select, q: str | None, *columns: Any) -> Select:
+    """Narrow a list to rows where any of `columns` holds `q` (see `contains_ci`); a blank `q` is no filter.
+    Applied before `paginate`, so it holds across every cursor page and `total` counts the matches."""
+    if not q or not q.strip():
+        return query
+    return query.where(or_(*(contains_ci(c, q.strip()) for c in columns)))
 
 
 def get_product(db: Session, ctx: OrgContext, ref: str) -> Product:

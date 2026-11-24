@@ -21,6 +21,18 @@ def make_engine(url: str) -> Engine:
             cursor.execute("PRAGMA foreign_keys=ON")
             cursor.close()
 
+    elif engine.dialect.name == "postgresql":
+        # Every stored time is UTC (db/base.py `aware`), so every session reads it back in UTC, whatever the
+        # server's TimeZone. Set outside a transaction so a later ROLLBACK can't undo it.
+        @event.listens_for(engine, "connect", insert=True)
+        def _postgres_utc(dbapi_conn, _record):
+            autocommit = dbapi_conn.autocommit
+            dbapi_conn.autocommit = True
+            cursor = dbapi_conn.cursor()
+            cursor.execute("SET TIME ZONE 'UTC'")
+            cursor.close()
+            dbapi_conn.autocommit = autocommit
+
     return engine
 
 

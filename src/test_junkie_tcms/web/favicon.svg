@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- The top bar's `.brand .mark` (app.css:68-69) on a 32 grid. An SVG can't read the CSS tokens, so the
+       colours are copied: dark accents from app.css:23, light from app.css:40, switched like theme.js does. -->
+  <style>
+    .a2 { stop-color: #ff9a45; } .a { stop-color: #f37814; } .ink { fill: #1a0f05; }
+    @media (prefers-color-scheme: light) {
+      .a2 { stop-color: #e06d17; } .a { stop-color: #c2570a; } .ink { fill: #ffffff; }
+    }
+  </style>
+  <defs>
+    <!-- CSS linear-gradient(140deg, ...) -->
+    <linearGradient id="g" x1="0.18" y1="0.12" x2="0.82" y2="0.88">
+      <stop offset="0" class="a2"/><stop offset="1" class="a"/>
+    </linearGradient>
+  </defs>
+  <rect width="32" height="32" rx="10.3" fill="url(#g)"/>
+  <text class="ink" x="16" y="16.5" text-anchor="middle" dominant-baseline="central"
+        font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-weight="700" font-size="14">TJ</text>
+</svg>

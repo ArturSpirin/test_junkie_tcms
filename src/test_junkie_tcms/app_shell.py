@@ -8,16 +8,22 @@ unknown path keeps its problem+json 404, so `/api/v1/...` never answers with HTM
 from pathlib import Path
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 WEB_DIR = Path(__file__).parent / "web"
 SHELL = WEB_DIR / "index.html"
 SHELL_PATHS = ("/", "/app", "/app/{path:path}")
+FAVICON = "/assets/favicon.svg"
 
 
 def _shell() -> FileResponse:
     return FileResponse(SHELL, media_type="text/html", headers={"Cache-Control": "no-cache"})
+
+
+def _favicon() -> RedirectResponse:
+    # The shell links the SVG; browsers and crawlers that ask `/favicon.ico` directly get the same one file.
+    return RedirectResponse(FAVICON, status_code=307)
 
 
 class _Assets(StaticFiles):
@@ -39,3 +45,4 @@ def install(app: FastAPI) -> None:
     for path in SHELL_PATHS:
         # Not op()-marked and outside /api/v1, so the MCP generator makes no tool from it.
         app.add_api_route(path, _shell, methods=["GET", "HEAD"], include_in_schema=False)
+    app.add_api_route("/favicon.ico", _favicon, methods=["GET", "HEAD"], include_in_schema=False)

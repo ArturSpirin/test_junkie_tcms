@@ -75,6 +75,22 @@ class WebServing:
         for ref in ("/assets/app.css", "/assets/js/main.js"):
             assert client.get(ref).status_code == 200, ref
 
+    @test()
+    def test_the_shell_links_the_favicon_and_favicon_ico_redirects_to_it(self, suite_parameter):
+        shell = app_shell.SHELL.read_text(encoding="utf-8")
+        assert '<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">' in shell
+        client = self.env.client()
+        icon = client.get("/assets/favicon.svg")
+        assert icon.status_code == 200
+        assert icon.headers["content-type"].startswith("image/svg+xml")
+        for method in (client.get, client.head):
+            response = method("/favicon.ico", follow_redirects=False)
+            assert response.status_code == 307, (method, response.status_code)
+            assert response.headers["location"] == "/assets/favicon.svg", method
+        assert client.get("/favicon.ico").content == icon.content
+        spec = client.get("/api/v1/openapi.json").json()
+        assert "/favicon.ico" not in spec["paths"]
+
     # The files
 
     @test()

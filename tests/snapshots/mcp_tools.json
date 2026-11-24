@@ -9332,7 +9332,7 @@
     "wire": "org"
    }
   },
-  "description": "Results Bulk Create. Many results at once, each matched to a case of this cycle by `case_key` or by the pinned version's\n`automation_ref`. Items that match nothing are listed in `unmatched`; the rest are recorded.",
+  "description": "Results Bulk Create. Many results at once, each matched to a case of this cycle by `case_key` or by the pinned version's\n`automation_ref`. Items that match nothing are listed in `unmatched`; the rest are recorded. A `skip`\nmay have no `comment`: automated runs pass Test Junkie's skip reason when there is one (only\n`results_create` requires it).",
   "input_schema": {
    "$defs": {
     "BulkResultItem": {

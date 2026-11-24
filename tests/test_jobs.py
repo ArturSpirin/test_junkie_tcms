@@ -1,17 +1,19 @@
 """T8: automated cycles split cases between people and consumers; consumers claim jobs, report results, and
 lose them when they stop beating."""
 
+import json
 from datetime import timedelta
 
 from sqlalchemy import select
 from test_junkie.decorators import Suite, afterClass, afterTest, beforeTest, test
 
 from test_junkie_tcms.api.v1 import consumers, cycles, job_queue, jobs, results
+from test_junkie_tcms.api.v1.execution_schemas import JobResultItem, ResultCreate
 from test_junkie_tcms.db.base import utcnow
 from test_junkie_tcms.db.models import Consumer, Cycle, Job
 from tests import support
 from tests.catalog_seed import events, ok, seed, url
-from tests.execution_seed import cycle_cases, make_case
+from tests.execution_seed import cycle_cases, make_case, record
 from tests.support import add_member, login
 from tests.test_consumers import ROSTER, FakeConsumer, approve, count, set_column
 
@@ -300,6 +302,51 @@ class Jobs:
         assert report(a, job["id"], "done").status_code == 409
         assert next_job(a).status_code == 204
         assert report(world["b"], job["id"], "done").status_code == 404
+
+    @test()
+    def test_job_report_takes_the_same_rich_comment(self, suite_parameter):
+        job_type = JobResultItem.model_fields["comment"].annotation
+        assert job_type == ResultCreate.model_fields["comment"].annotation
+        owner = self.env.owner
+        world = make_world(self.env, owner, make_clock(self.env))
+        a = world["a"]
+        cycle = ok(create(owner, world, a), 201)
+        job = ok(next_job(a))
+        case = world["cases"]["ok"]["id"]
+        [cc] = [r["id"] for r in cycle_cases(owner, cycle["id"]) if r["case_id"] == case]
+        md = "Fails on **step 2**"
+        single = ok(record(owner, cc, status="fail", comment={"markdown": md}), 201)
+
+        def post_job(comment):
+            item = {"ref": REF_OK, "status": "fail", "comment": comment}
+            body = {"state": "running", "results": [item]}
+            return a.client.post(f"/api/v1/consumers/me/jobs/{job['id']}/state", json=body)
+
+        def results(rich):
+            return ok(owner.get(url(f"/cycle-cases/{cc}/results"), params={"rich": rich}))["items"]
+
+        assert ok(post_job({"markdown": md}))["recorded"] == 1
+        assert ok(post_job({"doc": results("doc")[0]["comment"]}))["recorded"] == 1
+        rows = results("both")
+        assert [r["attempt"] for r in rows] == [1, 2, 3]
+        assert rows[0]["id"] == single["id"]
+        assert rows[1]["comment"] == rows[0]["comment"] == rows[2]["comment"]
+        assert rows[1]["comment"]["markdown"].strip() == md
+        assert '{"type": "bold"}' in json.dumps(rows[1]["comment"]["doc"])
+        plain = post_job(md)
+        assert plain.status_code == 422, plain.text
+        locs = [e["loc"][:4] for e in plain.json()["errors"]]
+        assert ["body", "results", 0, "comment"] in locs, plain.text
+
+    @test()
+    def test_job_report_skip_needs_no_reason(self, suite_parameter):
+        owner = self.env.owner
+        world = make_world(self.env, owner, make_clock(self.env))
+        a = world["a"]
+        cycle = ok(create(owner, world, a), 201)
+        job = ok(next_job(a))
+        assert ok(report(a, job["id"], "done", (REF_OK, "skip")))["recorded"] == 1
+        assert statuses(owner, cycle["id"])[world["cases"]["ok"]["id"]][2] == "skip"
 
     @test()
     def test_failed_job_cancels_the_cases_it_did_not_report(self, suite_parameter):

@@ -321,7 +321,7 @@ class JobResultItem(BaseModel):
     ref: str = Field(min_length=1, max_length=500)
     status: ResultStatus
     duration_ms: int | None = Field(None, ge=0)
-    comment: str | None = Field(None, max_length=20_000)
+    comment: RichIn | None = None
     skip_reason: SkipReason | None = None
     build: Build = None
 

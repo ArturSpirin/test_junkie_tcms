@@ -249,7 +249,9 @@ def results_bulk_create(
     db: Session = Depends(get_db),
 ):
     """Many results at once, each matched to a case of this cycle by `case_key` or by the pinned version's
-    `automation_ref`. Items that match nothing are listed in `unmatched`; the rest are recorded."""
+    `automation_ref`. Items that match nothing are listed in `unmatched`; the rest are recorded. A `skip`
+    may have no `comment`: automated runs pass Test Junkie's skip reason when there is one (only
+    `results_create` requires it)."""
     cycle = get_cycle(db, ctx, id)
     require_open(cycle)
     product = db.get(Product, cycle.product_id)

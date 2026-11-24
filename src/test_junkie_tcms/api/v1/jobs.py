@@ -23,7 +23,7 @@ from test_junkie_tcms.api.v1.job_queue import (
     stall_check,
 )
 from test_junkie_tcms.api.v1.results import check_skip_reason, record
-from test_junkie_tcms.api.v1.schemas import MarkdownIn, Page
+from test_junkie_tcms.api.v1.schemas import Page
 from test_junkie_tcms.auth.deps import (
     ConsumerContext,
     OrgContext,
@@ -169,7 +169,9 @@ def jobs_report(
 ):
     """Results for the job's refs, matched to the cycle cases whose pinned version has that automation_ref,
     and its state: `running` keeps it alive, `done`, `failed` or `rejected` ends it. A failed or rejected
-    job cancels the cases it didn't report; `rejected` needs a `reason`, which the job keeps."""
+    job cancels the cases it didn't report; `rejected` needs a `reason`, which the job keeps. A `skip` may
+    have no `comment`: by the same reasoning as `results_bulk_create`, automated runs pass Test Junkie's
+    skip reason when there is one (only `results_create` requires it)."""
     consumer = cc.consumer
     job = db.scalar(select(Job).where(Job.id == id, Job.consumer_id == consumer.id))
     if job is None:
@@ -190,12 +192,12 @@ def jobs_report(
     for row, ref in rows:
         by_ref.setdefault(ref, []).append(row)
     recorded, unmatched = 0, []
-    for item in body.results:
+    for i, item in enumerate(body.results):
         matched = by_ref.get(item.ref)
         if not matched:
             unmatched.append(item.ref)
             continue
-        comment = to_doc("comment", MarkdownIn(markdown=item.comment) if item.comment else None)
+        comment = to_doc(f"results[{i}].comment", item.comment)
         check_skip_reason("", item.status, item.skip_reason, comment)
         for row in matched:
             record(

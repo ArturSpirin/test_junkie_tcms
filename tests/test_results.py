@@ -120,6 +120,16 @@ class Results:
         ok(record(owner, cc, status="skip", comment={"markdown": "Blocked by BUG-7"}), 201)
 
     @test()
+    def test_a_bulk_skip_needs_no_reason(self, suite_parameter):
+        owner = self.env.owner
+        s = run_seed(owner)
+        item = {"case_key": "PAY-1", "status": "skip"}
+        done = ok(owner.post(url(f"/cycles/{s['cycle']['id']}/results/bulk"), json={"items": [item]}), 201)
+        assert done["unmatched"] == [], done
+        [row] = ok(owner.get(url(f"/cycle-cases/{s['cycle_case']['id']}/results")))["items"]
+        assert row["status"] == "skip" and not (row["comment"] or "").strip(), row
+
+    @test()
     def test_bad_steps_statuses_and_attachments_are_refused(self, suite_parameter):
         owner = self.env.owner
         s = run_seed(owner)
